@@ -4,24 +4,24 @@ author: Xanna Burg
 output: html_document
 ---
 
-## Indicator: Child Population by Age Group by County (D003)
+## Indicator: Child Population by Age Group by County
 **Created by:** Xanna Burg
-**Date:** January 2020
+**Date:** January, 2020
 **Updated by:**
 
 **Data Source:** U.S. Census Bureau, Annual Population Estimates. Specific table: pep/charagegroups 
-**Purpose:** Connect to census data and clean data to KIDS COUNT Data Center formatting. Update Montana, North Dakota, and South Dakota KIDS COUNT Data Center indicator with most recent year of vintage data.
+**Purpose:** Connect to census data table, clean data, add to master database, output csv to upload to Data Center in correct format. Update Montana, North Dakota, and South Dakota KIDS COUNT Data Center indicator with most recent year of vintage data.
 **Description:** this program calculates **Child population by age group by county**
 * Age groups: Under age 5, Ages 5-13, Ages 14-17, Total under 18
 * Geographies: state total, county, state planning regions (where applicable, which are groups of counties)
 * Number - count of population
 * Percent - the percent falling in the age range out of all children younger than 18 [numerater: count in age group/geography; denominator: all children under 18 in geography]
 
-**Data format:** final output data is in long format with the following variables: Location (character: name of location), Age group (character), TimeFrame (numeric: year), Data (numeric: number or percentage), DataFormat (character: "number" or "percent"), LocationId (numeric: assigned for KIDS COUNT system)
+**Data format:** final output csv to upload is in long format with the following variables: Location (character: name of location), Age group (character), TimeFrame (numeric: year), Data (numeric: number or percentage), DataFormat (character: "number" or "percent"), LocationId (numeric: assigned for KIDS COUNT system)
 
 
 
-```{r,results=HIDE,messages=FALSE}
+```{r,message=FALSE}
 #load required packages
 library(tidyverse)
 library(tidycensus)
@@ -46,8 +46,13 @@ pop_geos <- listCensusMetadata(name="pep/charagegroups",
 
 ```{r}
 #CHANGE THESE VARIABLES TO MATCH THE STATE AND YEAR
-state <- "South Dakota"
+state <- "Montana"
 year <- "2018vintage"
+#if you want to rename previous years vintage and save in database, say yes
+#otherwise if not vintage data, say no
+vintage <- "no" 
+#find the most recent database update data and add below
+mostrecentdatabasedate <- "2020-01-24"
 ```
 
 ```{r}
@@ -181,6 +186,11 @@ popest_temp$Data <- as.numeric(popest_temp$Data)
 #UNION NUMBER AND PERCENT
 popest_long <- popest_temp %>%
   bind_rows(percent_temp)
+
+#ADD IN LOCATION TYPE AND VARIABLE NAME FOR DATABASE
+popest_long$LocationType <- "County"
+popest_long$VarName <- "childpopulationbyagegroupbycounty"
+
 ```
 
 ```{r}
@@ -221,6 +231,10 @@ popest_temp_state$Data <- as.numeric(popest_temp_state$Data)
 #UNION NUMBER AND PERCENT
 popest_long_state <- popest_temp_state %>%
   bind_rows(percent_temp_state)
+
+#ADD IN LOCATION TYPE AND VARIABLE NAME FOR DATABASE
+popest_long_state$LocationType <- "State"
+popest_long_state$VarName <- "childpopulationbyagegroupbycounty"
 
 #UNION TO COUNTY DATA
 popest_long <- popest_long %>%
@@ -297,7 +311,7 @@ stateplanning <- stateplanning %>% mutate(region = case_when(
 
 if (state=="Montana" | state=="North Dakota") {
 
-stateplanning <- select(stateplanning,-Location)
+stateplanning <- select(stateplanning,-c(Location,LocationType,VarName))
 stateplanning <- rename(stateplanning,Location=region)
 
 
@@ -338,6 +352,12 @@ popest_temp_stateplanning$Data <- as.numeric(popest_temp_stateplanning$Data)
 popest_long_stateplanning <- popest_temp_stateplanning %>%
   bind_rows(percent_temp_stateplanning)
 
+#ADD IN LOCATION TYPE AND VARIABLE NAME FOR DATABASE
+popest_long_stateplanning$LocationType <- "State Planning"
+popest_long_stateplanning$VarName <- "childpopulationbyagegroupbycounty"
+
+
+
 #UNION TO COUNTY DATA
 popest_long <- popest_long %>%
   bind_rows(popest_long_stateplanning)
@@ -364,14 +384,119 @@ popest_long_final <- popest_long %>%
   left_join(sd)
 }
 
+#CHANGE TIME FRAME VARIABLE TO CHARACTER
+popest_long_final$TimeFrame <- as.character(popest_long_final$TimeFrame)
+
+```
+
+```{r}
+#ADD DATA TO R DATABASE
+#import current database
+
+if (state=="Montana") {
+load("./Output/DATABASE/MT_database.Rda")
+} else if (state=="North Dakota") {
+load("./Output/DATABASE/ND_database.Rda")
+} else if (state=="South Dakota") {
+load("./Output/DATABASE/SD_database.Rda")}
+
+#IF USING VINTAGE DATA, NEED TO CHANGE LAST YEARS ESTIMATE YEARS
+#otherwise, you will have duplicate years. The other option is to delete vintage data from previous years.
+if (vintage=="yes" & state=="Montana") {
+MT_database$TimeFrame[MT_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        MT_database$TimeFrame==2010] <- "2010_2018vintage"
+MT_database$TimeFrame[MT_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        MT_database$TimeFrame==2011] <- "2011_2018vintage"
+MT_database$TimeFrame[MT_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        MT_database$TimeFrame==2012] <- "2012_2018vintage"
+MT_database$TimeFrame[MT_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        MT_database$TimeFrame==2013] <- "2013_2018vintage"
+MT_database$TimeFrame[MT_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        MT_database$TimeFrame==2014] <- "2014_2018vintage"
+MT_database$TimeFrame[MT_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        MT_database$TimeFrame==2015] <- "2015_2018vintage"
+MT_database$TimeFrame[MT_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        MT_database$TimeFrame==2016] <- "2016_2018vintage"
+MT_database$TimeFrame[MT_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        MT_database$TimeFrame==2017] <- "2017_2018vintage"
+MT_database$TimeFrame[MT_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        MT_database$TimeFrame==2018] <- "2018_2018vintage"
+} else if (vintage=="yes" & state=="North Dakota"){
+ND_database$TimeFrame[ND_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        ND_database$TimeFrame==2010] <- "2010_2018vintage"
+ND_database$TimeFrame[ND_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        ND_database$TimeFrame==2011] <- "2011_2018vintage"
+ND_database$TimeFrame[ND_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        ND_database$TimeFrame==2012] <- "2012_2018vintage"
+ND_database$TimeFrame[ND_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        ND_database$TimeFrame==2013] <- "2013_2018vintage"
+ND_database$TimeFrame[ND_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        ND_database$TimeFrame==2014] <- "2014_2018vintage"
+ND_database$TimeFrame[ND_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        ND_database$TimeFrame==2015] <- "2015_2018vintage"
+ND_database$TimeFrame[ND_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        ND_database$TimeFrame==2016] <- "2016_2018vintage"
+ND_database$TimeFrame[ND_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        ND_database$TimeFrame==2017] <- "2017_2018vintage"
+ND_database$TimeFrame[ND_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        ND_database$TimeFrame==2018] <- "2018_2018vintage"
+} else if (vintage=="yes" & state=="South Dakota") {
+SD_database$TimeFrame[SD_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        SD_database$TimeFrame==2010] <- "2010_2018vintage"
+SD_database$TimeFrame[SD_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        SD_database$TimeFrame==2011] <- "2011_2018vintage"
+SD_database$TimeFrame[SD_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        SD_database$TimeFrame==2012] <- "2012_2018vintage"
+SD_database$TimeFrame[SD_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        SD_database$TimeFrame==2013] <- "2013_2018vintage"
+SD_database$TimeFrame[SD_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        SD_database$TimeFrame==2014] <- "2014_2018vintage"
+SD_database$TimeFrame[SD_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        SD_database$TimeFrame==2015] <- "2015_2018vintage"
+SD_database$TimeFrame[SD_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        SD_database$TimeFrame==2016] <- "2016_2018vintage"
+SD_database$TimeFrame[SD_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        SD_database$TimeFrame==2017] <- "2017_2018vintage"
+SD_database$TimeFrame[SD_database$VarName=="childpopulationbyagegroupbycounty" & 
+                        SD_database$TimeFrame==2018] <- "2018_2018vintage" }
+
+
+
+#UNION DATA TO CURRENT DATABASE
+if (state=="Montana") {
+MT_database <- MT_database %>%
+  bind_rows(popest_long_final)
+} else if (state=="North Dakota") {
+ND_database <- ND_database %>%
+  bind_rows(popest_long_final)
+} else if (state=="South Dakota") {
+SD_database <- SD_database %>%
+  bind_rows(popest_long_final)}
+
+```
+
+```{r}
+#SAVE THE NEW DATABASE
+saveRDS(MT_database,"./Output/DATABASE/MT_database.Rda")
+
+```
+
+```{r}
+#QUERY THE DATA NEEDED IN THE FORMAT FOR DATA CENTER UPLOAD
+
+uploadexport <- filter(MT_database,VarName=="childpopulationbyagegroupbycounty" & 
+                         TimeFrame==2018)
+uploadexport <- select(MT_database,c(Location,Age_group,TimeFrame,DataFormat,
+                                     Data,LocationId))
+
 #add a space back to age group variable name
-popest_long_final <- rename(popest_long_final,"Age group"=Age_group)
+uploadexport <- rename(uploadexport,"Age group"=Age_group)
 
 ```
 
 ```{r}
 #WRITE FINAL DATASET TO CSV
-write.csv(popest_long_final,file=paste0("./Output/childpopulationbyagegroupbycounty/",state,"_",year,"_childpopulationbyagegroupbycounty.csv"),row.names=FALSE)
+write.csv(uploadexport,file=paste0("./Output/childpopulationbyagegroupbycounty/",state,"_",year,"_childpopulationbyagegroupbycounty.csv"),row.names=FALSE)
 
 ```
 
