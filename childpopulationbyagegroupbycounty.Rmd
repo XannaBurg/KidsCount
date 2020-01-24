@@ -1,0 +1,377 @@
+---
+title: "Child Population by Age Group by County"
+author: Xanna Burg
+output: html_document
+---
+
+## Indicator: Child Population by Age Group by County (D003)
+**Created by:** Xanna Burg
+**Date:** January 2020
+**Updated by:**
+
+**Data Source:** U.S. Census Bureau, Annual Population Estimates. Specific table: pep/charagegroups 
+**Purpose:** Connect to census data and clean data to KIDS COUNT Data Center formatting. Update Montana, North Dakota, and South Dakota KIDS COUNT Data Center indicator with most recent year of vintage data.
+**Description:** this program calculates **Child population by age group by county**
+* Age groups: Under age 5, Ages 5-13, Ages 14-17, Total under 18
+* Geographies: state total, county, state planning regions (where applicable, which are groups of counties)
+* Number - count of population
+* Percent - the percent falling in the age range out of all children younger than 18 [numerater: count in age group/geography; denominator: all children under 18 in geography]
+
+**Data format:** final output data is in long format with the following variables: Location (character: name of location), Age group (character), TimeFrame (numeric: year), Data (numeric: number or percentage), DataFormat (character: "number" or "percent"), LocationId (numeric: assigned for KIDS COUNT system)
+
+
+
+```{r,results=HIDE,messages=FALSE}
+#load required packages
+library(tidyverse)
+library(tidycensus)
+library(censusapi)
+library(stringr)
+```
+
+```{r}
+#metadata for available variables
+pop_vars <- listCensusMetadata(name="pep/charagegroups",
+                               vintage="2018",
+                               type="variables")
+#view(pop_vars)
+
+#metadata for available geographies
+pop_geos <- listCensusMetadata(name="pep/charagegroups",
+                               vintage="2018",
+                               type="geography")
+#view(pop_geos)
+
+```
+
+```{r}
+#CHANGE THESE VARIABLES TO MATCH THE STATE AND YEAR
+state <- "South Dakota"
+year <- "2018vintage"
+```
+
+```{r}
+#CHANGE THE API TO MATCH THE STATE
+
+#write an API query
+#pep/charagegroups table is: Population Estimates: Census Bureau Version: Demographic Characteristics Estimates by Age Groups
+#api matches following query: #https://api.census.gov/data/2018/pep/charagegroups?get=POP,DATE_CODE,DATE_DESC&for=county:*&in=state:30&AGEGROUP=1&AGEGROUP=2&AGEGROUP=3&AGEGROUP=4
+
+#see lookup table for categorical vars https://www.census.gov/data/developers/data-sets/popest-popproj/popest/popest-vars.Vintage_2018.html
+
+#Montana=30
+#North Dakota=38
+#South Dakota=46
+
+#ALL COUNTIES IN STATE
+#MATCHING AGE GROUPS 1 (under age 5), 20 (Ages 5-13), 21 (ages 14-17), and 19 (under age 18)
+if (state=="Montana") {
+popest <- getCensus(name="pep/charagegroups",
+          vintage="2018",
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("POP","DATE_CODE","DATE_DESC","AGEGROUP"),
+          region="county:*",
+          regionin="state:30",
+          AGEGROUP="1",
+          AGEGROUP="19",
+          AGEGROUP="20",
+          AGEGROUP="21")
+} else if (state=="North Dakota") {
+popest <- getCensus(name="pep/charagegroups",
+          vintage="2018",
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("POP","DATE_CODE","DATE_DESC","AGEGROUP"),
+          region="county:*",
+          regionin="state:38",
+          AGEGROUP="1",
+          AGEGROUP="19",
+          AGEGROUP="20",
+          AGEGROUP="21")
+} else if (state=="South Dakota") {
+popest <- getCensus(name="pep/charagegroups",
+          vintage="2018",
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("POP","DATE_CODE","DATE_DESC","AGEGROUP"),
+          region="county:*",
+          regionin="state:46",
+          AGEGROUP="1",
+          AGEGROUP="19",
+          AGEGROUP="20",
+          AGEGROUP="21")}
+
+```
+
+```{r}
+#clean the census data
+
+#MERGE IN COUNTY AND STATE NAME USING FIPS CODES (from tidycensus package)
+fips <- fips_codes
+#remove leading zeroes from county string
+fips$county_code = str_remove(fips$county_code, "^0+")
+
+
+#MERGE FIPS STRING NAMES WITH POPULATION ESTIMATES
+popest<- popest %>% 
+  left_join(fips,by = c("state" = "state_code","county"="county_code"))
+
+#REMOVE THE WORD COUNTY FROM COUNTY VARIABLE
+popest$county.y<- gsub("\\s*\\w*$", "", popest$county.y)
+
+#NAME COUNTY VARIABLE AS KC DATA CENTER WANTS - "Location"
+popest$Location <- popest$county.y
+
+#NAME POPULATION ESTIMATE AS KC DATA CENTER WANTS - "Data"
+popest$Data <- popest$POP
+
+#CREATE CHARACTER VARIABLE FOR AGE GROUPS
+popest <- popest %>% mutate(Age_group = case_when(
+  AGEGROUP==1 ~ "Under age 5",
+  AGEGROUP==20 ~ "Ages 5-13",
+  AGEGROUP==21 ~ "Ages 14-17",
+  AGEGROUP==19 ~ "Under age 18"
+))
+
+#REMOVE CENSUS TIME FRAMES NOT USING
+#DATE_CODE=2 is for decennial population estimate base
+#DATE_CODE=3 is for decennial year estimates. 
+#will use actual counts from decennial year, so removing DATE_CODE=2 & 3
+popest <- subset(popest,DATE_CODE!="2" & DATE_CODE!="3")
+
+#CREATE CHARACTER VARIABLE FOR TIME FRAMES
+#these are vintage estimates, so need to update each year back to most recent decennial census
+popest <- popest %>% mutate(TimeFrame = case_when(
+  DATE_CODE==1 ~ 2010,
+  DATE_CODE==4 ~ 2011,
+  DATE_CODE==5 ~ 2012,
+  DATE_CODE==6 ~ 2013,
+  DATE_CODE==7 ~ 2014,
+  DATE_CODE==8 ~ 2015,
+  DATE_CODE==9 ~ 2016,
+  DATE_CODE==10 ~2017,
+  DATE_CODE==11 ~ 2018
+))
+
+
+#REMOVE VARIABLES NOT NEEDED AT THIS POINT
+popest <- popest %>% select(Location,Age_group,TimeFrame,Data)
+
+#CALCULATE PERCENT USING TOTAL BELOW AGE 18
+#create a dataset that has total population under 18, location, time for merging
+percent <- filter(popest,Age_group=="Under age 18")
+percent$total_pop <- percent$Data
+percent <- select(percent,Location,TimeFrame,total_pop)
+
+#left join population estimates with total
+popest <- popest %>%
+  left_join(percent,by=NULL)
+
+#calculate percent
+popest$percent <- as.numeric(popest$Data)/as.numeric(popest$total_pop)
+
+#CHANGE PERCENT INTO LONG FORMAT DATA SETUP
+percent_temp <- select(popest,Location,Age_group,TimeFrame,percent)
+percent_temp <- percent_temp %>% rename(Data=percent)
+percent_temp$Data <- as.numeric(percent_temp$Data)
+percent_temp$DataFormat <- "Percent"
+
+popest_temp <- select(popest, Location, Age_group,TimeFrame,Data)
+popest_temp$DataFormat <- "Number"
+popest_temp$Data <- as.numeric(popest_temp$Data)
+
+#UNION NUMBER AND PERCENT
+popest_long <- popest_temp %>%
+  bind_rows(percent_temp)
+```
+
+```{r}
+##THESE NEXT STEPS ARE STATE DEPENDENT
+
+#CREATE STATE TOTALS TO INCLUDE
+state_totals <- filter(popest_long,DataFormat=="Number")
+state_totals <- state_totals %>% 
+  group_by(TimeFrame,Age_group) %>%
+  summarise(Data = sum(Data))
+
+state_totals$Location <- state
+
+#CALCULATE PERCENT FOR STATE TOTALS
+state_totals_percent <- filter(state_totals,Age_group=="Under age 18")
+state_totals_percent <- rename(state_totals_percent, total_pop=Data)
+state_totals_percent <- select(state_totals_percent,-Age_group)
+  
+#left join to incorporate back to full population dataset
+state_totals_temp <- state_totals %>%
+  left_join(state_totals_percent)
+
+#calculate percent
+state_totals_temp$percent <- state_totals_temp$Data/state_totals_temp$total_pop
+
+#CHANGE PERCENT INTO LONG FORMAT DATA SETUP
+percent_temp_state <- select(state_totals_temp,
+                             Location,Age_group,TimeFrame,percent)
+percent_temp_state <- percent_temp_state %>% rename(Data=percent)
+percent_temp_state$Data <- as.numeric(percent_temp_state$Data)
+percent_temp_state$DataFormat <- "Percent"
+
+popest_temp_state <- select(state_totals_temp, 
+                            Location, Age_group,TimeFrame,Data)
+popest_temp_state$DataFormat <- "Number"
+popest_temp_state$Data <- as.numeric(popest_temp_state$Data)
+
+#UNION NUMBER AND PERCENT
+popest_long_state <- popest_temp_state %>%
+  bind_rows(percent_temp_state)
+
+#UNION TO COUNTY DATA
+popest_long <- popest_long %>%
+  bind_rows(popest_long_state)
+
+```
+
+```{r}
+##THESE NEXT STEPS ARE STATE DEPENDENT
+
+#ADD IN STATE PLANNING REGIONS, IF AVAILABLE
+
+#start with dataset that does not include state totals or percents
+stateplanning <- filter(popest_long,Location!=state & DataFormat!="Percent")
+
+if (state=="Montana") {
+stateplanning <- stateplanning %>% mutate(region = case_when(
+  Location=="Carter" | Location=="Custer" | Location=="Daniels" |
+    Location=="Dawson" | Location=="Fallon" | Location=="Garfield" |
+    Location=="McCone" | Location=="Phillips" | Location=="Powder River" | 
+    Location=="Prairie" | Location=="Richland" | Location=="Roosevelt" | 
+    Location=="Rosebud" | Location =="Sheridan" | Location=="Treasure" | 
+    Location=="Valley" | Location=="Wibaux" ~ "Planning Region 1",
+  Location=="Blaine" | Location=="Cascade" | Location=="Chouteau" | 
+    Location=="Glacier" | Location=="Hill" | Location=="Liberty" | 
+    Location=="Pondera" | Location=="Teton" | Location=="Toole" ~ 
+    "Planning Region 2",
+  Location=="Big Horn" | Location=="Carbon" | Location=="Fergus" | 
+    Location=="Golden Valley" | Location=="Judith Basin" | 
+    Location=="Musselshell" | Location=="Petroleum" | 
+    Location=="Stillwater" | Location=="Sweet Grass" | 
+    Location=="Wheatland" | Location=="Yellowstone" ~ 
+    "Planning Region 3",
+  Location=="Beaverhead" | Location=="Broadwater" | Location=="Deer Lodge" | 
+    Location=="Gallatin" | Location=="Granite" | Location=="Jefferson" | 
+    Location=="Lewis and Clark" | Location=="Madison" | 
+    Location=="Meagher" | Location=="Park" | Location=="Powell" | 
+    Location=="Silver Bow" ~ "Planning Region 4",
+  Location=="Flathead" | Location=="Lake" | Location=="Lincoln" | 
+    Location=="Mineral" | Location=="Missoula" | Location=="Ravalli" | 
+    Location=="Sanders" ~ "Planning Region 5"
+))
+
+} else if (state=="North Dakota") {
+  stateplanning <- stateplanning %>% mutate(region = case_when(
+  Location=="Divide" | Location=="McKenzie" | Location=="Williams" ~
+    "Planning Region 1",
+  Location=="Bottineau" | Location=="Burke" | Location=="McHenry" | 
+    Location=="Mountrail" | Location=="Pierce" | Location=="Pierce" | 
+    Location=="Renville" | Location=="Ward" ~ "Planning Region 2",
+  Location=="Benson" | Location=="Cavalier" | Location=="Eddy" | 
+    Location=="Ramsey" | Location=="Rolette" | Location=="Towner"~
+    "Planning Region 3",
+  Location=="Grand Forks" | Location=="Nelson" | Location=="Pembina" | 
+    Location=="Walsh" ~ "Planning Region 4",
+  Location=="Cass" | Location=="Ransom" | Location=="Richland" | 
+    Location=="Sargent" | Location=="Steele" | Location=="Traill" ~ 
+    "Planning Region 5",
+  Location=="Barnes"| Location=="Dickey" | Location=="Foster" | 
+    Location=="Griggs" | Location=="LaMoure" | Location=="Logan" | 
+    Location=="McIntosh" | Location=="Stutsman" | Location=="Wells" ~ 
+    "Planning Region 6",
+  Location=="Burleigh" | Location=="Emmons" | Location=="Grant" | 
+    Location=="Kidder" | Location=="McLean" | Location=="Mercer" | 
+    Location=="Morton" | Location=="Oliver" | Location=="Sheridan" |
+    Location=="Sioux" ~ "Planning Region 7",
+  Location=="Adams" | Location=="Billings" | Location=="Bowman" | 
+    Location=="Dunn" | Location=="Golden Valley" | Location=="Hettinger" | 
+    Location=="Slope" | Location=="Stark" ~ "Planning Region 8"
+))
+} else if (state=="South Dakota") {
+  print("State does not have planning regions")
+}
+
+if (state=="Montana" | state=="North Dakota") {
+
+stateplanning <- select(stateplanning,-Location)
+stateplanning <- rename(stateplanning,Location=region)
+
+
+#CREATE STATE PLANNING TOTALS BY YEAR, AGE GROUP, AND REGION
+stateplanning <- stateplanning %>% 
+  group_by(TimeFrame,Age_group,Location) %>%
+  summarise(Data = sum(Data))
+
+
+stateplanning_totals <- filter(stateplanning,Age_group=="Under age 18")
+stateplanning_totals <- rename(stateplanning_totals,delete=Age_group)
+
+#CALCULATE PERCENT FOR STATE TOTALS
+stateplanning_totals <- rename(stateplanning_totals, total_pop=Data)
+  
+#left join to incorporate back to full population dataset
+stateplanning_totals_temp <- stateplanning %>%
+  left_join(stateplanning_totals)
+
+#calculate percent
+stateplanning_totals_temp$percent <- stateplanning_totals_temp$Data/stateplanning_totals_temp$total_pop
+
+#CHANGE PERCENT INTO LONG FORMAT DATA SETUP
+percent_temp_stateplanning <- select(stateplanning_totals_temp,
+                             Location,Age_group,TimeFrame,percent)
+percent_temp_stateplanning <- percent_temp_stateplanning %>%
+  rename(Data=percent)
+percent_temp_stateplanning$Data <-
+  as.numeric(percent_temp_stateplanning$Data)
+percent_temp_stateplanning$DataFormat <- "Percent"
+
+popest_temp_stateplanning <- select(stateplanning_totals_temp, 
+                            Location, Age_group,TimeFrame,Data)
+popest_temp_stateplanning$DataFormat <- "Number"
+popest_temp_stateplanning$Data <- as.numeric(popest_temp_stateplanning$Data)
+
+#UNION NUMBER AND PERCENT
+popest_long_stateplanning <- popest_temp_stateplanning %>%
+  bind_rows(percent_temp_stateplanning)
+
+#UNION TO COUNTY DATA
+popest_long <- popest_long %>%
+  bind_rows(popest_long_stateplanning)
+}
+
+
+```
+
+```{r}
+#LEFT JOIN TO INCORPORATE LOCATION IDS (FROM KIDS COUNT DATA CENTER)
+
+mt <- read.csv("./Input/MT KC Location IDs.csv")
+sd <- read.csv("./Input/SD KC Location IDs.csv")
+nd <- read.csv("./Input/ND KC Location IDs.csv")
+
+if (state=="Montana") {
+popest_long_final <- popest_long %>%
+  left_join(mt)
+} else if (state=="North Dakota") {
+  popest_long_final <- popest_long %>%
+  left_join(nd)
+} else if (state=="South Dakota") {
+  popest_long_final <- popest_long %>%
+  left_join(sd)
+}
+
+#add a space back to age group variable name
+popest_long_final <- rename(popest_long_final,"Age group"=Age_group)
+
+```
+
+```{r}
+#WRITE FINAL DATASET TO CSV
+write.csv(popest_long_final,file=paste0("./Output/childpopulationbyagegroupbycounty/",state,"_",year,"_childpopulationbyagegroupbycounty.csv"),row.names=FALSE)
+
+```
+
