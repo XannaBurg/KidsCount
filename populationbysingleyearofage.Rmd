@@ -3,6 +3,22 @@ title: "Population by Single Year of Age"
 author: "Xanna Burg"
 date: "2/20/2020"
 output: html_document
+
+## This code does not populate a specific indicator, but is needed as a denominator for other KIDS COUNT Indicators.
+**Created by:** Xanna Burg
+**Date:** February, 2020
+**Updated by:**
+
+**Data Source:** US Census populations with bridged race categories from NCHS. Retrieved from Missouri Census Data Center.
+**Purpose:** Obtain Population Estimates by single year of age for state, county, and planning regions.
+**Description:** This program adds the population estimates to the database.
+* Geographies: state total, county, state planning regions (where applicable, which are groups of counties)
+* Number - count of children in respective age group and geography
+* Age group - single year of age 
+
+
+**Data format:** final output adds data to database only
+
 ---
 
 ```{r,message=FALSE}
@@ -17,8 +33,8 @@ library(stringr)
 ```{r}
 year <- '2018'
 shortyear<- '18'
-statefile <- 'northdakota'
-statename <- 'North Dakota'
+statefile <- 'southdakota'
+statename <- 'South Dakota'
 
 ```
 
@@ -162,13 +178,15 @@ stateplanning <- countydata %>% mutate(region = case_when(
 stateplanningdata <- stateplanning %>%
   group_by(age_group,region) %>%
   summarize(region_total=sum(data, na.rm=TRUE)) %>%
+  subset(!is.na(region)) %>%
   rename(location=region) %>%
   rename(data=region_total) %>%
   mutate(locationtype='Planning Region') %>%
   mutate(state=statename) %>%
   mutate(timeframe=year) %>%
   mutate(dataformat='Number') %>%
-  mutate(varname='nchspopulationbysingleyearofage')
+  mutate(varname='nchspopulationbysingleyearofage') 
+ 
 
 
 
@@ -190,6 +208,9 @@ if (statename=='North Dakota') {
 population_allgroups <- statedata %>%
   bind_rows(countydata) %>%
   bind_rows(stateplanningdata) %>%
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
   left_join(locationids,by=c('location'='Location')) %>%
   rename(locationid=LocationId)
 
