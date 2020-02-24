@@ -1,0 +1,205 @@
+---
+title: "Population by Single Year of Age"
+author: "Xanna Burg"
+date: "2/20/2020"
+output: html_document
+---
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+library(stringr)
+
+```
+
+```{r}
+year <- '2018'
+shortyear<- '18'
+statefile <- 'northdakota'
+statename <- 'North Dakota'
+
+```
+
+```{r}
+#set the file path for first age range
+xl_data <- paste0("./Input/population/",statefile,"_",shortyear,"_populationbysingleyearofage0_18.xlsx")
+#set the file path for the second age range
+xl_data2 <- paste0("./Input/population/",statefile,"_",shortyear,"_populationbysingleyearofage19_25.xlsx")
+
+#read in all sheets of first dataset, assign sheet name to variable location
+agedata1 <- xl_data %>%
+  excel_sheets() %>%
+  set_names() %>%
+  map_df(read_excel,path=xl_data,skip=3,.id='location')
+
+#read in all sheets of second dataset, assign sheet name to variable location
+agedata2 <- xl_data2 %>%
+  excel_sheets() %>%
+  set_names() %>%
+  map_df(read_excel,path=xl_data2,skip=3,.id='location')
+  
+#bind to include all ages 0 to 25 and clean data
+agedata <- agedata1 %>%
+  bind_rows(agedata2) %>%
+  select(-c(Year,'% of age group',Male,'% Male',Female,'% Female')) %>%
+  rename(age_group='Age group') %>%
+  filter(age_group != "All ages")
+  
+#work with only state data
+statedata <- agedata %>%
+  filter(location==statename) %>%
+  mutate(locationtype='State') %>% 
+  mutate(state=statename) %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  rename(data=Total) %>%
+  mutate(varname='nchspopulationbysingleyearofage')
+
+#work with only county data
+countydata <- agedata %>%
+  filter(location != statename) %>%
+  rename(full_location=location) %>%
+  mutate(location=sub("\\ County.*","",full_location)) %>%
+  select(-c(full_location)) %>%
+  mutate(locationtype='County') %>%
+  mutate(state=statename) %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  rename(data=Total) %>%
+  mutate(varname='nchspopulationbysingleyearofage')
+
+```
+
+```{r}
+#calculate for state planning regions
+if (statename=="Montana") {
+stateplanning <- countydata %>% mutate(region = case_when(
+  location=="Carter" | location=="Custer" | location=="Daniels" |
+    location=="Dawson" | location=="Fallon" | location=="Garfield" |
+    location=="McCone" | location=="Phillips" | location=="Powder River" | 
+    location=="Prairie" | location=="Richland" | location=="Roosevelt" | 
+    location=="Rosebud" | location =="Sheridan" | location=="Treasure" | 
+    location=="Valley" | location=="Wibaux" ~ "Planning Region 1",
+  location=="Blaine" | location=="Cascade" | location=="Chouteau" | 
+    location=="Glacier" | location=="Hill" | location=="Liberty" | 
+    location=="Pondera" | location=="Teton" | location=="Toole" ~ 
+    "Planning Region 2",
+  location=="Big Horn" | location=="Carbon" | location=="Fergus" | 
+    location=="Golden Valley" | location=="Judith Basin" | 
+    location=="Musselshell" | location=="Petroleum" | 
+    location=="Stillwater" | location=="Sweet Grass" | 
+    location=="Wheatland" | location=="Yellowstone" ~ 
+    "Planning Region 3",
+  location=="Beaverhead" | location=="Broadwater" | location=="Deer Lodge" | 
+    location=="Gallatin" | location=="Granite" | location=="Jefferson" | 
+    location=="Lewis and Clark" | location=="Madison" | 
+    location=="Meagher" | location=="Park" | location=="Powell" | 
+    location=="Silver Bow" ~ "Planning Region 4",
+  location=="Flathead" | location=="Lake" | location=="Lincoln" | 
+    location=="Mineral" | location=="Missoula" | location=="Ravalli" | 
+    location=="Sanders" ~ "Planning Region 5"
+))
+
+} else if (statename=="North Dakota") {
+  stateplanning <- countydata %>% mutate(region = case_when(
+  location=="Divide" | location=="McKenzie" | location=="Williams" ~
+    "Planning Region 1",
+  location=="Bottineau" | location=="Burke" | location=="McHenry" | 
+    location=="Mountrail" | location=="Pierce" | location=="Pierce" | 
+    location=="Renville" | location=="Ward" ~ "Planning Region 2",
+  location=="Benson" | location=="Cavalier" | location=="Eddy" | 
+    location=="Ramsey" | location=="Rolette" | location=="Towner"~
+    "Planning Region 3",
+  location=="Grand Forks" | location=="Nelson" | location=="Pembina" | 
+    location=="Walsh" ~ "Planning Region 4",
+  location=="Cass" | location=="Ransom" | location=="Richland" | 
+    location=="Sargent" | location=="Steele" | location=="Traill" ~ 
+    "Planning Region 5",
+  location=="Barnes"| location=="Dickey" | location=="Foster" | 
+    location=="Griggs" | location=="LaMoure" | location=="Logan" | 
+    location=="McIntosh" | location=="Stutsman" | location=="Wells" ~ 
+    "Planning Region 6",
+  location=="Burleigh" | location=="Emmons" | location=="Grant" | 
+    location=="Kidder" | location=="McLean" | location=="Mercer" | 
+    location=="Morton" | location=="Oliver" | location=="Sheridan" |
+    location=="Sioux" ~ "Planning Region 7",
+  location=="Adams" | location=="Billings" | location=="Bowman" | 
+    location=="Dunn" | location=="Golden Valley" | location=="Hettinger" | 
+    location=="Slope" | location=="Stark" ~ "Planning Region 8"
+))
+} else if (statename=="South Dakota") {
+  stateplanning <- countydata %>% mutate(region = case_when(
+  location=="Harding" | location=="Perkins" | location=="Butte" | location=='Meade' | 
+    location=='Lawrence' | location=='Pennington' | location=='Custer' | 
+    location=='Fall River' | location=='Bennett' ~ 
+    "Black Hills Council of Local Governments",
+  location=='Sully' | location=='Hyde' | location=='Hughes' | location=='Jones' | 
+    location=='Haakon' | location=='Jackson' ~ "Central South Dakota Enhancement District",
+  location=='Roberts' | location=='Grant' | location=='Codington' | 
+    location=='Clark' | location=='Deuel' | location=='Hamlin' | 
+    location=='Kingsbury' | location=='Brookings' | location=='Moody' | 
+    location=='Lake' | location=='Miner' ~ 
+    "First District Association of Local Governments",
+  location=='Campbell' | location=='McPherson' | location=='Brown' | 
+    location=='Marshall' | location=='Walworth' | location=='Edmunds' | 
+    location=='Day' | location=='Potter' | location=='Faulk' | 
+    location=='Spink' | location=='Hand' | location=='Beadle' ~ 
+    "Northeast Council of Governments",
+  location=='Lyman' | location=='Buffalo' | location=='Jerauld' | 
+    location=='Sanborn' | location=='Brule' | location=='Aurora' | 
+    location=='Davison' | location=='Hanson' | location=='Tripp' | 
+    location=='Gregory' | location=='Charles Mix' | location=='Douglas' | 
+    location=='Hutchinson' | location=='Bon Homme' | location=='Yankton' ~ 
+    "Planning & Development District III",
+  location=='McCook' | location=='Minnehaha' | location=='Turner' | 
+    location=='Lincoln' | location=='Clay' | location=='Union' ~ 
+    "South Eastern Council of Governments"))
+}
+
+
+stateplanningdata <- stateplanning %>%
+  group_by(age_group,region) %>%
+  summarize(region_total=sum(data, na.rm=TRUE)) %>%
+  rename(location=region) %>%
+  rename(data=region_total) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(state=statename) %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='nchspopulationbysingleyearofage')
+
+
+
+```
+
+
+```{r}
+#input location ID file for the state
+if (statename=='North Dakota') {
+  locationids <- read.csv("./Input/ND KC Location IDs.csv")
+} else if (statename=='South Dakota') {
+  locationids <- read.csv("./Input/SD KC Location IDs.csv")
+} else if (statename=='Montana') {
+  locationids <- read.csv("./Input/MT KC Location IDs.csv")
+}
+
+#create a stacked version of state, county, and planning region 
+#merge in location IDs
+population_allgroups <- statedata %>%
+  bind_rows(countydata) %>%
+  bind_rows(stateplanningdata) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+```
+
+```{r}
+#add to database
+dbWriteTable(con,statefile,population_allgroups,append=TRUE,row.names=FALSE)
+
+```
+
+
+
