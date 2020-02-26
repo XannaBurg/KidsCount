@@ -1,0 +1,326 @@
+---
+title: "Montana Youth Risk Behavior Survey"
+author: "Xanna Burg"
+date: "2/24/2020"
+output: html_document
+---
+
+## Indicator 1: Cigarette smoking among high school students
+## Indicator 2: Smokeless tobacco use among high school students
+## Indicator 3: Alcohol use among high school students
+## Indicator 4: Marijuana use among high school students
+## Indicator 5: Suicide attempts among high school students
+
+**Created by:** Xanna Burg
+**Date:** February, 2020
+**Updated by:**
+
+**Data Source:** MT Office of Public Instruction, Montana Youth Risk Behavior Survey
+**Purpose:** Input the statewide YRBS data by race and ethnicity
+**Description:** this program calculates five indicators 
+
+
+* Geographies: state total
+* Percent - The percent of youth reporting behavior
+
+**Data format:** final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (numeric: year), Data (numeric: number or percentage), DataFormat (character: "number" or "percent"), LocationId (numeric: assigned for KIDS COUNT system)
+
+**To use this code for a new year:**
+* Update the year in the second code chunk for variable 'year'
+* Update the year in the data query from the database for each of the five indicators, prior to exporting to .csv for data center upload. 
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+
+```
+
+```{r}
+#UPDATE to reflect the current year data working with
+year <- '2019'
+statefile <- 'montana'
+statename <- 'Montana'
+```
+
+
+```{r}
+
+xl_data <- "./Input/safety/MT YRBS/montana_allyears_yrbs.xlsx"
+
+#input yrbs data
+df_allstudents <- read_excel(path=xl_data, sheet='All Montana Students')
+df_AIreservation <- read_excel(path=xl_data, sheet='AI Reservation')
+df_AItotal <- read_excel(path=xl_data, sheet='AI Total')
+df_white <- read_excel(path=xl_data, sheet='White Total')
+df_hispanic <- read_excel(path=xl_data, sheet='Hispanic total')
+df_multiple <- read_excel(path=xl_data, sheet='Multiple race total')
+
+
+#input location ID file for MT
+locationids <- read.csv("./Input/MT KC Location IDs.csv")
+
+```
+
+
+
+**CIGARETTE USE**
+
+```{r}
+#format the data to add to the database
+
+cigarette <-  df_allstudents %>%
+  bind_rows(df_AItotal) %>%
+  bind_rows(df_AIreservation) %>%
+  bind_rows(df_white) %>%
+  bind_rows(df_hispanic) %>%
+  bind_rows(df_multiple) %>%
+  select(c(locationid,location,race,year,dataformat,cigarette)) %>%
+  mutate(locationtype='State') %>%
+  mutate(state='Montana') %>%
+  rename(timeframe=year) %>%
+  rename(data=cigarette) %>%
+  mutate(varname='yrbs_cigarettesmokingamonghighschoolstudents') %>%
+  subset(timeframe==as.numeric(year))
+
+
+```
+
+```{r}
+#add to database percent of yrbs_cigarettesmokingamonghighschoolstudents
+dbWriteTable(con,'montana',cigarette,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+#PERCENT - YRBS_CIGARETTESMOKINGAMONGHIGHSCHOOLSTUDENTS
+
+#UPDATE THE YEAR IN THE SQL QUERY
+
+upload_data_cigarette <- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data,race
+                     FROM montana
+                     WHERE timeframe = '2019' AND varname = 'yrbs_cigarettesmokingamonghighschoolstudents';")
+
+upload_data_cigarette2 <- upload_data_cigarette %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         Race=race)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_cigarette2,file=paste0("./Output/safety/",statefile,"_",year,"_yrbs_cigarettesmokingamonghighschoolstudents.csv"),row.names=FALSE)
+
+```
+
+
+**SMOKELESS TOBACCO**
+
+```{r}
+#format the data to add to the database
+smokeless <-  df_allstudents %>%
+  bind_rows(df_AItotal) %>%
+  bind_rows(df_AIreservation) %>%
+  bind_rows(df_white) %>%
+  bind_rows(df_hispanic) %>%
+  bind_rows(df_multiple) %>%
+  select(c(locationid,location,race,year,dataformat,smokeless)) %>%
+  mutate(locationtype='State') %>%
+  mutate(state='Montana') %>%
+  rename(timeframe=year) %>%
+  rename(data=smokeless) %>%
+  mutate(varname='yrbs_smokelesstobaccoamonghighschoolstudents') %>%
+  subset(timeframe==as.numeric(year))
+
+```
+
+```{r}
+#add to database percent of yrbs_smokelesstobaccoamonghighschoolstudents
+dbWriteTable(con,'montana',smokeless,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+#PERCENT - YRBS_SMOKELESSTOBACCOAMONGHIGHSCHOOLSTUDENTS
+
+#UPDATE THE YEAR IN THE SQL QUERY
+
+upload_data_smokeless<- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data,race
+                     FROM montana
+                     WHERE timeframe = '2019' AND varname = 'yrbs_smokelesstobaccoamonghighschoolstudents';")
+
+upload_data_smokeless2 <- upload_data_smokeless %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         Race=race)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_smokeless2,file=paste0("./Output/safety/",statefile,"_",year,"_yrbs_smokelesstobaccoamonghighschoolstudents.csv"),row.names=FALSE)
+
+```
+
+
+
+**ALCOHOL**
+
+```{r}
+#format the data to add to the database
+alcohol <- df_allstudents %>%
+  bind_rows(df_AItotal) %>%
+  bind_rows(df_AIreservation) %>%
+  bind_rows(df_white) %>%
+  bind_rows(df_hispanic) %>%
+  bind_rows(df_multiple) %>%
+  select(c(locationid,location,race,year,dataformat,alcohol)) %>%
+  mutate(locationtype='State') %>%
+  mutate(state='Montana') %>%
+  rename(timeframe=year) %>%
+  rename(data=alcohol) %>%
+  mutate(varname='yrbs_alcoholuseamonghighschoolstudents') %>%
+  subset(timeframe==as.numeric(year))
+
+```
+
+```{r}
+#add to database percent of yrbs_alcoholuseamonghighschoolstudents
+dbWriteTable(con,'montana',alcohol,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+#PERCENT - YRBS_ALCOHOLUSEAMONGHIGHSCHOOLSTUDENTS
+
+#UPDATE THE YEAR IN THE SQL QUERY
+
+upload_data_alcohol<- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data,race
+                     FROM montana
+                     WHERE timeframe = '2019' AND varname = 'yrbs_alcoholuseamonghighschoolstudents';")
+
+upload_data_alcohol2 <- upload_data_alcohol %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         Race=race)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_alcohol2,file=paste0("./Output/safety/",statefile,"_",year,"_yrbs_alcoholuseamonghighschoolstudents.csv"),row.names=FALSE)
+
+```
+
+
+
+
+**MARIJUANA**
+
+```{r}
+#format the data to add to the database
+marijuana <- df_allstudents %>%
+  bind_rows(df_AItotal) %>%
+  bind_rows(df_AIreservation) %>%
+  bind_rows(df_white) %>%
+  bind_rows(df_hispanic) %>%
+  bind_rows(df_multiple) %>%
+  select(c(locationid,location,race,year,dataformat,marijuana)) %>%
+  mutate(locationtype='State') %>%
+  mutate(state='Montana') %>%
+  rename(timeframe=year) %>%
+  rename(data=marijuana) %>%
+  mutate(varname='yrbs_marijuanauseamonghighschoolstudents') %>%
+  subset(timeframe==as.numeric(year))
+
+```
+
+```{r}
+#add to database percent of yrbs_marijuanauseamonghighschoolstudents
+dbWriteTable(con,'montana',marijuana,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+#PERCENT - YRBS_MARIJUANAUSEAMONGHIGHSCHOOLSTUDENTS
+
+#UPDATE THE YEAR IN THE SQL QUERY
+
+upload_data_marijuana<- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data,race
+                     FROM montana
+                     WHERE timeframe = '2019' AND varname = 'yrbs_marijuanauseamonghighschoolstudents';")
+
+upload_data_marijuana2 <- upload_data_marijuana %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         Race=race)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_marijuana2,file=paste0("./Output/safety/",statefile,"_",year,"_yrbs_marijuanauseamonghighschoolstudents.csv"),row.names=FALSE)
+
+```
+
+
+**SUICIDE ATTEMPTS**
+
+```{r}
+#format the data to add to the database
+suicide <- df_allstudents %>%
+  bind_rows(df_AItotal) %>%
+  bind_rows(df_AIreservation) %>%
+  bind_rows(df_white) %>%
+  bind_rows(df_hispanic) %>%
+  bind_rows(df_multiple) %>%
+  select(c(locationid,location,race,year,dataformat,suicide)) %>%
+  mutate(locationtype='State') %>%
+  mutate(state='Montana') %>%
+  rename(timeframe=year) %>%
+  rename(data=suicide) %>%
+  mutate(varname='yrbs_suicideattemptsamonghighschoolstudents') %>%
+  subset(timeframe==as.numeric(year))
+
+```
+
+```{r}
+#add to database percent of yrbs_suicideattemptsamonghighschoolstudents
+dbWriteTable(con,'montana',suicide,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+#PERCENT - YRBS_SUICIDEATTEMPTSAMONGHIGHSCHOOLSTUDENTS
+
+#UPDATE THE YEAR IN THE SQL QUERY
+
+upload_data_suicide <- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data,race
+                     FROM montana
+                     WHERE timeframe = '2019' AND varname = 'yrbs_suicideattemptsamonghighschoolstudents';")
+
+upload_data_suicide2 <- upload_data_suicide %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         Race=race)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_suicide2,file=paste0("./Output/safety/",statefile,"_",year,"_yrbs_suicideattemptsamonghighschoolstudents.csv"),row.names=FALSE)
+
+```
