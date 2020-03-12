@@ -1,0 +1,156 @@
+---
+title: "MT Motor Vehicle"
+author: "Xanna Burg"
+date: "3/12/2020"
+output: html_document
+---
+
+## Indicator 1: Motor vehicle crashes with driver under age 18
+
+**Created by:** Xanna Burg
+**Date:** March 2020
+**Updated by:**
+
+**Data Source:** Montana Department of Transportation
+**Purpose:** Input the motor vehicle data.
+
+**Data format:** final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Data (numeric: number, percentage, rate), DataFormat (character: "number" or "percent" or "rate"), LocationId (numeric: assigned for KIDS COUNT system)
+
+**To use this code for a new year:**
+* Update the year in the second code chunk for variable 'year' and 'fullyear'
+* Check each dataset visually and through the report logs prior to commiting to the database.
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+library(stringr)
+```
+
+```{r}
+####UPDATE to reflect the current year data working with
+year <- '18'
+
+fullyear <- '2018' 
+statefile <- 'montana'
+statename <- 'Montana'
+
+#input location ID file for MT
+locationids <- read.csv("./Input/MT KC Location IDs.csv")
+```
+
+```{r}
+#read in the data
+crashes <- read.csv(paste0('./Input/safety/montana_',year,'_motorvehicle.csv'))
+```
+
+```{r}
+crashes_county <- crashes %>%
+  gather("timeframe","data",c(X2009,X2010,X2011,X2012,X2013,X2014,X2015,
+                            X2016,X2017,X2018)) %>%
+  mutate(timeframe=gsub("X","",timeframe)) %>%
+  subset(timeframe==fullyear) %>%
+  rename(location=County) %>%
+  mutate(locationtype='County') %>%
+  mutate(state='Montana') %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='motorvehiclecrashesunder18')
+  
+
+crashes_region <- crashes %>%
+  gather("timeframe","crashes",c(X2009,X2010,X2011,X2012,X2013,X2014,X2015,
+                            X2016,X2017,X2018)) %>%
+  mutate(timeframe=gsub("X","",timeframe)) %>%
+  subset(timeframe==fullyear) %>%
+  rename(county=County) %>%
+  mutate(region = case_when(
+  county=="Carter" | county=="Custer" | county=="Daniels" |
+    county=="Dawson" | county=="Fallon" | county=="Garfield" |
+    county=="McCone" | county=="Phillips" | county=="Powder River" | 
+    county=="Prairie" | county=="Richland" | county=="Roosevelt" | 
+    county=="Rosebud" | county =="Sheridan" | county=="Treasure" | 
+    county=="Valley" | county=="Wibaux" ~ "Region 1",
+  county=="Blaine" | county=="Cascade" | county=="Chouteau" | 
+    county=="Glacier" | county=="Hill" | county=="Liberty" | 
+    county=="Pondera" | county=="Teton" | county=="Toole" ~ 
+    "Region 2",
+  county=="Big Horn" | county=="Carbon" | county=="Fergus" | 
+    county=="Golden Valley" | county=="Judith Basin" | 
+    county=="Musselshell" | county=="Petroleum" | 
+    county=="Stillwater" | county=="Sweetgrass" | 
+    county=="Wheatland" | county=="Yellowstone" ~ 
+    "Region 3",
+  county=="Beaverhead" | county=="Broadwater" | county=="Deer Lodge" | 
+    county=="Gallatin" | county=="Granite" | county=="Jefferson" | 
+    county=="Lewis and Clark" | county=="Madison" | 
+    county=="Meagher" | county=="Park" | county=="Powell" | 
+    county=="Silver Bow" ~ "Region 4",
+  county=="Flathead" | county=="Lake" | county=="Lincoln" | 
+    county=="Mineral" | county=="Missoula" | county=="Ravalli" | 
+    county=="Sanders" ~ "Region 5")) %>%
+  select(-c(county)) %>%
+  group_by(region,timeframe) %>%
+  summarise(data=sum(crashes)) %>%
+  rename(location=region) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(state='Montana') %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='motorvehiclecrashesunder18')
+
+crashes_state <- crashes %>%
+  gather("timeframe","crashes",c(X2009,X2010,X2011,X2012,X2013,X2014,X2015,
+                            X2016,X2017,X2018)) %>%
+  mutate(timeframe=gsub("X","",timeframe)) %>%
+  subset(timeframe==fullyear) %>%
+  mutate(state='Montana') %>%
+  group_by(state,timeframe) %>%
+  summarise(data=sum(crashes)) %>%
+  mutate(location='Montana') %>%
+  mutate(locationtype='State') %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='motorvehiclecrashesunder18')
+
+
+#combine county, region, and state data
+crashesdata <- crashes_county %>%
+  bind_rows(crashes_region) %>%
+  bind_rows(crashes_state) %>%
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  mutate(location=replace(location,statename=='Montana' & location=='Sweetgrass','Sweet Grass')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+```
+
+
+```{r}
+#CHECK DATASET NAMED crashesdata TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',crashesdata,append=TRUE,row.names=FALSE)
+```
+```{r}
+#write query from database to get needed format for KC data center
+
+crashes_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='motorvehiclecrashesunder18';")
+
+upload_data_crashes <- dbGetQuery(con,crashes_sql)
+
+upload_data_crashes2 <- upload_data_crashes %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_crashes2,file=paste0("./Output/safety/",statefile,"_",year,"_motorvehiclecrashesunder18.csv"),row.names=FALSE)
+```
+
+
+
