@@ -1,0 +1,303 @@
+---
+title: "MMG food insecurity"
+author: "Xanna Burg"
+date: "3/16/2020"
+output: html_document
+---
+
+## Indicator 1: Child food insecurity by county
+## Indicator 2: Average meal cost by county
+
+**Created by:** Xanna Burg
+**Date:** March 2020
+**Updated by:**
+
+**Data Source:** Feeding America, Map the Meal Gap
+**Purpose:** Input the Map the Meal Gap data
+
+**Data format:** final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Data (numeric: number, percentage, rate), DataFormat (character: "number" or "percent" or "rate"), LocationId (numeric: assigned for KIDS COUNT system)
+
+**To use this code for a new year:**
+* Update the year in the second code chunk for variable 'year' and 'fullyear'
+* Check each dataset visually and through the report logs prior to commiting to the database.
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+library(stringr)
+```
+
+```{r}
+####UPDATE to reflect the current year data working with
+year <- '17'
+fullyear <- '2017' 
+
+
+#input location ID file for MT
+MT_locationids <- read.csv("./Input/MT KC Location IDs.csv")
+ND_locationids <- read.csv("./Input/ND KC Location IDs.csv")
+SD_locationids <- read.csv("./Input/SD KC Location IDs.csv")
+```
+
+```{r}
+#read in the data in Excel format with multiple sheets
+
+xl_data <- paste0("./Input/economics/AllData",fullyear,"_MMG_ToShare.xlsx")
+excel_sheets(path = xl_data)
+
+df_food <- read_excel(path=xl_data, sheet=paste0(fullyear,' County'))
+df_food_state <- read_excel(path=xl_data, sheet=paste0(fullyear,' State'))
+```
+
+```{r}
+#COUNTY DATA
+#subset to only include Montana, North Dakota, and South Dakota and clean the data
+
+county_food <- df_food %>%
+  subset(State=='MT' | State=='ND' | State=='SD') %>%
+  rename(state='State',
+         county='County, State',
+         childfi_rate=paste0(fullyear,' Child food insecurity rate'),
+         childfi_number=paste0('# of Food Insecure Children in ',fullyear),
+         costpermeal=paste0(fullyear,' Cost Per Meal')) %>%
+  mutate(county=sub("\\ County.*","",county)) %>% 
+  select(c(state,county,childfi_rate,childfi_number,costpermeal)) %>%
+  mutate(state=case_when(
+    state=='MT' ~ 'Montana',
+    state=='ND' ~ 'North Dakota',
+    state=='SD' ~ 'South Dakota')) %>%
+  rename(location=county) %>%
+  mutate(locationtype='County') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(childfi_rate=as.numeric(paste(childfi_rate))) %>% 
+  mutate(costpermeal=as.numeric(paste(costpermeal)))
+  
+
+county_fi_rate <- county_food %>%
+  select(-c(childfi_number,costpermeal)) %>%
+  rename(data=childfi_rate) %>%
+  mutate(dataformat='Percent') %>%
+  mutate(varname='childfoodinsecuritymmg')
+
+county_fi_number <- county_food %>%
+  select(-c(childfi_rate,costpermeal)) %>%
+  rename(data=childfi_number) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='childfoodinsecuritymmg')
+
+county_costpermeal <- county_food %>%
+  select(-c(childfi_number,childfi_rate)) %>%
+  rename(data=costpermeal) %>%
+  mutate(dataformat='Currency') %>%
+  mutate(varname='averagecostpermealmmg')
+
+county_allvars <- county_fi_number %>%
+  bind_rows(county_fi_rate) %>%
+  bind_rows(county_costpermeal)
+
+#merge in location IDs with data
+
+#MONTANA COUNTY DATA  
+mt_county_food <- county_allvars %>%
+  subset(state=='Montana') %>%
+  mutate(location=replace(location, 
+                          state=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  left_join(MT_locationids, by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+#NORTH DAKOTA COUNTY DATA
+nd_county_food <- county_allvars %>%
+  subset(state=='North Dakota') %>%
+  left_join(ND_locationids, by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+#SOUTH DAKOTA COUNTY DATA
+sd_county_food <- county_allvars %>%
+  subset(state=='South Dakota') %>%
+  left_join(SD_locationids, by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+```
+
+```{r}
+#STATE DATA
+#subset to only include Montana, North Dakota, and South Dakota and clean the data
+
+state_food <- df_food_state %>%
+  subset(State=='MT' | State=='ND' | State=='SD') %>%
+  rename(state='State',
+         childfi_rate=paste0(fullyear,' Child Food Insecurity Rate'),
+         childfi_number=paste0('# of Food Insecure Children in ',fullyear),
+         costpermeal=paste0(fullyear,' Cost Per Meal')) %>%
+  select(c(state,childfi_rate,childfi_number,costpermeal)) %>%
+  mutate(state=case_when(
+    state=='MT' ~ 'Montana',
+    state=='ND' ~ 'North Dakota',
+    state=='SD' ~ 'South Dakota')) %>%
+  mutate(location=case_when(
+    state=='Montana' ~ 'Montana',
+    state=='North Dakota' ~ 'North Dakota',
+    state=='South Dakota' ~ 'South Dakota')) %>%
+  mutate(locationtype='State') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(costpermeal=as.numeric(paste(costpermeal)))
+  
+
+state_fi_rate <- state_food %>%
+  select(-c(childfi_number,costpermeal)) %>%
+  rename(data=childfi_rate) %>%
+  mutate(dataformat='Percent') %>%
+  mutate(varname='childfoodinsecuritymmg')
+
+state_fi_number <- state_food %>%
+  select(-c(childfi_rate,costpermeal)) %>%
+  rename(data=childfi_number) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='childfoodinsecuritymmg')
+
+state_costpermeal <- state_food %>%
+  select(-c(childfi_number,childfi_rate)) %>%
+  rename(data=costpermeal) %>%
+  mutate(dataformat='Currency') %>%
+  mutate(varname='averagecostpermealmmg')
+
+state_allvars <- state_fi_number %>%
+  bind_rows(state_fi_rate) %>%
+  bind_rows(state_costpermeal)
+
+#merge in location IDs with data
+
+#MONTANA COUNTY DATA  
+mt_state_food <- state_allvars %>%
+  subset(state=='Montana') %>%
+  mutate(location=replace(location, 
+                          state=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  left_join(MT_locationids, by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+#NORTH DAKOTA COUNTY DATA
+nd_state_food <- state_allvars %>%
+  subset(state=='North Dakota') %>%
+  left_join(ND_locationids, by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+#SOUTH DAKOTA COUNTY DATA
+sd_state_food <- state_allvars %>%
+  subset(state=='South Dakota') %>%
+  left_join(SD_locationids, by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+```
+```{r}
+#combine county and state data, separate for each state
+mt_data <- mt_county_food %>%
+  bind_rows(mt_state_food)
+
+nd_data <- nd_county_food %>%
+  bind_rows(nd_state_food)
+
+sd_data <- sd_county_food %>%
+  bind_rows(sd_state_food)
+```
+
+```{r}
+#CHECK DATASETS NAMED mt_data, nd_data, AND sd_data TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',mt_data,append=TRUE,row.names=FALSE)
+dbWriteTable(con,'northdakota',nd_data,append=TRUE,row.names=FALSE)
+dbWriteTable(con,'southdakota',sd_data,append=TRUE,row.names=FALSE)
+```
+```{r}
+#write query from database to get needed format for KC data center for food insecurity only
+
+mt_food_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='childfoodinsecuritymmg';")
+
+mt_upload_data_food <- dbGetQuery(con,mt_food_sql)
+
+mt_upload_data_food2 <- mt_upload_data_food %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+nd_food_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",fullyear,"' AND varname='childfoodinsecuritymmg';")
+
+nd_upload_data_food <- dbGetQuery(con,nd_food_sql)
+
+nd_upload_data_food2 <- nd_upload_data_food %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+sd_food_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM southdakota WHERE timeframe='",fullyear,"' AND varname='childfoodinsecuritymmg';")
+
+sd_upload_data_food <- dbGetQuery(con,sd_food_sql)
+
+sd_upload_data_food2 <- sd_upload_data_food %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(mt_upload_data_food2,file=paste0("./Output/economics/montana_",fullyear,"_childfoodinsecuritymmg.csv"),row.names=FALSE)
+
+write.csv(nd_upload_data_food2,file=paste0("./Output/economics/northdakota_",fullyear,"_childfoodinsecuritymmg.csv"),row.names=FALSE)
+
+write.csv(sd_upload_data_food2,file=paste0("./Output/economics/southdakota_",fullyear,"_childfoodinsecuritymmg.csv"),row.names=FALSE)
+```
+
+
+```{r}
+#write query from database to get needed format for KC data center for average cost of meal
+
+mt_foodcost_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='averagecostpermealmmg';")
+
+mt_upload_data_foodcost <- dbGetQuery(con,mt_foodcost_sql)
+
+mt_upload_data_foodcost2 <- mt_upload_data_foodcost %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+nd_foodcost_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",fullyear,"' AND varname='averagecostpermealmmg';")
+
+nd_upload_data_foodcost <- dbGetQuery(con,nd_foodcost_sql)
+
+nd_upload_data_foodcost2 <- nd_upload_data_foodcost %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+sd_foodcost_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM southdakota WHERE timeframe='",fullyear,"' AND varname='averagecostpermealmmg';")
+
+sd_upload_data_foodcost <- dbGetQuery(con,sd_foodcost_sql)
+
+sd_upload_data_foodcost2 <- sd_upload_data_foodcost %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(mt_upload_data_foodcost2,file=paste0("./Output/economics/montana_",fullyear,"_averagecostpermealmmg.csv"),row.names=FALSE)
+
+write.csv(nd_upload_data_foodcost2,file=paste0("./Output/economics/northdakota_",fullyear,"_averagecostpermealmmg.csv"),row.names=FALSE)
+
+write.csv(sd_upload_data_foodcost2,file=paste0("./Output/economics/southdakota_",fullyear,"_averagecostpermealmmg.csv"),row.names=FALSE)
+```
