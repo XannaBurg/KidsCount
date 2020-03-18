@@ -13,6 +13,8 @@ output: html_document
 ## Indicator 6: High school students feeling sad or hopeless
 ## Indicator 7: High school students who drink and drive
 ## Indicator 8: High school students not wearing seat belts
+## Indicator 9: High school students bullied at school
+## Indicator 10: Electronic vapor product use among high school students
 
 **Created by:** Xanna Burg
 **Date:** February, 2020
@@ -458,17 +460,43 @@ dbWriteTable(con,'montana',hopeless,append=TRUE,row.names=FALSE)
 
 ```
 
+
+**BULLIED AT SCHOOL**
+
+```{r}
+#format the data to add to the database
+bullied <- df_allstudents %>%
+  bind_rows(df_AItotal) %>%
+  bind_rows(df_white) %>%
+  bind_rows(df_hispanic) %>%
+  bind_rows(df_multiple) %>%
+  select(c(locationid,location,race,year,dataformat,bullying)) %>%
+  mutate(locationtype='State') %>%
+  mutate(state='Montana') %>%
+  rename(timeframe=year) %>%
+  rename(data=bullying) %>%
+  mutate(varname='yrbs_schoolbullyingamonghighschoolstudents') %>%
+  subset(timeframe==as.numeric(year))
+
+```
+
+```{r}
+#add to database percent of yrbs_schoolbullyingamonghighschoolstudents
+dbWriteTable(con,'montana',bullied,append=TRUE,row.names=FALSE)
+
+```
+
 ```{r}
 #write query from database to get needed format for KC data center
-#PERCENT - YRBS_SADHOPELESSAMONGHIGHSCHOOLSTUDENTS
+#PERCENT - yrbs_schoolbullyingamonghighschoolstudents
 
 #UPDATE THE YEAR IN THE SQL QUERY
 
-upload_data_hopeless <- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data,race
+upload_data_bullied <- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data,race
                      FROM montana
-                     WHERE timeframe = '2019' AND varname = 'yrbs_sadhopelessamonghighschoolstudents';")
+                     WHERE timeframe = '2019' AND varname = 'yrbs_schoolbullyingamonghighschoolstudents';")
 
-upload_data_hopeless2 <- upload_data_hopeless %>%
+upload_data_bullied2 <- upload_data_bullied %>%
   rename(LocationId=locationid,
          Location=location,
          TimeFrame=timeframe,
@@ -478,7 +506,60 @@ upload_data_hopeless2 <- upload_data_hopeless %>%
 
 
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
-write.csv(upload_data_hopeless2,file=paste0("./Output/safety/",statefile,"_",year,"_yrbs_sadhopelessamonghighschoolstudents.csv"),row.names=FALSE)
+write.csv(upload_data_bullied2,file=paste0("./Output/safety/",statefile,"_",year,"_yrbs_schoolbullyingamonghighschoolstudents.csv"),row.names=FALSE)
+
+
+```
+
+
+
+**ELECTRONIC VAPOR USE**
+
+```{r}
+#format the data to add to the database
+ecigarette <- df_allstudents %>%
+  bind_rows(df_AItotal) %>%
+  bind_rows(df_white) %>%
+  bind_rows(df_hispanic) %>%
+  bind_rows(df_multiple) %>%
+  select(c(locationid,location,race,year,dataformat,ecigarette)) %>%
+  mutate(locationtype='State') %>%
+  mutate(state='Montana') %>%
+  rename(timeframe=year) %>%
+  rename(data=ecigarette) %>%
+  mutate(varname='yrbs_electronicvaporuseamonghighschoolstudents') %>%
+  subset(timeframe>=2015)
+  subset(timeframe==as.numeric(year))
+
+```
+
+```{r}
+#add to database percent of yrbs_electronicvaporuseamonghighschoolstudents
+dbWriteTable(con,'montana',ecigarette,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+#PERCENT - yrbs_electronicvaporuseamonghighschoolstudents
+
+#UPDATE THE YEAR IN THE SQL QUERY
+
+upload_data_ecigarette <- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data,race
+                     FROM montana
+                     WHERE timeframe = '2019' AND varname = 'yrbs_electronicvaporuseamonghighschoolstudents';")
+
+upload_data_ecigarette2 <- upload_data_ecigarette %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         Race=race) 
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_ecigarette2,file=paste0("./Output/safety/",statefile,"_",year,"_yrbs_electronicvaporuseamonghighschoolstudents.csv"),row.names=FALSE)
 
 
 ```
