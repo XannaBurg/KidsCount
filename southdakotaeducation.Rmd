@@ -1067,6 +1067,7 @@ upload_data_graduation2 <- dbGetQuery(con,graduation_sql2) %>%
 write.csv(upload_data_completion2,file=paste0("./Output/education/southdakota_",year,"_highschoolcompletionbyrace.csv"),row.names=FALSE)
 
 write.csv(upload_data_graduation2,file=paste0("./Output/education/southdakota_",year,"_graduationrate4cohortbyrace.csv"),row.names=FALSE)
+
 ```
 
 
