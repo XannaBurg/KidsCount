@@ -1,0 +1,241 @@
+---
+title: "Total population tribal areas"
+author: "Xanna Burg"
+date: "4/20/2020"
+output: html_document
+---
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(tidycensus)
+library(censusapi)
+library(stringr)
+```
+
+
+```{r}
+#metadata for available variables
+#acs_vars <- listCensusMetadata(name="2018/acs/acs5/profile",
+                               #type="variables")
+
+
+#metadata for available geographies
+#acs_geos <- listCensusMetadata(name="2018/acs/acs5/profile",
+                             #  type="geography")
+
+#county and state names that match fips codes (from tidycensus package)
+fips <- fips_codes
+
+#import tribal fips code (from file on local drive)
+fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
+
+```
+
+
+```{r}
+#CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
+#state should match exactly as is in FIPS code in order for code to correctly run
+statename <- "South Dakota"
+year <- "2018"
+
+
+#run this code to create an object needed for the database (DO NOT EDIT)
+if (statename=='Montana') {
+  database_state <- 'montana'
+} else if (statename=='North Dakota') {
+  database_state <- 'northdakota'
+} else if (statename=='South Dakota') {
+  database_state <- 'southdakota'
+}
+
+#import the location ids matching the correct state (for MT, ND, and SD; DO NOT EDIT)
+locationids <- if (statename=='Montana') {
+  read.csv("../Input/MT KC Location IDs.csv")
+} else if (statename=='North Dakota') {
+  read.csv("../Input/ND KC Location IDs.csv")
+} else if (statename=='South Dakota') {
+  read.csv("../Input/SD KC Location IDs.csv")
+}
+locationids$Location <- as.character(locationids$Location) #assign as character instead of factor for merging
+
+#import the region match file matching the correct state (for MT, ND, and SD; DO NOT EDIT)
+regionids <- if (statename=='Montana') {
+  read.csv("../Input/MT KC Region List.csv")
+} else if (statename=='North Dakota') {
+  read.csv("../Input/ND KC Region List.csv") 
+} else if (statename=='South Dakota') {
+  read.csv("../Input/SD KC Region List.csv")
+}
+regionids$county <- as.character(regionids$county)
+regionids$region <- as.character(regionids$region)
+
+
+#UPDATE THE BELOW FILE PATH IF USING THIS CODE OUTSIDE OF MT, ND, OR SD
+#the csv file should have 2 columns: "LocationId" and "Location"
+#locationids <- read.csv("your_file_path_here.csv")
+
+
+#RUN THIS CODE, BUT NOT REQUIRED TO CHANGE ANYTHING
+#the api will subset data to each state based on the state FIPS code: MT=30, North Dakota=38, South Dakota=46
+statecode <- as.numeric(unique(fips$state_code[fips$state_name==statename]))
+
+
+```
+
+
+```{r}
+#[year]/acs/acs5/profile table is: ACS 5-year estimates for profile tables (those beginning with DP) for the year specified
+#see lookup table for categorical vars: https://api.census.gov/data/2018/acs/acs5/profile/variables.html
+
+#interested in Table DP05
+
+#this table does not have geography 280 for american indian &in state, so must supply exactly which codes are of interest within each state
+
+tribalcodes <- if (statename=='Montana') {
+  c('0305','0845','1110','1150','1250','2490','3205')
+} else if (statename=='North Dakota') {
+  c(1160,3935,3970,4345)
+} else if (statename=='South Dakota') {
+  c('2490','3970','4345','4700','1860','2810','3235','1100','0855','2030','0605')
+}
+
+
+tribalcodes1 <- data.frame(tribalcodes)
+
+acs_tribal <- NULL
+acs_tribal2 <- NULL
+for (i in 1:nrow(tribalcodes1)) {
+  
+  codenumber <- tribalcodes1$tribalcodes[i]
+  
+  acs_tribal[[i]] <- getCensus(name="acs/acs5/profile",
+          vintage=year,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("DP05_0001E"),
+          region=paste0("state (or part):",statecode),
+          regionin=paste0("american indian area/alaska native area/hawaiian home land:",codenumber))
+  
+}
+
+if (statename=='Montana') {
+  acs_tribal2 <- acs_tribal[[1]] %>%
+    bind_rows(acs_tribal[[2]]) %>%
+    bind_rows(acs_tribal[[3]]) %>%
+    bind_rows(acs_tribal[[4]]) %>%
+    bind_rows(acs_tribal[[5]]) %>%
+    bind_rows(acs_tribal[[6]]) %>%
+    bind_rows(acs_tribal[[7]]) 
+} else if (statename=='North Dakota') {
+  acs_tribal2 <- acs_tribal[[1]] %>%
+    bind_rows(acs_tribal[[2]]) %>%
+    bind_rows(acs_tribal[[3]]) %>%
+    bind_rows(acs_tribal[[4]])
+} else if (statename=='South Dakota') {
+   acs_tribal2 <- acs_tribal[[1]] %>%
+     bind_rows(acs_tribal[[2]]) %>%
+     bind_rows(acs_tribal[[3]]) %>%
+     bind_rows(acs_tribal[[4]]) %>%
+     bind_rows(acs_tribal[[5]]) %>%
+     bind_rows(acs_tribal[[6]]) %>%
+     bind_rows(acs_tribal[[7]]) %>%
+     bind_rows(acs_tribal[[8]]) %>%
+     bind_rows(acs_tribal[[9]]) %>%
+     bind_rows(acs_tribal[[10]]) %>%
+     bind_rows(acs_tribal[[11]]) 
+}
+
+
+acs_tribal3 <- acs_tribal2 %>%
+  #clean the imported data
+  
+  #assign location type to county
+  mutate(locationtype='Tribal Area') %>%
+  
+  #add in location name from fips codes
+  mutate(american_indian_area_alaska_native_area_hawaiian_home_land=as.numeric(american_indian_area_alaska_native_area_hawaiian_home_land)) %>%
+  left_join(fips_tribal,by=c('american_indian_area_alaska_native_area_hawaiian_home_land'='AIANNHCE')) %>% 
+  
+  
+  #select only needed variables and name to kids count database
+  select(c(AIANNHNAME,locationtype,DP05_0001E)) %>%
+  rename(location=AIANNHNAME,
+         data=DP05_0001E) %>%
+  mutate(timeframe=year) %>%
+  mutate(state=statename) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='totalpopulationtribalarea') %>%
+  
+  #change from factor to character for correctly updating below
+  mutate(location=as.character(location)) %>%
+  
+  #rename the location to match kids count location - for locations that cross state lines, to clarify which portion is included
+  #includes locations for all three states
+  mutate(location=replace(location, 
+                          state=='North Dakota' & location=='Standing Rock Reservation', 
+                          'Standing Rock Reservation (North Dakota portion)')) %>%
+  
+    mutate(location=replace(location, 
+                          state=='South Dakota' & location=='Standing Rock Reservation', 
+                          'Standing Rock Reservation (South Dakota portion)')) %>%
+   
+  mutate(location=replace(location, 
+                          state=='North Dakota' & 
+                            location=='Turtle Mountain Reservation and Off-Reservation Trust Land', 
+                          'Turtle Mountain Reservation and Off-Reservation Trust Land (North Dakota portion)')) %>%
+  
+  mutate(location=replace(location, 
+                          state=='North Dakota' & 
+                            location=='Lake Traverse Reservation and Off-Reservation Trust Land', 
+                          'Lake Traverse Reservation and Off-Reservation Trust Land (North Dakota portion)')) %>%
+  
+   mutate(location=replace(location, 
+                          state=='South Dakota' & location=='Lake Traverse Reservation and Off-Reservation Trust Land', 
+                          'Lake Traverse Reservation and Off-Reservation Trust Land (South Dakota portion)')) %>%
+  
+  
+  #for North Dakota Lake Traverse data is too small to be meaningful, remove
+  filter(state!='North Dakota' | location!='Lake Traverse Reservation and Off-Reservation Trust Land (North Dakota portion)') %>%
+  
+  #for Montana Turtle Mountain is too small to have data, remove
+  filter(state!='Montana' | location !='Turtle Mountain Reservation and Off-Reservation Trust Land') %>%
+  
+  #for South Dakota Turtle Mountain is too small to have data, remove
+  filter(state!='South Dakota' | location !='Turtle Mountain Reservation and Off-Reservation Trust Land') %>%
+  
+  #for South Dakota Northern Cheyenne is too small to have data, remove
+  filter(state!='South Dakota' | location !='Northern Cheyenne Indian Reservation and Off-Reservation Trust Land') %>%
+  
+  #merge kids count location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
+
+
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(acs_tribal3$locationid))>=1) {
+  print(acs_tribal3$location[is.na(acs_tribal3$locationid)])
+} else if (sum(is.na(acs_tribal3$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Visually inspect output data
+view(acs_tribal3)
+
+```
+
+
+```{r}
+#CHECK DATASET NAMED acs_tribal3 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,acs_tribal3,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#query the tribal data with the totalpopulation data
+```
+
