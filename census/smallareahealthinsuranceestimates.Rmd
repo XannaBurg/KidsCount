@@ -45,13 +45,13 @@ library(gt)
 
 ```{r}
 #metadata for available variables
-sahie_vars <- listCensusMetadata(name="timeseries/healthins/sahie",
-                               type="variables")
+#sahie_vars <- listCensusMetadata(name="timeseries/healthins/sahie",
+                               #type="variables")
 #view(sahie_vars)
 
 #metadata for available geographies
-sahie_geos <- listCensusMetadata(name="timeseries/healthins/sahie",
-                               type="geography")
+#sahie_geos <- listCensusMetadata(name="timeseries/healthins/sahie",
+                              # type="geography")
 #view(sahie_geos)
 
 #county and state names that match fips codes (from tidycensus package)
