@@ -19,6 +19,8 @@ output: html_document
 
 **This code needs data to be processed for child population by single year of age FIRST. Age groups are calculated from the single year of age data found in the database**
 
+**This code also needs the Tribal data to be processed for the most recent year, although they are available at different times. As long as the Tribal data is up to date before querying the output, the data will be updated for all geographies.**
+
 
 
 ```{r,message=FALSE}
@@ -33,7 +35,7 @@ library(zoo)
 
 ```{r}
 year <- '2018'
-statename <- 'South Dakota'
+statename <- 'North Dakota'
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -197,7 +199,10 @@ pop_sql <- paste0("SELECT locationid, location, timeframe, age_group, dataformat
 
 #since populate a new data set each year, query the vintage data from prior to most current decennial year
 pop_sql_historic <- paste0("SELECT locationid, location, timeframe, age_group, dataformat, data FROM ", database_state," WHERE (vintageyear='2009' OR vintageyear='1999') AND varname='childpopulationbyagegroup';")
-#remove the year from the sql WHERE clause if running all available years
+
+
+#tribal areas are included from the ACS data, make sure ACS tribal population estimates by age group are updated in the database prior to running this query
+pop_sql_tribal<- paste0("SELECT locationid, location, timeframe, age_group, dataformat, data FROM ", database_state," WHERE varname='childpopulationbyagegrouptribalarea';")
 
 
 upload_data_pop1 <- dbGetQuery(con,pop_sql) %>%
@@ -216,8 +221,19 @@ upload_data_pop2 <- dbGetQuery(con,pop_sql_historic) %>%
          Data=data,
         'Age group'=age_group)
 
+upload_data_pop3 <- dbGetQuery(con,pop_sql_tribal) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+        'Age group'=age_group)
+
+
+
 upload_data_pop <- upload_data_pop1 %>%
   bind_rows(upload_data_pop2) %>%
+  bind_rows(upload_data_pop3) %>%
   arrange(Location)
 
 
