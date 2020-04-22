@@ -1,0 +1,227 @@
+---
+title: "Child Population by Age Group"
+author: "Xanna Burg"
+date: "4/22/2020"
+output: html_document
+---
+
+**Created by:** Xanna Burg
+**Date:** April 2020
+**Updated by:**
+
+**Data Source:** US Census populations with bridged race categories from NCHS. Retrieved from Missouri Census Data Center.
+**Purpose:** Group Population Estimates into useful age groups to report.
+**Description:** This program adds the population estimates to the database and creates a dataset needed to upload to the KIDS COUNT data center.
+* Geographies: state total, county, state planning regions (where applicable, which are groups of counties)
+* Number - count of children in respective age group and geography
+* Age group - 0 to 4, 5 to 11, 12 to 14, 15 to 17, Total less than 18
+
+
+**This code needs data to be processed for child population by single year of age FIRST. Age groups are calculated from the single year of age data found in the database**
+
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+library(stringr)
+library(zoo)
+
+```
+
+```{r}
+year <- '2018'
+statename <- 'South Dakota'
+
+
+#run this code to create an object needed for the database (DO NOT EDIT)
+if (statename=='Montana') {
+  database_state <- 'montana'
+} else if (statename=='North Dakota') {
+  database_state <- 'northdakota'
+} else if (statename=='South Dakota') {
+  database_state <- 'southdakota'
+}
+
+#import the location ids matching the correct state (for MT, ND, and SD; DO NOT EDIT)
+locationids <- if (statename=='Montana') {
+  read.csv("../Input/MT KC Location IDs.csv")
+} else if (statename=='North Dakota') {
+  read.csv("../Input/ND KC Location IDs.csv")
+} else if (statename=='South Dakota') {
+  read.csv("../Input/SD KC Location IDs.csv")
+}
+locationids$Location <- as.character(locationids$Location) #assign as character instead of factor for merging
+
+#import the region match file matching the correct state (for MT, ND, and SD; DO NOT EDIT)
+regionids <- if (statename=='Montana') {
+  read.csv("../Input/MT KC Region List.csv")
+} else if (statename=='North Dakota') {
+  read.csv("../Input/ND KC Region List.csv") 
+} else if (statename=='South Dakota') {
+  read.csv("../Input/SD KC Region List.csv")
+}
+regionids$county <- as.character(regionids$county)
+regionids$region <- as.character(regionids$region)
+
+
+######################################
+#data to be used is in the database with varname='childpopulationbysingleyearofage'
+
+#write query from database 
+pop_sql <- paste0("SELECT locationid, location, locationtype, state, timeframe, vintageyear, age_group, dataformat, data FROM ", database_state," WHERE vintageyear='",year,"' AND varname='childpopulationbysingleyearofage';")
+
+
+#since populate a new data set each year, query the vintage data from prior to most current decennial year
+pop_sql_historic <- paste0("SELECT locationid, location, locationtype, state, timeframe, vintageyear, age_group, dataformat, data FROM ", database_state," WHERE (vintageyear='2009' OR vintageyear='1999') AND varname='childpopulationbysingleyearofage';")
+
+
+pop1 <- dbGetQuery(con,pop_sql)
+
+pop2 <- dbGetQuery(con,pop_sql_historic) 
+
+#union historic data and current vintage estimates
+popdata <- pop1 %>%
+  bind_rows(pop2) %>%
+  
+  #clean the imported data
+  
+  mutate(age_group_new=case_when(
+    age_group=='0' | age_group=='1' | age_group=='2' | 
+      age_group=='3' | age_group=='4' ~ '0 to 4',
+    age_group=='5' | age_group=='6' | age_group=='7' | 
+      age_group=='8' | age_group=='9' | age_group=='10' | 
+      age_group=='11' ~ '5 to 11',
+    age_group=='12' | age_group=='13' | age_group=='14' ~ '12 to 14',
+    age_group=='15' | age_group=='16' | age_group=='17' ~ '15 to 17')) %>%
+  
+  subset(!is.na(age_group_new)) %>%
+  
+  group_by(age_group_new,timeframe,vintageyear,location,locationtype) %>%
+  summarise(data=sum(data))
+
+#####################################
+#create the 18 and under total group
+popdata_total <- popdata %>%
+  group_by(timeframe,vintageyear,location,locationtype) %>%
+  summarise(data=sum(data)) %>%
+  mutate(age_group_new='Total less than 18')
+
+
+#union the age group and total under 18
+#create dataset for number
+popdata_number <- popdata %>%
+  bind_rows(popdata_total) %>%
+  rename(age_group=age_group_new) %>%
+  
+  mutate(state=statename) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='childpopulationbyagegroup')
+
+
+########################################
+#calculate the percent for each age group
+popdata_total_formerging <- popdata_total %>%
+  rename(totalunder18=data)
+
+popdata_percent <- popdata_number %>%
+  left_join(popdata_total_formerging,by=c('location'='location',
+            'locationtype'='locationtype',
+            'timeframe'='timeframe',
+            'vintageyear'='vintageyear')) %>%
+  
+  #calculate percent
+  mutate(percent=data/totalunder18) %>%
+  mutate(dataformat='Percent') %>%
+  select(-c(data,totalunder18,age_group_new)) %>%
+  rename(data=percent)
+
+
+
+#####################################################################
+#bind county, state, and planning region data and add in location ids
+popdata_final <- popdata_number %>%
+  bind_rows(popdata_percent) %>%
+  ungroup %>%
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  mutate(location=replace(location, 
+                          statename=='South Dakota' & location=='Shannon', 
+                          'Oglala Lakota')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(popdata_final$locationid))>=1) {
+  print(popdata_final$location[is.na(popdata_final$locationid)])
+} else if (sum(is.na(popdata_final$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- popdata_final %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+view(popdata_final)
+
+```
+
+```{r}
+#add to database
+dbWriteTable(con,database_state,popdata_final,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+pop_sql <- paste0("SELECT locationid, location, timeframe, age_group, dataformat, data FROM ", database_state," WHERE vintageyear='",year,"' AND varname='childpopulationbyagegroup';")
+#remove the year from the sql WHERE clause if running all available years
+
+
+#since populate a new data set each year, query the vintage data from prior to most current decennial year
+pop_sql_historic <- paste0("SELECT locationid, location, timeframe, age_group, dataformat, data FROM ", database_state," WHERE (vintageyear='2009' OR vintageyear='1999') AND varname='childpopulationbyagegroup';")
+#remove the year from the sql WHERE clause if running all available years
+
+
+upload_data_pop1 <- dbGetQuery(con,pop_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+        'Age group'=age_group)
+
+upload_data_pop2 <- dbGetQuery(con,pop_sql_historic) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+        'Age group'=age_group)
+
+upload_data_pop <- upload_data_pop1 %>%
+  bind_rows(upload_data_pop2) %>%
+  arrange(Location)
+
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_pop,file=paste0("../Output/demographics/",database_state,"_",year,"_childpopulationbyagegroup.csv"),row.names=FALSE)
+```
