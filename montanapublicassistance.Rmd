@@ -1,0 +1,1197 @@
+---
+title: "Montana Public Assistance"
+author: "Xanna Burg"
+date: "4/28/2020"
+output: html_document
+---
+
+## Indicator 1: Children enrolled in Medicaid and Healthy Montana Kids (CHIP)
+## Indicator 2: SNAP recipients and SNAP households
+## Indicator 3: SNAP recipients ages 0 to 18
+## Indicator 4: SNAP average benefit amount per household
+## Indicator 5: TANF recipients and TANF households
+## Indicator 6: TANF recipients ages 0 to 18
+
+**Created by:** Xanna Burg
+**Date:** April 2020
+**Updated by:**
+
+**Data Source:** Montana Department of Public Health and Human Services, Human and Community Services Division
+**Purpose:** Clean and process the public assistance data requested from DPHHS into correct format for Kids Count Data Center.
+
+**Data format:** Final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Category (for Medicaid groups, and for recipient/household groups; character) Data (numeric: number, percentage), DataFormat (character: "number" or "percent" or "currency"), LocationId (numeric: assigned for KIDS COUNT system)
+
+
+**To use this code for a new year:**
+* Update the year in the second code chunk for variable 'year'
+* To correctly process Medicaid data, update the value for Missoula city, as there is an entry for both Missoula as a county and city
+* Check each dataset visually and through the report logs prior to commiting to the database.
+
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+library(stringr)
+```
+
+
+```{r}
+
+####UPDATE to reflect the current year data working with
+year <- '2019'
+statename <- 'Montana'
+#input the number that matches Missoula CITY for Medicaid children
+missoulavalue <- ''
+
+
+#run this code to create an object needed for the database (DO NOT EDIT)
+database_state <- 'montana'
+
+#input location ID file for MT
+locationids <- read.csv("./Input/MT KC Location IDs.csv")
+locationids$Location <- as.character(locationids$Location)
+
+#input the region ID file for MT
+regionids <- read.csv("./Input/MT KC Region List.csv")
+regionids$county <- as.character(regionids$county)
+```
+
+
+
+**CHILDREN ENROLLED IN MEDICAID AND HEALTHY MONTANA KIDS**
+#This indicator calculates the percent of the population participating in each Medicaid group, however Medicaid data is available for the current year, where population estimates lag by a year. Therefore, this code has to both calculate current year estimates without a percent, and then re-calculate the percent when the population estimate is available.
+
+
+#####STEP 1: READ IN DATA FROM DPHHS IN SEPTEMBER WHEN RECEIVE#####
+```{r}
+#read in the data that was shared by DPHHS
+medicaid <- read_excel(path=paste0("./Input/health/montana_June ",year," Enrollment_MednCHIP County Table.xlsx"),sheet="To Date All Enrollment",skip=4) %>%
+  rename(medicaidchildren='Medicaid\r\nChildren',
+         chip='HMK Only',
+         medicaidandchip='HMK &\r\nMedicaid') %>%
+  
+  #assign numeric to counts
+  mutate(medicaidchildren=as.numeric(medicaidchildren)) %>%
+  mutate(chip=as.numeric(chip)) %>%
+  mutate(medicaidandchip=as.numeric(medicaidandchip))
+
+
+#create state data frame subsetting for Grand Total row
+medicaid_state <- medicaid %>%
+  subset(COUNTY=='Grand Total')
+
+#create the county data frame subsetting to remove NA counties and cities
+medicaid_county <- medicaid %>%
+  subset(!is.na(COUNTY)) %>%
+  mutate(COUNTY=replace(COUNTY, 
+                          statename=='Montana' & COUNTY=='Lewis And Clark', 
+                          'Lewis & Clark')) %>%
+  mutate(COUNTY=replace(COUNTY, 
+                          statename=='Montana' & COUNTY=='Mccone', 
+                          'McCone')) %>%
+  left_join(locationids,by=c('COUNTY'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  #remove non-counties
+  subset(!is.na(locationid)) %>%
+  #remove Missoula city
+  filter(COUNTY!='Missoula' | medicaidchildren!=missoulavalue)
+  
+
+#####################
+#CLEAN UP COUNTY DATA
+medicaid_county_number <- medicaid_county %>%
+  mutate(medicaid_group=medicaidchildren+medicaidandchip) %>%
+  mutate(totalchildren=medicaid_group+chip) %>%
+  
+  select(c(COUNTY,medicaid_group,chip,totalchildren)) %>%
+  
+  #add in KC variables
+  rename(location=COUNTY) %>%
+  mutate(locationtype='County') %>%
+  mutate(state=statename) %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='medicaidages0to18') %>%
+  
+  #wide to long format
+  pivot_longer(cols=c(medicaid_group,chip,totalchildren),names_to='category',values_to='data') %>%
+  
+  #rename category variable
+  mutate(category=case_when(
+    category=='medicaid_group' ~ 'Medicaid',
+    category=='chip' ~ 'Healthy Montana Kids (CHIP)',
+    category=='totalchildren' ~ 'Total Medicaid or Healthy Montana Kids'))
+
+
+####################
+#CLEAN UP STATE DATA
+medicaid_state_number <- medicaid_state %>%
+  mutate(medicaid_group=medicaidchildren+medicaidandchip) %>%
+  mutate(totalchildren=medicaid_group+chip) %>%
+  
+  select(c(medicaid_group,chip,totalchildren)) %>%
+  
+  #add in KC variables
+  mutate(location=statename) %>%
+  mutate(locationtype='State') %>%
+  mutate(state=statename) %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='medicaidages0to18') %>%
+  
+  #wide to long format
+  pivot_longer(cols=c(medicaid_group,chip,totalchildren),names_to='category',values_to='data') %>%
+  
+  #rename category variable
+  mutate(category=case_when(
+    category=='medicaid_group' ~ 'Medicaid',
+    category=='chip' ~ 'Healthy Montana Kids (CHIP)',
+    category=='totalchildren' ~ 'Total Medicaid or Healthy Montana Kids'))
+
+
+#####################
+#CLEAN UP REGION DATA
+medicaid_region_number <- medicaid_county %>%
+  
+  #add in regions
+  left_join(regionids,by=c('COUNTY'='county')) %>%
+  
+  group_by(region) %>%
+  summarise(chip=sum(chip),
+            medicaid_group=sum(medicaidchildren)+sum(medicaidandchip),
+            totalchildren=sum(medicaid_group)+sum(chip)) %>%
+
+  ungroup %>%
+  
+  select(c(region,medicaid_group,chip,totalchildren)) %>%
+  
+  #add in KC variables
+  rename(location=region) %>%
+  mutate(location=as.character(location)) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(state=statename) %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='medicaidages0to18') %>%
+  
+  #wide to long format
+  pivot_longer(cols=c(medicaid_group,chip,totalchildren),names_to='category',values_to='data') %>%
+  
+  #rename category variable
+  mutate(category=case_when(
+    category=='medicaid_group' ~ 'Medicaid',
+    category=='chip' ~ 'Healthy Montana Kids (CHIP)',
+    category=='totalchildren' ~ 'Total Medicaid or Healthy Montana Kids'))
+
+
+###############################################################
+###############################################################
+#UNION COUNTY, STATE, AND STATE PLANNING REGION for number only
+upload_medicaid_number <- medicaid_county_number %>%
+  bind_rows(medicaid_state_number) %>%
+  bind_rows(medicaid_region_number) %>%
+
+  #merge in location ids
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
+  
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(upload_medicaid_number$locationid))>=1) {
+  print(upload_medicaid_number$location[is.na(upload_medicaid_number$locationid)])
+} else if (sum(is.na(upload_medicaid_number$locationid))==0) {
+  'all locations match'
+}
+
+
+# 2. Visually inspect output data
+view(upload_medicaid_number)
+```
+
+```{r}
+#CHECK DATASET NAMED upload_medicaid_number TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,upload_medicaid_number,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+uploadnumber_sql <- paste0("SELECT locationid, location, timeframe, category, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='medicaidages0to18' AND dataformat='Number';")
+
+
+upload_datacenter_medicaid_number <- dbGetQuery(con,uploadnumber_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         Category=category)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter_medicaid_number,file=paste0("./Output/health/",database_state,"_",year,"_medicaidages0to18_number.csv"),row.names=FALSE)
+```
+
+
+#####STEP 2: CREATE PERCENT ESTIMATES AFTER THE POPULATION ESTIMATES BY SINGLE YEAR OF AGE FOR VINTAGE YEAR MATCHING DATA IS UPDATED IN JUNE OF THE FOLLOWING YEAR#####
+
+```{r}
+##########################################
+#CALCULATE THE PERCENT FROM THE POPULATION
+
+#write the sql code needed to pull population data from the database
+childpop_sql <- paste0("SELECT location, timeframe, age_group, data FROM ", database_state," WHERE (timeframe='",year,"' AND vintageyear='",year,"') AND varname='childpopulationbysingleyearofage';")
+
+
+childpop <- dbGetQuery(con,childpop_sql) %>%
+  mutate(age_group=as.numeric(age_group)) %>%
+  subset(age_group<=18) %>%
+  
+  #create 0 to 18 age group sums
+  group_by(location,timeframe) %>%
+  summarise(totalpop0to18=sum(data)) %>%
+  ungroup
+
+
+#write the sql code needed to pull the medicaid data that has already been published to the database
+medicaid_sql <- paste0("SELECT location, locationtype, locationid, state, timeframe, category, dataformat, data, varname FROM ", database_state," WHERE timeframe='",year,"' AND varname='medicaidages0to18' AND dataformat='Number';")
+
+medicaid_pop <- dbGetQuery(con,medicaid_sql)
+
+
+##############################
+#CALCULATE PERCENTS FOR COUNTY, STATE, and STATE PLANNING REGION
+medicaid_percent <- medicaid_pop %>%
+  left_join(childpop,by=c('location'='location','timeframe'='timeframe')) %>%
+  rename(childonmedicaid=data) %>%
+  mutate(data=childonmedicaid/totalpop0to18) %>%
+  select(-c(childonmedicaid,totalpop0to18)) %>%
+  
+  mutate(dataformat='Percent')
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(medicaid_percent$locationid))>=1) {
+  print(medicaid_percent$location[is.na(medicaid_percent$locationid)])
+} else if (sum(is.na(medicaid_percent$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- medicaid_percent %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+view(medicaid_percent)
+```
+
+```{r}
+#CHECK DATASET NAMED medicaid_percent TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,medicaid_percent,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, category, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='medicaidages0to18' AND dataformat='Percent';")
+
+
+upload_datacenter_medicaid_percent <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         Category=category)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter_medicaid_percent,file=paste0("./Output/health/",database_state,"_",year,"_medicaidages0to18_percent.csv"),row.names=FALSE)
+```
+
+
+
+**SNAP RECIPIENTS AND SNAP HOUSEHOLDS**
+```{r}
+#read in the data that was shared by DPHHS
+snap <- read_excel(path=paste0("./Input/economics/montana_june_17_19_tanfsnap.xlsx"),sheet=paste0("SNAP June ",year))
+  
+#create state data frame subsetting for Grand Total row
+snap_state <- snap %>%
+  subset(County=='State Totals')
+
+#create the county data frame subsetting to remove NA counties and cities
+snap_county <- snap %>%
+  
+  subset(County != 'State Totals') %>%
+  
+  #remove the - ## from each county
+  mutate(location=gsub(" -.*","",County)) %>%
+
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) 
+  
+
+#####################
+#CLEAN UP COUNTY DATA
+snap_county_rechouse <- snap_county %>%
+  
+  select(c(location,Households,Recipients)) %>%
+  
+  #add in KC variables
+  mutate(locationtype='County') %>%
+  mutate(state=statename) %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='snaprecipientshouseholdsallages') %>%
+  
+  pivot_longer(cols=c(Households,Recipients),names_to='category',values_to='data')
+
+
+
+####################
+#CLEAN UP STATE DATA
+snap_state_rechouse <- snap_state %>%
+
+  select(c(Households,Recipients)) %>%
+  
+  #add in KC variables
+  mutate(location=statename) %>%
+  mutate(locationtype='State') %>%
+  mutate(state=statename) %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='snaprecipientshouseholdsallages') %>%
+  
+  pivot_longer(cols=c(Households,Recipients),names_to='category',values_to='data')
+
+
+#####################
+#CLEAN UP REGION DATA
+snap_region_rechouse <- snap_county_rechouse %>%
+  
+  #add in regions
+  left_join(regionids,by=c('location'='county')) %>%
+  
+  group_by(region,category) %>%
+  summarise(data=sum(data)) %>%
+
+  ungroup %>%
+  
+  select(c(region,category,data)) %>%
+  
+  #add in KC variables
+  rename(location=region) %>%
+  mutate(location=as.character(location)) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(state=statename) %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='snaprecipientshouseholdsallages') 
+
+###############################################
+###############################################
+#UNION COUNTY, STATE, AND STATE PLANNING REGION
+upload_snap_rechouse <- snap_county_rechouse %>%
+  bind_rows(snap_state_rechouse) %>%
+  bind_rows(snap_region_rechouse) %>%
+
+  #merge in location ids
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
+  
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(upload_snap_rechouse$locationid))>=1) {
+  print(upload_snap_rechouse$location[is.na(upload_snap_rechouse$locationid)])
+} else if (sum(is.na(upload_snap_rechouse$locationid))==0) {
+  'all locations match'
+}
+
+
+# 2. Visually inspect output data
+view(upload_snap_rechouse)
+```
+
+```{r}
+#CHECK DATASET NAMED upload_snap_rechouse TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,upload_snap_rechouse,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+uploadnumber_sql <- paste0("SELECT locationid, location, timeframe, category, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='snaprecipientshouseholdsallages';")
+
+
+upload_datacenter_snap_number <- dbGetQuery(con,uploadnumber_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         Category=category)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter_snap_number,file=paste0("./Output/economics/",database_state,"_",year,"_snaprecipientshouseholdsallages.csv"),row.names=FALSE)
+```
+
+
+
+**SNAP RECIPIENTS AGES 0 TO 18**
+#This indicator calculates the percent of the population ages 0 to 18 participating in SNAP, however SNAP data is available for the current year, where population estimates lag by a year. Therefore, this code has to both calculate current year estimates without a percent, and then re-calculate the percent when the population estimate is available.
+
+
+#####STEP 1: READ IN DATA FROM DPHHS IN SEPTEMBER WHEN RECEIVE#####
+```{r}
+#read in the data that was shared by DPHHS
+snap <- read_excel(path=paste0("./Input/economics/montana_june_17_19_tanfsnap.xlsx"),sheet=paste0("SNAP June ",year))
+  
+#create state data frame subsetting for Grand Total row
+snap_state <- snap %>%
+  subset(County=='State Totals')
+
+#create the county data frame subsetting to remove NA counties and cities
+snap_county <- snap %>%
+  
+  subset(County != 'State Totals') %>%
+  
+  #remove the - ## from each county
+  mutate(location=gsub(" -.*","",County)) %>%
+
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) 
+  
+
+#####################
+#CLEAN UP COUNTY DATA
+snap_county_number <- snap_county %>%
+  
+  select(c(location,Children)) %>%
+  rename(data=Children) %>%
+  
+  #add in KC variables
+  mutate(locationtype='County') %>%
+  mutate(state=statename) %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='snapages0to18')
+
+
+
+####################
+#CLEAN UP STATE DATA
+snap_state_number <- snap_state %>%
+
+  select(c(Children)) %>%
+  
+  #add in KC variables
+  rename(data=Children) %>%
+  mutate(location=statename) %>%
+  mutate(locationtype='State') %>%
+  mutate(state=statename) %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='snapages0to18') 
+
+
+#####################
+#CLEAN UP REGION DATA
+snap_region_number <- snap_county_number %>%
+  
+  #add in regions
+  left_join(regionids,by=c('location'='county')) %>%
+  
+  group_by(region) %>%
+  summarise(data=sum(data)) %>%
+
+  ungroup %>%
+  
+  select(c(region,data)) %>%
+  
+  #add in KC variables
+  rename(location=region) %>%
+  mutate(location=as.character(location)) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(state=statename) %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='snapages0to18') 
+
+
+###############################################################
+###############################################################
+#UNION COUNTY, STATE, AND STATE PLANNING REGION for number only
+upload_snap_number <- snap_county_number %>%
+  bind_rows(snap_state_number) %>%
+  bind_rows(snap_region_number) %>%
+
+  #merge in location ids
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
+  
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(upload_snap_number$locationid))>=1) {
+  print(upload_snap_number$location[is.na(upload_snap_number$locationid)])
+} else if (sum(is.na(upload_snap_number$locationid))==0) {
+  'all locations match'
+}
+
+
+# 2. Visually inspect output data
+view(upload_snap_number)
+```
+
+```{r}
+#CHECK DATASET NAMED upload_snap_number TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,upload_snap_number,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+uploadnumber_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='snapages0to18' AND dataformat='Number';")
+
+
+upload_datacenter_snap_number <- dbGetQuery(con,uploadnumber_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter_snap_number,file=paste0("./Output/economics/",database_state,"_",year,"_snapages0to18_number.csv"),row.names=FALSE)
+```
+
+
+#####STEP 2: CREATE PERCENT ESTIMATES AFTER THE POPULATION ESTIMATES BY SINGLE YEAR OF AGE FOR VINTAGE YEAR MATCHING DATA IS UPDATED IN JUNE OF THE FOLLOWING YEAR#####
+
+```{r}
+##########################################
+#CALCULATE THE PERCENT FROM THE POPULATION
+
+#write the sql code needed to pull population data from the database
+childpop_sql <- paste0("SELECT location, timeframe, age_group, data FROM ", database_state," WHERE (timeframe='",year,"' AND vintageyear='",year,"') AND varname='childpopulationbysingleyearofage';")
+
+
+childpop <- dbGetQuery(con,childpop_sql) %>%
+  mutate(age_group=as.numeric(age_group)) %>%
+  subset(age_group<=18) %>%
+  
+  #create 0 to 18 age group sums
+  group_by(location,timeframe) %>%
+  summarise(totalpop0to18=sum(data)) %>%
+  ungroup
+
+
+#write the sql code needed to pull the snap data that has already been published to the database
+snap_sql <- paste0("SELECT location, locationtype, locationid, state, timeframe, dataformat, data, varname FROM ", database_state," WHERE timeframe='",year,"' AND varname='snapages0to18' AND dataformat='Number';")
+
+snap_pop <- dbGetQuery(con,snap_sql)
+
+
+##############################
+#CALCULATE PERCENTS FOR COUNTY, STATE, and STATE PLANNING REGION
+snap_percent <- snap_pop %>%
+  left_join(childpop,by=c('location'='location','timeframe'='timeframe')) %>%
+  rename(childonsnap=data) %>%
+  mutate(data=childonsnap/totalpop0to18) %>%
+  select(-c(childonsnap,totalpop0to18)) %>%
+  
+  mutate(dataformat='Percent')
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(snap_percent$locationid))>=1) {
+  print(snap_percent$location[is.na(snap_percent$locationid)])
+} else if (sum(is.na(snap_percent$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- snap_percent %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+view(snap_percent)
+```
+
+```{r}
+#CHECK DATASET NAMED snap_percent TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,snap_percent,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='snapages0to18' AND dataformat='Percent';")
+
+
+upload_datacenter_snap_percent <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter_snap_percent,file=paste0("./Output/economics/",database_state,"_",year,"_snapages0to18_percent.csv"),row.names=FALSE)
+```
+
+
+
+**SNAP AVERAGE BENEFIT AMOUNT PER HOUSEHOLD**
+
+```{r}
+#read in the data that was shared by DPHHS
+snap <- read_excel(path=paste0("./Input/economics/montana_june_17_19_tanfsnap.xlsx"),sheet=paste0("SNAP June ",year))
+  
+#create state data frame subsetting for Grand Total row
+snap_state <- snap %>%
+  subset(County=='State Totals')
+
+#create the county data frame 
+snap_county <- snap %>%
+  
+  subset(County != 'State Totals') %>%
+  
+  #remove the - ## from each county
+  mutate(location=gsub(" -.*","",County)) %>%
+
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) 
+  
+
+#####################
+#CLEAN UP COUNTY DATA
+snap_county_benefit <- snap_county %>%
+  
+  rename(data='Average Household Benefit') %>%
+  
+  select(c(location,data)) %>%
+  
+  #add in KC variables
+  mutate(locationtype='County') %>%
+  mutate(state=statename) %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Currency') %>%
+  mutate(varname='snapaveragebenefitperhousehold')
+
+
+
+####################
+#CLEAN UP STATE DATA
+snap_state_benefit <- snap_state %>%
+
+  rename(data='Average Household Benefit') %>%
+  
+  select(c(data)) %>%
+  
+  #add in KC variables
+  mutate(location=statename) %>%
+  mutate(locationtype='State') %>%
+  mutate(state=statename) %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Currency') %>%
+  mutate(varname='snapaveragebenefitperhousehold') 
+
+
+
+###############################################
+###############################################
+#UNION COUNTY, STATE, AND STATE PLANNING REGION
+upload_snap_benefit <- snap_county_benefit %>%
+  bind_rows(snap_state_benefit) %>%
+
+  #merge in location ids
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
+  
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(upload_snap_benefit$locationid))>=1) {
+  print(upload_snap_benefit$location[is.na(upload_snap_benefit$locationid)])
+} else if (sum(is.na(upload_snap_benefit$locationid))==0) {
+  'all locations match'
+}
+
+
+# 2. Visually inspect output data
+view(upload_snap_benefit)
+```
+
+```{r}
+#CHECK DATASET NAMED upload_snap_benefit TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,upload_snap_benefit,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+uploadbenefit_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='snapaveragebenefitperhousehold';")
+
+
+upload_datacenter_snap_benefit <- dbGetQuery(con,uploadbenefit_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter_snap_benefit,file=paste0("./Output/economics/",database_state,"_",year,"_snapaveragebenefitperhousehold.csv"),row.names=FALSE)
+```
+
+
+
+**TANF RECIPIENTS AND TANF HOUSEHOLDS**
+```{r}
+#read in the data that was shared by DPHHS
+tanf <- read_excel(path=paste0("./Input/economics/montana_june_17_19_tanfsnap.xlsx"),sheet=paste0("TANF June ",year))
+  
+#create state data frame subsetting for Grand Total row
+tanf_state <- tanf %>%
+  subset(County=='State Totals')
+
+#create the county data frame subsetting to remove NA counties and cities
+tanf_county <- tanf %>%
+  
+  subset(County != 'State Totals') %>%
+  
+  #remove the - ## from each county
+  mutate(location=gsub(" -.*","",County)) %>%
+
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) 
+  
+
+#####################
+#CLEAN UP COUNTY DATA
+tanf_county_rechouse <- tanf_county %>%
+  
+  select(c(location,Households,Recipients)) %>%
+  
+  #add in KC variables
+  mutate(locationtype='County') %>%
+  mutate(state=statename) %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='tanfrecipientshouseholdsallages') %>%
+  
+  pivot_longer(cols=c(Households,Recipients),names_to='category',values_to='data')
+
+
+
+####################
+#CLEAN UP STATE DATA
+tanf_state_rechouse <- tanf_state %>%
+
+  select(c(Households,Recipients)) %>%
+  
+  #add in KC variables
+  mutate(location=statename) %>%
+  mutate(locationtype='State') %>%
+  mutate(state=statename) %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='tanfrecipientshouseholdsallages') %>%
+  
+  pivot_longer(cols=c(Households,Recipients),names_to='category',values_to='data')
+
+
+#####################
+#CLEAN UP REGION DATA
+tanf_region_rechouse <- tanf_county_rechouse %>%
+  
+  #add in regions
+  left_join(regionids,by=c('location'='county')) %>%
+  
+  group_by(region,category) %>%
+  summarise(data=sum(data)) %>%
+
+  ungroup %>%
+  
+  select(c(region,category,data)) %>%
+  
+  #add in KC variables
+  rename(location=region) %>%
+  mutate(location=as.character(location)) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(state=statename) %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='tanfrecipientshouseholdsallages') 
+
+
+###############################################
+###############################################
+#UNION COUNTY, STATE, AND STATE PLANNING REGION
+upload_tanf_rechouse <- tanf_county_rechouse %>%
+  bind_rows(tanf_state_rechouse) %>%
+  bind_rows(tanf_region_rechouse) %>%
+
+  #merge in location ids
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
+  
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(upload_tanf_rechouse$locationid))>=1) {
+  print(upload_tanf_rechouse$location[is.na(upload_tanf_rechouse$locationid)])
+} else if (sum(is.na(upload_tanf_rechouse$locationid))==0) {
+  'all locations match'
+}
+
+
+# 2. Visually inspect output data
+view(upload_tanf_rechouse)
+```
+
+```{r}
+#CHECK DATASET NAMED upload_tanf_rechouse TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,upload_tanf_rechouse,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+uploadnumber_sql <- paste0("SELECT locationid, location, timeframe, category, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='tanfrecipientshouseholdsallages';")
+
+
+upload_datacenter_tanf_number <- dbGetQuery(con,uploadnumber_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         Category=category)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter_tanf_number,file=paste0("./Output/economics/",database_state,"_",year,"_tanfrecipientshouseholdsallages.csv"),row.names=FALSE)
+```
+
+
+
+**TANF RECIPIENTS AGES 0 TO 18**
+#This indicator calculates the percent of the population ages 0 to 18 participating in TANF, however TANF data is available for the current year, where population estimates lag by a year. Therefore, this code has to both calculate current year estimates without a percent, and then re-calculate the percent when the population estimate is available.
+
+
+#####STEP 1: READ IN DATA FROM DPHHS IN SEPTEMBER WHEN RECEIVE#####
+```{r}
+#read in the data that was shared by DPHHS
+tanf <- read_excel(path=paste0("./Input/economics/montana_june_17_19_tanfsnap.xlsx"),sheet=paste0("TANF June ",year))
+  
+#create state data frame subsetting for Grand Total row
+tanf_state <- tanf %>%
+  subset(County=='State Totals')
+
+#create the county data frame subsetting to remove NA counties and cities
+tanf_county <- tanf %>%
+  
+  subset(County != 'State Totals') %>%
+  
+  #remove the - ## from each county
+  mutate(location=gsub(" -.*","",County)) %>%
+
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) 
+  
+
+#####################
+#CLEAN UP COUNTY DATA
+tanf_county_number <- tanf_county %>%
+  
+  select(c(location,Children)) %>%
+  rename(data=Children) %>%
+  
+  #add in KC variables
+  mutate(locationtype='County') %>%
+  mutate(state=statename) %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='tanfages0to18')
+
+
+
+####################
+#CLEAN UP STATE DATA
+tanf_state_number <- tanf_state %>%
+
+  select(c(Children)) %>%
+  
+  #add in KC variables
+  rename(data=Children) %>%
+  mutate(location=statename) %>%
+  mutate(locationtype='State') %>%
+  mutate(state=statename) %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='tanfages0to18') 
+
+
+#####################
+#CLEAN UP REGION DATA
+tanf_region_number <- tanf_county_number %>%
+  
+  #add in regions
+  left_join(regionids,by=c('location'='county')) %>%
+  
+  group_by(region) %>%
+  summarise(data=sum(data)) %>%
+
+  ungroup %>%
+  
+  select(c(region,data)) %>%
+  
+  #add in KC variables
+  rename(location=region) %>%
+  mutate(location=as.character(location)) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(state=statename) %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='tanfages0to18') 
+
+###############################################################
+###############################################################
+#UNION COUNTY, STATE, AND STATE PLANNING REGION for number only
+upload_tanf_number <- tanf_county_number %>%
+  bind_rows(tanf_state_number) %>%
+  bind_rows(tanf_region_number) %>%
+
+  #merge in location ids
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
+  
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(upload_tanf_number$locationid))>=1) {
+  print(upload_tanf_number$location[is.na(upload_tanf_number$locationid)])
+} else if (sum(is.na(upload_tanf_number$locationid))==0) {
+  'all locations match'
+}
+
+
+# 2. Visually inspect output data
+view(upload_tanf_number)
+```
+
+```{r}
+#CHECK DATASET NAMED upload_tanf_number TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,upload_tanf_number,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+uploadnumber_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='tanfages0to18' AND dataformat='Number';")
+
+
+upload_datacenter_tanf_number <- dbGetQuery(con,uploadnumber_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter_tanf_number,file=paste0("./Output/economics/",database_state,"_",year,"_tanfages0to18_number.csv"),row.names=FALSE)
+```
+
+
+#####STEP 2: CREATE PERCENT ESTIMATES AFTER THE POPULATION ESTIMATES BY SINGLE YEAR OF AGE FOR VINTAGE YEAR MATCHING DATA IS UPDATED IN JUNE OF THE FOLLOWING YEAR#####
+
+```{r}
+##########################################
+#CALCULATE THE PERCENT FROM THE POPULATION
+
+#write the sql code needed to pull population data from the database
+childpop_sql <- paste0("SELECT location, timeframe, age_group, data FROM ", database_state," WHERE (timeframe='",year,"' AND vintageyear='",year,"') AND varname='childpopulationbysingleyearofage';")
+
+
+childpop <- dbGetQuery(con,childpop_sql) %>%
+  mutate(age_group=as.numeric(age_group)) %>%
+  subset(age_group<=18) %>%
+  
+  #create 0 to 18 age group sums
+  group_by(location,timeframe) %>%
+  summarise(totalpop0to18=sum(data)) %>%
+  ungroup
+
+
+#write the sql code needed to pull the snap data that has already been published to the database
+tanf_sql <- paste0("SELECT location, locationtype, locationid, state, timeframe, dataformat, data, varname FROM ", database_state," WHERE timeframe='",year,"' AND varname='tanfages0to18' AND dataformat='Number';")
+
+tanf_pop <- dbGetQuery(con,tanf_sql)
+
+
+##############################
+#CALCULATE PERCENTS FOR COUNTY, STATE, and STATE PLANNING REGION
+tanf_percent <- tanf_pop %>%
+  left_join(childpop,by=c('location'='location','timeframe'='timeframe')) %>%
+  rename(childontanf=data) %>%
+  mutate(data=childontanf/totalpop0to18) %>%
+  select(-c(childontanf,totalpop0to18)) %>%
+  
+  mutate(dataformat='Percent')
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(tanf_percent$locationid))>=1) {
+  print(tanf_percent$location[is.na(tanf_percent$locationid)])
+} else if (sum(is.na(tanf_percent$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- tanf_percent %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+view(tanf_percent)
+```
+
+```{r}
+#CHECK DATASET NAMED tanf_percent TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,tanf_percent,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='tanfages0to18' AND dataformat='Percent';")
+
+
+upload_datacenter_tanf_percent <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter_tanf_percent,file=paste0("./Output/economics/",database_state,"_",year,"_tanfages0to18_percent.csv"),row.names=FALSE)
+```
+
+
+
