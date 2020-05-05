@@ -1,0 +1,1335 @@
+---
+title: "Montana Education Data"
+author: "Xanna Burg"
+date: "3/16/2020"
+output: html_document
+---
+
+## Indicator 1: Public school enrollment grades K through 12 by county
+## Indicator 2: Total school enrollment grades K through 12 by type (public, private, and home school) and county
+## Indicator 3: Children ages 3 to 21 enrolled in special education in public schools
+## Indicator 4: Eligible recipients of free or reduced price lunch by county
+## Indicator 5: High school event drop-out rate
+## Indicator 6: High school event drop-our rate by race and ethnicity
+## Indicator 7: Four-year cohort graduation rate
+## Indicator 8: Four-year cohort graduation rate by race and ethnicity
+## Indicator 9: Average expendigures per student in public schools
+## Indicator 10: Third graders who scored at or above proficient on statewide English Language Arts assessment (1-year totals)
+## Indicator 11: Third graders who scored at or above proficient on statewide English Language Arts asssesment (3-year totals)
+
+**Created by:** Xanna Burg
+**Date:** March 2020
+**Updated by:**
+
+**Data Source:** Montana Office of Public Instruction
+**Purpose:** Input the Montana education data
+
+**Data format:** final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Race (Character, where applicable), Data (numeric: number, percentage, rate), DataFormat (character: "number" or "percent" or "rate"), LocationId (numeric: assigned for KIDS COUNT system)
+
+**To use this code for a new year:**
+* Update the year in the second code chunk for variable 'year' and 'fullyear' and 'threeyear' (needed for ELA 3-year totals only)
+* For some indicators, input the state estimates in the code
+* Check each dataset visually and through the report logs prior to commiting to the database.
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+library(stringr)
+```
+
+```{r}
+####UPDATE to reflect the current year data working with
+year <- '20'
+
+fullyear <- '2019/20' 
+threeyear <- '2017-2019'
+statefile <- 'montana'
+statename <- 'Montana'
+
+#input location ID file for MT
+locationids <- read.csv("./Input/MT KC Location IDs.csv")
+locationids$Location <- as.character(locationids$Location)
+
+#input region ID file for MT
+regionids <- read.csv("./Input/MT KC Region List.csv")
+regionids$county <- as.character(regionids$county)
+
+#input a file with all county names for MT
+countylist <- read.csv("./Input/MT County List.csv")
+```
+
+
+
+**PUBLIC SCHOOL ENROLLMENT GRADES K THROUGH 12 BY COUNTY**
+```{r}
+#read in the data
+df_enrollment <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='Enrollment Counts')
+
+###################
+#CREATE COUNTY DATA
+county_enrollment <- df_enrollment %>%
+  rename(location=CountyName,
+         data='K-12 Enrollment Count') %>%
+  select(c(location,data)) %>%
+  #format to database
+  mutate(timeframe=fullyear) %>%
+  mutate(state=statename) %>%
+  mutate(dataformat='Number') %>%
+  mutate(locationtype='County') %>%
+  mutate(varname='publicschoolk12enrollment')
+
+##################
+#CREATE STATE DATA
+state_enrollment <- county_enrollment %>%
+  mutate(location='Montana') %>%
+  group_by(location) %>%
+  summarise(data=sum(data)) %>%
+  ungroup %>%
+  mutate(state=statename) %>%
+  mutate(locationtype='State') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='publicschoolk12enrollment')
+
+###################
+#CREATE REGION DATA
+region_enrollment <- county_enrollment %>%
+  left_join(regionids,by=c('location'='county')) %>%
+
+  group_by(region) %>%
+  summarise(data=sum(data)) %>%
+  ungroup %>%
+  rename(location=region) %>%
+  mutate(state=statename) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='publicschoolk12enrollment')
+  
+
+#combine state and county data
+enrollmentdata <- county_enrollment %>%
+  bind_rows(state_enrollment) %>%
+  bind_rows(region_enrollment) %>%
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  mutate(location=replace(location,statename=='Montana' & location=='Sweetgrass','Sweet Grass')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(enrollmentdata$locationid))>=1) {
+  print(enrollmentdata$location[is.na(enrollmentdata$locationid)])
+} else if (sum(is.na(enrollmentdata$locationid))==0) {
+  'all locations match'
+}
+
+
+# 2. Visually inspect output data
+View(enrollmentdata)
+```
+
+```{r}
+#CHECK DATASET NAMED enrollmentdata TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',enrollmentdata,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+enrollment_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='publicschoolk12enrollment';")
+
+upload_data_enrollment <- dbGetQuery(con,enrollment_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_enrollment,file=paste0("./Output/education/",statefile,"_",year,"_publicschoolk12enrollment.csv"),row.names=FALSE)
+```
+
+
+
+**TOTAL SCHOOL ENROLLMENT GRADES K THROUGH 12 BY TYPE (PUBLIC, PRIVATE, AND HOME SCHOOL)**
+```{r}
+#read in the data
+df_homeschool <- read_excel(path=paste0("./Input/education/montana_",year,"_nonpublic.xlsx"), sheet='Home School',skip=4)
+df_privateschool <- read_excel(path=paste0("./Input/education/montana_",year,"_nonpublic.xlsx"), sheet='Private School',skip=3)
+
+#################
+#################
+#HOME SCHOOL DATA
+
+
+#######################
+#COUNTY HOME SCHOOL DATA
+county_homeschool <- df_homeschool %>%
+  rename(location=County,
+         primaryschool='K-8',
+         highschool='9-12') %>%
+  subset(!is.na(location)) %>%
+  mutate(data=primaryschool+highschool) %>%
+  select(c(location,data)) %>%
+  mutate(locationtype='County') %>%
+  mutate(state='Montana') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='totalschoolenrollmentk12bytype')
+
+#######################
+#STATE HOME SCHOOL DATA
+state_homeschool <- df_homeschool %>%
+  rename(location=County,
+         primaryschool='K-8',
+         highschool='9-12') %>%
+  subset(!is.na(location)) %>%
+  mutate(data=primaryschool+highschool) %>%
+  select(c(data)) %>%
+  mutate(location='Montana') %>%
+  group_by(location) %>%
+  summarise(data=sum(data)) %>%
+  mutate(locationtype='State') %>%
+  mutate(state='Montana') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='totalschoolenrollmentk12bytype')
+
+########################
+#REGION HOME SCHOOL DATA
+region_homeschool <- df_homeschool %>%
+  rename(location=County,
+         primaryschool='K-8',
+         highschool='9-12') %>%
+  subset(!is.na(location)) %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise(data=sum(primaryschool)+sum(highschool)) %>%
+  ungroup %>%
+  rename(location=region) %>%  
+  select(c(location,data)) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(state='Montana') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='totalschoolenrollmentk12bytype')
+
+
+#UNION COUNTY, STATE, AND STATE PLANNING REGION
+homeschool <- county_homeschool %>%
+  bind_rows(state_homeschool) %>%
+  bind_rows(region_homeschool) %>%
+  mutate(category='Home School') %>%
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  mutate(location=replace(location,statename=='Montana' & location=='Sweetgrass','Sweet Grass')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+
+#################
+#################
+#NON PUBLIC SCHOOL DATA
+
+
+#######################
+#COUNTY NON PUBLIC SCHOOL DATA
+county_nonpublic <- df_privateschool %>%
+  rename(location=County,
+         primaryschool='K-8',
+         highschool='9-12') %>%
+  subset(!is.na(location)) %>%
+  mutate(data=primaryschool+highschool) %>%
+  select(c(location,data)) %>%
+  right_join(countylist, by=c('location'='Location')) %>%
+  mutate(data = replace_na(data, 0)) %>%
+  mutate(locationtype='County') %>%
+  mutate(state='Montana') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='totalschoolenrollmentk12bytype')
+
+
+
+#######################
+#STATE NON PUBLIC SCHOOL DATA
+state_nonpublic <- df_privateschool %>%
+  rename(location=County,
+         primaryschool='K-8',
+         highschool='9-12') %>%
+  subset(!is.na(location)) %>%
+  mutate(data=primaryschool+highschool) %>%
+  select(c(data)) %>%
+  mutate(location='Montana') %>%
+  group_by(location) %>%
+  summarise(data=sum(data)) %>%
+  mutate(locationtype='State') %>%
+  mutate(state='Montana') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='totalschoolenrollmentk12bytype')
+
+
+########################
+#REGION NON PUBLIC SCHOOL DATA
+region_nonpublic <- df_privateschool %>%
+  rename(location=County,
+         primaryschool='K-8',
+         highschool='9-12') %>%
+  subset(!is.na(location)) %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise(data=sum(primaryschool)+sum(highschool)) %>%
+  ungroup %>%
+  rename(location=region) %>%  
+  select(c(location,data)) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(state='Montana') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='totalschoolenrollmentk12bytype')
+
+
+#UNION COUNTY, STATE, AND STATE PLANNING REGION
+nonpublic <- county_nonpublic %>%
+  bind_rows(state_nonpublic) %>%
+  bind_rows(region_nonpublic) %>%
+  mutate(category='Private School') %>%
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  mutate(location=replace(location,statename=='Montana' & location=='Sweetgrass','Sweet Grass')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+
+########################################
+########################################
+#PUBLIC SCHOOL ENROLLMENTS FROM DATABASE
+enrollment_sql <- paste0("SELECT location, locationid,locationtype, state, timeframe, dataformat, data, varname FROM montana WHERE timeframe='",fullyear,"' AND varname='publicschoolk12enrollment';")
+
+publicschool <- dbGetQuery(con,enrollment_sql) %>%
+  mutate(category='Public School') %>%
+  mutate(varname='totalschoolenrollmentk12bytype')
+
+
+###################
+###################
+#CREATE TOTAL GROUP
+totals <- homeschool %>%
+  bind_rows(nonpublic) %>%
+  bind_rows(publicschool) %>%
+  
+  group_by(location,locationtype,locationid,state,timeframe,dataformat) %>%
+  summarise(data=sum(data)) %>%
+  ungroup %>%
+  
+  mutate(varname='totalschoolenrollmentk12bytype') %>%
+  mutate(category='Total')
+  
+
+
+##########################
+##########################
+#UNION ALL GROUPS TOGETHER
+enrollmentbytype <- homeschool %>%
+  bind_rows(nonpublic) %>%
+  bind_rows(publicschool) %>%
+  bind_rows(totals)
+
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(enrollmentbytype$locationid))>=1) {
+  print(enrollmentbytype$location[is.na(enrollmentbytype$locationid)])
+} else if (sum(is.na(enrollmentbytype$locationid))==0) {
+  'all locations match'
+}
+
+
+# 2. Visually inspect output data
+View(enrollmentbytype)
+
+```
+
+```{r}
+#CHECK DATASET NAMED enrollmentbytype TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',enrollmentbytype,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+enrollmentbytype_sql <- paste0("SELECT locationid, location, timeframe, dataformat,data,category FROM montana WHERE timeframe='",fullyear,"' AND varname='totalschoolenrollmentk12bytype';")
+
+upload_data_enrollmentbytype <- dbGetQuery(con,enrollmentbytype_sql)
+
+upload_data_enrollmentbytype2 <- upload_data_enrollmentbytype %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         Category=category)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_enrollmentbytype2,file=paste0("./Output/education/",statefile,"_",year,"totalschoolenrollmentk12bytype.csv"),row.names=FALSE)
+```
+
+
+
+**CHILDREN AGES 3 TO 21 ENROLLED IN SPECIAL EDUCATION IN PUBLIC SCHOOLS**
+
+```{r}
+#read in the special education child count data
+specialed <- read_excel(path=paste0("./Input/education/montana_",year,"_specialeducation.xlsx"))
+
+#read in the enrollment dataset to calculate pre-K through 12 enrollment
+enrollment <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='Enrollment Counts')
+
+##########################
+#CREATE THE COUNTY DATASET
+county_specialed <- specialed %>%
+  
+  #remove state totals
+  subset(County != 'State') %>%
+  
+  #rename special ed count variable
+  rename(specialedcount=paste0("SFY20",year," Child Count")) %>%
+  
+  #join enrollment data
+  left_join(enrollment,by=c('County'='CountyName')) %>%
+  
+  #calculate new columns and percent
+  rename(kthrough12='K-12 Enrollment Count',
+         prek='PreK Enrollment Count') %>%
+  mutate(prek=as.numeric(prek)) %>%
+  mutate(prek=replace(prek,is.na(prek),0)) %>%
+  mutate(enrollmentprek12=kthrough12+prek) %>%
+  
+  mutate(percentspecialed=specialedcount/enrollmentprek12) %>%
+  
+  #rename to database
+  select(c(County,specialedcount,percentspecialed)) %>%
+  rename(location=County,
+         Percent=percentspecialed,
+         Number=specialedcount) %>%
+  mutate(state=statename) %>%
+  mutate(locationtype='County') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(varname='totalspecialeducation') %>%
+  
+  #pivot wide to long
+  pivot_longer(cols=c(Number,Percent),names_to='dataformat',values_to='data')
+
+
+#########################
+#CREATE THE STATE DATASET
+
+#create summary of statewide enrollment
+state_enrollment <- enrollment %>%
+  mutate(location='Montana') %>%
+  rename(kthrough12='K-12 Enrollment Count',
+         prek='PreK Enrollment Count') %>%
+  mutate(prek=as.numeric(prek)) %>%
+  mutate(prek=replace(prek,is.na(prek),0)) %>%
+  group_by(location) %>%
+  summarise(enrollmentprek12=sum(kthrough12)+sum(prek)) %>%
+  ungroup
+  
+  
+state_specialed <- specialed %>%
+  
+  #keep only state totals
+  subset(County=='State') %>%
+  
+  #rename special ed count variable
+  rename(specialedcount=paste0("SFY20",year," Child Count")) %>%
+  mutate(location='Montana') %>%
+  
+  #join enrollment data
+  left_join(state_enrollment,by=c('location'='location')) %>%
+  
+  #calculate new columns and percent
+  mutate(percentspecialed=specialedcount/enrollmentprek12) %>%
+  
+  #rename to database
+  select(c(location,specialedcount,percentspecialed)) %>%
+  rename(Percent=percentspecialed,
+         Number=specialedcount) %>%
+  mutate(state=statename) %>%
+  mutate(locationtype='State') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(varname='totalspecialeducation') %>%
+  
+  #pivot wide to long
+  pivot_longer(cols=c(Number,Percent),names_to='dataformat',values_to='data')
+
+
+
+##########################
+#CREATE THE REGION DATASET
+region_specialed <- specialed %>%
+  
+  #remove state totals
+  subset(County != 'State') %>%
+  
+  #rename special ed count variable
+  rename(specialedcount=paste0("SFY20",year," Child Count")) %>%
+  
+  #join enrollment data
+  left_join(enrollment,by=c('County'='CountyName')) %>%
+  
+  #join regions
+  left_join(regionids,by=c('County'='county')) %>%
+  
+  #calculate new columns and percent
+  rename(kthrough12='K-12 Enrollment Count',
+         prek='PreK Enrollment Count') %>%
+  mutate(prek=as.numeric(prek)) %>%
+  mutate(prek=replace(prek,is.na(prek),0)) %>%
+  mutate(enrollmentprek12=kthrough12+prek) %>%
+  
+  group_by(region) %>%
+  summarise(Number=sum(specialedcount),
+            Percent=sum(specialedcount)/sum(enrollmentprek12)) %>%
+  ungroup %>%
+  
+
+  #rename to database
+  select(c(region,Number,Percent)) %>%
+  rename(location=region) %>%
+  mutate(location=as.character(location)) %>%
+  mutate(state=statename) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(varname='totalspecialeducation') %>%
+  
+  #pivot wide to long
+  pivot_longer(cols=c(Number,Percent),names_to='dataformat',values_to='data')
+
+
+
+###############################################
+#UNION COUNTY, STATE, AND STATE PLANNING REGION
+#combine state and county data
+upload_specialed <- county_specialed %>%
+  bind_rows(state_specialed) %>%
+  bind_rows(region_specialed) %>%
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  mutate(location=replace(location,statename=='Montana' & location=='Sweetgrass','Sweet Grass')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+  
+  
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(upload_specialed$locationid))>=1) {
+  print(upload_specialed$location[is.na(upload_specialed$locationid)])
+} else if (sum(is.na(upload_specialed$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- upload_specialed %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+view(upload_specialed)
+
+```
+
+```{r}
+#CHECK DATASET NAMED upload_specialed TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',upload_specialed,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+specialed_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='totalspecialeducation';")
+
+upload_datacenter_specialed <- dbGetQuery(con,specialed_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter_specialed,file=paste0("./Output/education/",statefile,"_",year,"_totalspecialeducation.csv"),row.names=FALSE)
+```
+
+
+
+**ELIGIBLE RECIPIENTS OF FREE OR REDUCED PRICE LUNCH**
+```{r}
+#read in the data
+frl <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='Enrollment Counts')
+
+###################
+#CREATE COUNTY DATA
+county_lunch <- frl %>%
+  rename(k12enrollment='K-12 Enrollment Count',
+         frl='K-12 FRL Enrollment Count',
+         location=CountyName) %>% 
+  mutate(Number=frl) %>%
+  #calculate percent using K-12 enrollment
+  mutate(Percent=frl/k12enrollment) %>%
+  select(c(location,Number,Percent)) %>%
+  #add in database variables
+  mutate(timeframe=fullyear) %>%
+  mutate(state=statename) %>%
+  mutate(locationtype='County') %>%
+  mutate(varname='freereducedlunch') %>%
+  #wide to long format
+  pivot_longer(cols=c(Number,Percent),values_to='data',names_to='dataformat')
+
+##################
+#CREATE STATE DATA
+state_lunch <- frl %>%
+  mutate(location='Montana') %>%
+   rename(k12enrollment='K-12 Enrollment Count',
+         frl='K-12 FRL Enrollment Count') %>% 
+  group_by(location) %>%
+  summarise(Number=sum(frl),
+            Percent=sum(frl)/sum(k12enrollment)) %>%
+  #add in database variables
+  mutate(state=statename) %>%
+  mutate(locationtype='State') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(varname='freereducedlunch') %>%
+  #wide to long format
+  pivot_longer(cols=c(Number,Percent),values_to='data',names_to='dataformat')
+
+
+##################
+#CREATE REGION DATA
+region_lunch <- frl %>%
+  rename(k12enrollment='K-12 Enrollment Count',
+         frl='K-12 FRL Enrollment Count',
+         location=CountyName) %>% 
+  #add in regions
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise(Number=sum(frl),
+            Percent=sum(frl)/sum(k12enrollment)) %>%
+  #add in database variables
+  rename(location=region) %>%
+  mutate(state=statename) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(varname='freereducedlunch') %>%
+  #wide to long format
+  pivot_longer(cols=c(Number,Percent),values_to='data',names_to='dataformat')
+
+
+#################################################
+#COMBINE COUNTY, STATE, AND STATE PLANNING REGION
+#combine state and county data
+lunchdata <- county_lunch %>%
+  bind_rows(state_lunch) %>%
+  bind_rows(region_lunch) %>%
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  mutate(location=replace(location,statename=='Montana' & location=='Sweetgrass','Sweet Grass')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(lunchdata$locationid))>=1) {
+  print(lunchdata$location[is.na(lunchdata$locationid)])
+} else if (sum(is.na(lunchdata$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- lunchdata %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+View(lunchdata)
+
+```
+
+```{r}
+#CHECK DATASET NAMED lunchdata TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',lunchdata,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+lunch_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='freereducedlunch';")
+
+upload_data_lunch<- dbGetQuery(con,lunch_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_lunch,file=paste0("./Output/education/",statefile,"_",year,"_freereducedlunch.csv"),row.names=FALSE)
+```
+
+
+
+**HIGH SCHOOL EVENT DROP-OUT RATE**
+##Need to input state estimate in code##
+```{r}
+#read in the data
+dropout <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='County Dropout') 
+
+###################
+#CREATE COUNTY DATA
+county_dropout <- dropout %>%
+  rename(data=Rate,
+         location=CountyName) %>% 
+  select(c(location,data)) %>%
+  #remove the asterisks and assign NA
+  mutate(data=replace(data,data=='*',NA)) %>%
+  mutate(data=as.numeric(data)) %>%
+  #add in database variables
+  mutate(timeframe=fullyear) %>%
+  mutate(state=statename) %>%
+  mutate(locationtype='County') %>%
+  mutate(dataformat='Percent') %>%
+  mutate(varname='highschooleventdropoutrate') 
+
+
+###################
+#CREATE STATE DATA
+state_data <- c(.xxx)
+state_dropout <- data.frame(state_data) %>%
+  mutate(state='Montana') %>%
+  rename(data=state_data) %>%
+  mutate(location='Montana') %>%
+  mutate(locationtype='State') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(dataformat='Percent') %>%
+  mutate(varname='highschooleventdropoutrate')
+
+
+  #################################################
+#COMBINE COUNTY, STATE
+dropoutdata <- county_dropout %>%
+  bind_rows(state_dropout) %>%
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  mutate(location=replace(location,statename=='Montana' & location=='Sweetgrass','Sweet Grass')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(dropoutdata$locationid))>=1) {
+  print(dropoutdata$location[is.na(dropoutdata$locationid)])
+} else if (sum(is.na(dropoutdata$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- dropoutdata %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+View(dropoutdata)
+```
+
+```{r}
+#CHECK DATASET NAMED dropoutdata TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',dropoutdata,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+dropout_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='highschooleventdropoutrate';")
+
+upload_data_dropout <- dbGetQuery(con,dropout_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_dropout,file=paste0("./Output/education/",statefile,"_",year,"_highschooleventdropoutrate.csv"),row.names=FALSE)
+```
+
+
+
+**HIGH SCHOOL EVENT DROP-OUT RATE BY RACE AND ETHNICITY**
+```{r}
+#read in the data
+dropout_race <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='State Dropout Race-Ethnicity Co') 
+
+state_dropout_race <- dropout_race  %>%
+  rename(data='Rate') %>%
+  select(c(Name,data)) %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(race=case_when(
+    Name=='American Indian or Alaskan Native' ~ 'American Indian/Alaskan Native',
+    Name=='Asian' ~ 'Asian',
+    Name=='Black or African American' ~ 'Black/African American',
+    Name=='Hispanic' ~ 'Hispanic',
+    Name=='Multi-Racial' ~ 'Multiracial',
+    Name=='Native Hawaiian or Other Pacific Islander' ~ 
+      'Native Hawaiian or Other Pacific Islander',
+    Name=='White' ~ 'White')) %>%
+  select(-c(Name)) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(location='Montana') %>%
+  mutate(state=statename) %>%
+  mutate(dataformat='Percent') %>%
+  mutate(locationtype='State') %>%
+  mutate(varname='highschooleventdropoutraterace') %>%
+  mutate(location=replace(location, 
+                          state=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  mutate(location=replace(location,state=='Montana' & location=='Sweetgrass','Sweet Grass')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+```
+
+```{r}
+#CHECK DATASET NAMED state_dropout_race TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',state_dropout_race,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+dropout_race_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data,race FROM montana WHERE timeframe='",fullyear,"' AND varname='highschooleventdropoutraterace';")
+
+upload_data_dropout_race <- dbGetQuery(con,dropout_race_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         Race=race)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_dropout_race,file=paste0("./Output/education/",statefile,"_",year,"_highschooleventdropoutraterace.csv"),row.names=FALSE)
+```
+
+
+
+
+**FOUR-YEAR HIGH SCHOOL COHORT GRADUATION RATE**
+##Need to input state estimate in code##
+```{r}
+grad <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='County Graduation') 
+
+###################
+#CREATE COUNTY DATA
+county_grad <- grad %>%
+  rename(data=Rate,
+         location=CountyName) %>% 
+  select(c(location,data)) %>%
+  #remove the asterisks and assign NA
+  mutate(data=replace(data,data=='*',NA)) %>%
+  mutate(data=as.numeric(data)) %>%
+  #add in database variables
+  mutate(timeframe=fullyear) %>%
+  mutate(state=statename) %>%
+  mutate(locationtype='County') %>%
+  mutate(dataformat='Percent') %>%
+  mutate(varname='graduationrate4cohort') 
+
+
+
+###################
+#CREATE STATE DATA
+state_data <- c(.xxx)
+state_grad <- data.frame(state_data) %>%
+  mutate(state='Montana') %>%
+  rename(data=state_data) %>%
+  mutate(location='Montana') %>%
+  mutate(locationtype='State') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(dataformat='Percent') %>%
+  mutate(varname='graduationrate4cohort')
+
+
+#################################################
+#COMBINE COUNTY, STATE
+graddata <- county_grad %>%
+  bind_rows(state_grad) %>%
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  mutate(location=replace(location,statename=='Montana' & location=='Sweetgrass','Sweet Grass')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(graddata$locationid))>=1) {
+  print(graddata$location[is.na(graddata$locationid)])
+} else if (sum(is.na(graddata$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- graddata %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+View(graddata)
+
+```
+
+```{r}
+#CHECK DATASET NAMED graddata TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',graddata,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+graduates_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='graduationrate4cohort';")
+
+upload_data_graduates <- dbGetQuery(con,graduates_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_graduates,file=paste0("./Output/education/",statefile,"_",year,"_graduationrate4cohort.csv"),row.names=FALSE)
+```
+
+
+
+
+**FOUR-YEAR HIGH SCHOOL COHORT GRADUATION RATE BY RACE AND ETHNICITY**
+```{r}
+grad_race <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='Race Graduates') 
+
+state_graduates_race <- grad_race %>%
+  rename(data='Grad Rate') %>%
+  select(c(Name,data)) %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(race=case_when(
+    Name=='American Indian or Alaskan Native' ~ 'American Indian/Alaskan Native',
+    Name=='Asian' ~ 'Asian',
+    Name=='Black or African American' ~ 'Black/African American',
+    Name=='Hispanic' ~ 'Hispanic',
+    Name=='Multi-Racial' ~ 'Multiracial',
+    Name=='Native Hawaiian or Other Pacific Islander' ~ 
+      'Native Hawaiian or Other Pacific Islander',
+    Name=='White' ~ 'White')) %>%
+  select(-c(Name)) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(location='Montana') %>%
+  mutate(state=statename) %>%
+  mutate(dataformat='Percent') %>%
+  mutate(locationtype='State') %>%
+  mutate(varname='graduationrate4cohortrace') %>%
+  mutate(location=replace(location, 
+                          state=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  mutate(location=replace(location,state=='Montana' & location=='Sweetgrass','Sweet Grass')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+```
+
+```{r}
+#CHECK DATASET NAMED state_graduates_race TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',state_graduates_race,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+graduates_race_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data,race FROM montana WHERE timeframe='",fullyear,"' AND varname='graduationrate4cohortrace';")
+
+upload_data_graduates_race <- dbGetQuery(con,graduates_race_sql)
+
+upload_data_graduates_race2 <- upload_data_graduates_race %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         Race=race)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_graduates_race2,file=paste0("./Output/education/",statefile,"_",year,"_graduationrate4cohortrace.csv"),row.names=FALSE)
+```
+
+
+
+
+**AVERAGE EXPENDITURES PER STUDENT IN PUBLIC SCHOOLS**
+```{r}
+financials <- read_excel(path=paste0("./Input/education/montana_",year,"_financialeducation.xlsx")) 
+
+pupilspending_county <- financials %>%
+  rename(currentexpenditures='Current Expenditures',
+         longtermexpenditures='Long Term Expenditures',
+         location='CO Name') %>%
+  group_by(location) %>%
+  summarise(currentexpenditures_sum=sum(currentexpenditures),
+            longtermexpenditures_sum=sum(longtermexpenditures),
+            ANB_sum=sum(ANB)) %>%
+  mutate(data=(currentexpenditures_sum/ANB_sum)+
+           (longtermexpenditures_sum/ANB_sum)) %>%
+  select(c(location,data)) %>%
+  mutate(locationtype='County') %>%
+  mutate(state='Montana') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(dataformat='Currency') %>%
+  mutate(varname='averageexpenditureperstudent')
+
+
+pupilspending_state <- financials %>%
+  mutate(location='Montana') %>%
+  rename(currentexpenditures='Current Expenditures',
+         longtermexpenditures='Long Term Expenditures') %>%
+  group_by(location) %>%
+  summarise(currentexpenditures_sum=sum(currentexpenditures),
+            longtermexpenditures_sum=sum(longtermexpenditures),
+            ANB_sum=sum(ANB)) %>%
+  mutate(data=(currentexpenditures_sum/ANB_sum)+
+           (longtermexpenditures_sum/ANB_sum)) %>%
+  select(c(location,data)) %>%
+  mutate(locationtype='State') %>%
+  mutate(state='Montana') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(dataformat='Currency') %>%
+  mutate(varname='averageexpenditureperstudent')
+
+
+pupilspending <- pupilspending_county %>%
+  bind_rows(pupilspending_state) %>%
+  mutate(location=replace(location, 
+                          state=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  mutate(location=replace(location,state=='Montana' & location=='Sweetgrass','Sweet Grass')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+```
+
+```{r}
+#CHECK DATASET NAMED pupilspending TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',pupilspending,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+pupilspending_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='averageexpenditureperstudent';")
+
+upload_data_pupilspending <- dbGetQuery(con,pupilspending_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_pupilspending,file=paste0("./Output/education/",statefile,"_",year,"_averageexpenditureperstudent.csv"),row.names=FALSE)
+```
+
+
+
+
+**THIRD GRADERS WHO SCORED AT OR ABOVE PROFICIENT ON STATEWIDE ENGLISH LANGUAGE ARTS ASSESSMENT (1-YEAR TOTALS)**
+##Need to input state estimate in code##
+```{r}
+#read in the data
+testing1 <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='SBAC 2015') 
+
+###################
+#CREATE COUNTY DATA
+county_testing1 <- testing1 %>%
+  rename(data='Proficient and Above Percent',
+         location=CountyName) %>% 
+  select(c(location,data)) %>%
+  #remove the asterisks and assign NA
+  mutate(data=replace(data,data=='*',NA)) %>%
+  mutate(data=as.numeric(data)) %>%
+  #add in database variables
+  mutate(timeframe=fullyear) %>%
+  mutate(state=statename) %>%
+  mutate(locationtype='County') %>%
+  mutate(dataformat='Percent') %>%
+  mutate(varname='thirdgradestateelaproficiency1year') 
+
+
+###################
+#CREATE STATE DATA
+state_data <- c(.xxxx)
+state_testing1 <- data.frame(state_data) %>%
+  mutate(state='Montana') %>%
+  rename(data=state_data) %>%
+  mutate(location='Montana') %>%
+  mutate(locationtype='State') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(dataformat='Percent') %>%
+  mutate(varname='thirdgradestateelaproficiency1year')
+
+
+#################################################
+#COMBINE COUNTY, STATE
+testing1data <- county_testing1 %>%
+  bind_rows(state_testing1) %>%
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  mutate(location=replace(location,statename=='Montana' & location=='Sweetgrass','Sweet Grass')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(testing1data$locationid))>=1) {
+  print(testing1data$location[is.na(testing1data$locationid)])
+} else if (sum(is.na(testing1data$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- testing1data %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+View(testing1data)
+```
+
+```{r}
+#CHECK DATASET NAMED testing1data TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',testing1data,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+testing1_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='thirdgradestateelaproficiency1year';")
+
+upload_data_testing1 <- dbGetQuery(con,testing1_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_testing1,file=paste0("./Output/education/",statefile,"_",year,"_thirdgradestateelaproficiency1year.csv"),row.names=FALSE)
+```
+
+
+
+**THIRD GRADERS WHO SCORED AT OR ABOVE PROFICIENT ON STATEWIDE ENGLISH LANGUAGE ARTS ASSESSMENT (3-YEAR TOTALS)**
+##Need to input state estimate in code##
+```{r}
+#read in the data
+testing3 <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='SBAC 3yr 2017-2019') 
+
+###################
+#CREATE COUNTY DATA
+county_testing3 <- testing3 %>%
+  rename(data=Percent,
+         location=CountyName) %>% 
+  select(c(location,data)) %>%
+  #remove the asterisks and assign NA
+  mutate(data=replace(data,data=='*',NA)) %>%
+  mutate(data=as.numeric(data)) %>%
+  #add in database variables
+  mutate(timeframe=threeyear) %>%
+  mutate(state=statename) %>%
+  mutate(locationtype='County') %>%
+  mutate(dataformat='Percent') %>%
+  mutate(varname='thirdgradestateelaproficiency3year') 
+
+
+###################
+#CREATE STATE DATA
+state_data <- c(.xxxx)
+state_testing3 <- data.frame(state_data) %>%
+  mutate(state='Montana') %>%
+  rename(data=state_data) %>%
+  mutate(location='Montana') %>%
+  mutate(locationtype='State') %>%
+  mutate(timeframe=threeyear) %>%
+  mutate(dataformat='Percent') %>%
+  mutate(varname='thirdgradestateelaproficiency3year')
+
+
+#################################################
+#COMBINE COUNTY, STATE
+testing3data <- county_testing3 %>%
+  bind_rows(state_testing3) %>%
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  mutate(location=replace(location,statename=='Montana' & location=='Sweetgrass','Sweet Grass')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(testing3data$locationid))>=1) {
+  print(testing3data$location[is.na(testing3data$locationid)])
+} else if (sum(is.na(testing3data$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- testing3data %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+View(testing3data)
+```
+
+```{r}
+#CHECK DATASET NAMED testing3data TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',testing3data,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+testing3_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",threeyear,"' AND varname='thirdgradestateelaproficiency3year';")
+
+upload_data_testing3 <- dbGetQuery(con,testing3_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_testing3,file=paste0("./Output/education/",statefile,"_",year,"_thirdgradestateelaproficiency3year.csv"),row.names=FALSE)
+```
+
+
+
+
+
