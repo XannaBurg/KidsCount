@@ -15,7 +15,7 @@ output: html_document
 **Data Source:** U.S. Census Bureau, Small Area Income and Poverty Estimates https://www.census.gov/programs-surveys/saipe.html
 **Purpose:** Connect to Census SAIPE data, clean data, and output dataset to upload to KIDS COUNT Data Center.
 
-**Data format:** Final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Age group (character) Data (numeric: number, percentage), DataFormat (character: "number" or "percent"), LocationId (numeric: assigned for KIDS COUNT system)
+**Data format:** Final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Age group (character), Data (numeric: number, percentage), DataFormat (character: "number" or "percent"), LocationId (numeric: assigned for KIDS COUNT system)
 
 A secondary output is an Excel file to copy to the Margin of Error template in order to report margin of error for the estimates.
 
@@ -46,12 +46,9 @@ library(gt)
 #metadata for available variables
 #saipe_vars <- listCensusMetadata(name="timeseries/poverty/saipe",
                               # type="variables")
-#view(saipe_vars)
 
-#metadata for available geographies
-#sahie_geos <- listCensusMetadata(name="timeseries/healthins/sahie",
-                              # type="geography")
-#view(sahie_geos)
+#saipe_vars <- listCensusMetadata(name="timeseries/poverty/saipe/schdist",
+                              # type="variables")
 
 #county and state names that match fips codes (from tidycensus package)
 fips <- fips_codes
@@ -97,17 +94,21 @@ regionids$county <- as.character(regionids$county)
 regionids$region <- as.character(regionids$region)
 
 
-#UPDATE THE BELOW FILE PATH IF USING THIS CODE OUTSIDE OF MT, ND, OR SD
+#UPDATE THE BELOW FILE PATH IF USING THIS CODE OUTSIDE OF MT, ND, OR SD TO ADD LOCATION IDS
 #the csv file should have 2 columns: "LocationId" and "Location"
 #locationids <- read.csv("your_file_path_here.csv")
+
+#UPDATE THE BELOW FILE PATH IF USING THIS CODE OUTSIDE OF MT, ND, OR SD TO ADD REGIONS (GROUPS OF COUNTIES)
+#the csv file should have 2 columns: "county" and "region"
+#regionids <- read.csv("your_file_path_here.csv")
 
 
 #RUN THIS CODE, BUT NOT REQUIRED TO CHANGE ANYTHING
 #the api will subset data to each state based on the state FIPS code: MT=30, North Dakota=38, South Dakota=46
 statecode <- as.numeric(unique(fips$state_code[fips$state_name==statename]))
-
-
 ```
+
+
 
 ## ###################################### ##
 ## CHILDREN IN POVERTY (1-YEAR ESTIMATES) ##
@@ -784,6 +785,23 @@ moe_output_saipe_ordered <- moe_output_saipe %>%
 write.csv(moe_output_saipe_ordered,file=paste0("../Output/economics/moe/",database_state,"_",year,"_saipe_childreninpoverty_moe.csv"),row.names=FALSE)
 ```
 
+# STEP 5B: OUTPUT KIDS COUNT DATA CENTER FORMAT (SKIP ADDING TO DATABASE AND MARGINS OF ERROR)
+#This is code that can be used by states that do not have a database to store KIDS COUNT data, but just need a .csv output to upload to the data center.
+**You must add a file path and name the desired csv file to the write.csv code**
+```{r}
+saipe_kcdatacenter <- saipe %>%
+  select(c(location,dataformat,data,age_group,timeframe,locationid)) %>%
+  rename(Location=location,
+         DataFormat=dataformat,
+         Data=data,
+         'Age group'=age_group,
+         TimeFrame=timeframe,
+         LocationId=locationid)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(saipe_kcdatacenter,file="your path/goes here/nameyourcsv.csv",row.names=FALSE)
+```
+
 
 
 ## ###################################### ##
@@ -925,4 +943,21 @@ upload_data_saipe_disctrictstate <- upload_data_saipe_district %>%
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
 write.csv(upload_data_saipe_disctrictstate,file=paste0("../Output/economics/",database_state,"_",year,"_saipe_childreninpoverty_schooldistrict.csv"),row.names=FALSE)
 
+```
+
+# STEP 2B: OUTPUT KIDS COUNT DATA CENTER FORMAT (SKIP ADDING TO DATABASE)
+#This is code that can be used by states that do not have a database to store KIDS COUNT data, but just need a .csv output to upload to the data center.
+**You must add a file path and name the desired csv file to the write.csv code**
+```{r}
+saipe_schooldistrict_kcdatacenter <- saipe_district_5to17 %>%
+  select(c(location,dataformat,data,age_group,timeframe,locationid)) %>%
+  rename(Location=location,
+         DataFormat=dataformat,
+         Data=data,
+         'Age group'=age_group,
+         TimeFrame=timeframe,
+         LocationId=locationid)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(saipe_schooldistrict_kcdatacenter,file="your path/goes here/nameyourcsv.csv",row.names=FALSE)
 ```
