@@ -8,9 +8,10 @@ output: html_document
 ## Indicator 1: Children enrolled in Medicaid and Healthy Montana Kids (CHIP)
 ## Indicator 2: SNAP recipients and SNAP households
 ## Indicator 3: SNAP recipients ages 0 to 18
-## Indicator 4: SNAP average benefit amount per household
-## Indicator 5: TANF recipients and TANF households
-## Indicator 6: TANF recipients ages 0 to 18
+## Indicator 4: SNAP average benefit amount per recipient
+## Indicator 5: SNAP average benefit amount per household
+## Indicator 6: TANF recipients and TANF households
+## Indicator 7: TANF recipients ages 0 to 18
 
 **Created by:** Xanna Burg
 **Date:** April 2020
@@ -61,11 +62,11 @@ regionids$county <- as.character(regionids$county)
 ```
 
 
+## ###################################################### ##
+## CHILDREN ENROLLED IN MEDICAID AND HEALTHY MONTANA KIDS ##
+## ###################################################### ##
 
-**CHILDREN ENROLLED IN MEDICAID AND HEALTHY MONTANA KIDS**
-#This indicator calculates the percent of the population participating in each Medicaid group, however Medicaid data is available for the current year, where population estimates lag by a year. Therefore, this code has to both calculate current year estimates without a percent, and then re-calculate the percent when the population estimate is available.
-
-
+**This indicator calculates the percent of the population participating in each Medicaid group, however Medicaid data is available for the current year, where population estimates lag by a year. Therefore, this code has to both calculate current year estimates without a percent, and then re-calculate the percent when the population estimate is available.**
 #####STEP 1: READ IN DATA FROM DPHHS IN SEPTEMBER WHEN RECEIVE#####
 ```{r}
 #read in the data that was shared by DPHHS
@@ -248,7 +249,6 @@ write.csv(upload_datacenter_medicaid_number,file=paste0("./Output/health/",datab
 
 
 #####STEP 2: CREATE PERCENT ESTIMATES AFTER THE POPULATION ESTIMATES BY SINGLE YEAR OF AGE FOR VINTAGE YEAR MATCHING DATA IS UPDATED IN JUNE OF THE FOLLOWING YEAR#####
-
 ```{r}
 ##########################################
 #CALCULATE THE PERCENT FROM THE POPULATION
@@ -339,7 +339,10 @@ write.csv(upload_datacenter_medicaid_percent,file=paste0("./Output/health/",data
 
 
 
-**SNAP RECIPIENTS AND SNAP HOUSEHOLDS**
+## ################################### ##
+## SNAP RECIPIENTS AND SNAP HOUSEHOLDS ##
+## ################################### ##
+
 ```{r}
 #read in the data that was shared by DPHHS
 snap <- read_excel(path=paste0("./Input/economics/montana_june_17_19_tanfsnap.xlsx"),sheet=paste0("SNAP June ",year))
@@ -478,10 +481,11 @@ write.csv(upload_datacenter_snap_number,file=paste0("./Output/economics/",databa
 
 
 
-**SNAP RECIPIENTS AGES 0 TO 18**
-#This indicator calculates the percent of the population ages 0 to 18 participating in SNAP, however SNAP data is available for the current year, where population estimates lag by a year. Therefore, this code has to both calculate current year estimates without a percent, and then re-calculate the percent when the population estimate is available.
+## ############################ ##
+## SNAP RECIPIENTS AGES 0 TO 18 ##
+## ############################ ##
 
-
+**This indicator calculates the percent of the population ages 0 to 18 participating in SNAP, however SNAP data is available for the current year, where population estimates lag by a year. Therefore, this code has to both calculate current year estimates without a percent, and then re-calculate the percent when the population estimate is available.**
 #####STEP 1: READ IN DATA FROM DPHHS IN SEPTEMBER WHEN RECEIVE#####
 ```{r}
 #read in the data that was shared by DPHHS
@@ -619,7 +623,6 @@ write.csv(upload_datacenter_snap_number,file=paste0("./Output/economics/",databa
 
 
 #####STEP 2: CREATE PERCENT ESTIMATES AFTER THE POPULATION ESTIMATES BY SINGLE YEAR OF AGE FOR VINTAGE YEAR MATCHING DATA IS UPDATED IN JUNE OF THE FOLLOWING YEAR#####
-
 ```{r}
 ##########################################
 #CALCULATE THE PERCENT FROM THE POPULATION
@@ -708,8 +711,9 @@ write.csv(upload_datacenter_snap_percent,file=paste0("./Output/economics/",datab
 ```
 
 
-
-**SNAP AVERAGE BENEFIT AMOUNT PER HOUSEHOLD**
+## ######################################### ##
+## SNAP AVERAGE BENEFIT AMOUNT PER HOUSEHOLD ##
+## ######################################### ##
 
 ```{r}
 #read in the data that was shared by DPHHS
@@ -825,7 +829,129 @@ write.csv(upload_datacenter_snap_benefit,file=paste0("./Output/economics/",datab
 
 
 
-**TANF RECIPIENTS AND TANF HOUSEHOLDS**
+## ######################################### ##
+## SNAP AVERAGE BENEFIT AMOUNT PER RECIPIENT ##
+## ######################################### ##
+
+```{r}
+#read in the data that was shared by DPHHS
+snap <- read_excel(path=paste0("./Input/economics/montana_june_17_19_tanfsnap.xlsx"),sheet=paste0("SNAP June ",year))
+  
+#create state data frame subsetting for Grand Total row
+snap_state <- snap %>%
+  subset(County=='State Totals')
+
+#create the county data frame 
+snap_county <- snap %>%
+  
+  subset(County != 'State Totals') %>%
+  
+  #remove the - ## from each county
+  mutate(location=gsub(" -.*","",County)) %>%
+
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) 
+  
+
+#####################
+#CLEAN UP COUNTY DATA
+snap_county_indbenefit <- snap_county %>%
+  
+  rename(totalissuance='Total Issuance Amount') %>%
+  mutate(data=totalissuance/Recipients) %>%
+  
+  select(c(location,data)) %>%
+  
+  #add in KC variables
+  mutate(locationtype='County') %>%
+  mutate(state=statename) %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Currency') %>%
+  mutate(varname='snapaveragebenefitperrecipient')
+
+
+
+####################
+#CLEAN UP STATE DATA
+snap_state_indbenefit <- snap_state %>%
+
+  rename(totalissuance='Total Issuance Amount') %>%
+  mutate(data=totalissuance/Recipients) %>%
+  
+  select(c(data)) %>%
+  
+  #add in KC variables
+  mutate(location=statename) %>%
+  mutate(locationtype='State') %>%
+  mutate(state=statename) %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Currency') %>%
+  mutate(varname='snapaveragebenefitperrecipient') 
+
+
+
+###############################################
+###############################################
+#UNION COUNTY, STATE, AND STATE PLANNING REGION
+upload_snap_indbenefit <- snap_county_indbenefit %>%
+  bind_rows(snap_state_indbenefit) %>%
+
+  #merge in location ids
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
+  
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(upload_snap_indbenefit$locationid))>=1) {
+  print(upload_snap_indbenefit$location[is.na(upload_snap_indbenefit$locationid)])
+} else if (sum(is.na(upload_snap_indbenefit$locationid))==0) {
+  'all locations match'
+}
+
+
+# 2. Visually inspect output data
+View(upload_snap_indbenefit)
+```
+
+```{r}
+#CHECK DATASET NAMED upload_snap_benefit TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,upload_snap_indbenefit,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+uploadbenefit_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='snapaveragebenefitperrecipient';")
+
+
+upload_datacenter_snap_indbenefit <- dbGetQuery(con,uploadbenefit_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter_snap_indbenefit,file=paste0("./Output/economics/",database_state,"_",year,"_snapaveragebenefitperrecipient.csv"),row.names=FALSE)
+```
+
+
+## ################################### ##
+## TANF RECIPIENTS AND TANF HOUSEHOLDS ##
+## ################################### ##
+
 ```{r}
 #read in the data that was shared by DPHHS
 tanf <- read_excel(path=paste0("./Input/economics/montana_june_17_19_tanfsnap.xlsx"),sheet=paste0("TANF June ",year))
@@ -965,10 +1091,11 @@ write.csv(upload_datacenter_tanf_number,file=paste0("./Output/economics/",databa
 
 
 
-**TANF RECIPIENTS AGES 0 TO 18**
-#This indicator calculates the percent of the population ages 0 to 18 participating in TANF, however TANF data is available for the current year, where population estimates lag by a year. Therefore, this code has to both calculate current year estimates without a percent, and then re-calculate the percent when the population estimate is available.
+## ############################ ##
+## TANF RECIPIENTS AGES 0 TO 18 ##
+## ############################ ##
 
-
+**This indicator calculates the percent of the population ages 0 to 18 participating in TANF, however TANF data is available for the current year, where population estimates lag by a year. Therefore, this code has to both calculate current year estimates without a percent, and then re-calculate the percent when the population estimate is available.**
 #####STEP 1: READ IN DATA FROM DPHHS IN SEPTEMBER WHEN RECEIVE#####
 ```{r}
 #read in the data that was shared by DPHHS
@@ -1105,7 +1232,6 @@ write.csv(upload_datacenter_tanf_number,file=paste0("./Output/economics/",databa
 
 
 #####STEP 2: CREATE PERCENT ESTIMATES AFTER THE POPULATION ESTIMATES BY SINGLE YEAR OF AGE FOR VINTAGE YEAR MATCHING DATA IS UPDATED IN JUNE OF THE FOLLOWING YEAR#####
-
 ```{r}
 ##########################################
 #CALCULATE THE PERCENT FROM THE POPULATION
