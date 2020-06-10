@@ -1,0 +1,294 @@
+---
+title: "Map the Meal Gap 2020 Projections"
+author: "Xanna Burg"
+date: "6/10/2020"
+output: html_document
+---
+
+## Indicator 1: (Special Projection) Child food insecurity by county in 2020
+
+**Created by:** Xanna Burg
+**Date:** June 2020
+**Updated by:**
+
+**Data Source:** Feeding America, The Impact of the Coronavirus on Food Security
+**Purpose:** Input the special report of data, downloaded from the Tableau dashboard
+
+**Data format:** final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Data (numeric: number, percentage, rate), DataFormat (character: "number" or "percent" or "rate"), LocationId (numeric: assigned for KIDS COUNT system)
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+library(stringr)
+```
+
+```{r}
+#input location ID file
+MT_locationids <- read.csv("./Input/MT KC Location IDs.csv")
+MT_locationids$Location <- as.character(paste(MT_locationids$Location))
+ND_locationids <- read.csv("./Input/ND KC Location IDs.csv")
+ND_locationids$Location <- as.character(paste(ND_locationids$Location))
+SD_locationids <- read.csv("./Input/SD KC Location IDs.csv")
+SD_locationids$Location <- as.character(paste(SD_locationids$Location))
+```
+
+## STEP 1: IMPORT THE DATA AND CHECK THAT ALL IS IMPORTED CORRECTLY
+```{r}
+df_food <- read.csv("./Input/economics/MMG_2020Projections_ALLDATA.csv")
+df_food_state <- read.csv("./Input/economics/MMG_2020Projections_ALLDATA_state.csv")
+```
+
+
+## STEP 2: CLEAN THE IMPORTED DATA FOR COUNTY LEVEL AND STATE LEVEL
+```{r}
+############
+#COUNTY DATA
+#subset to only include Montana, North Dakota, and South Dakota and clean the data
+
+county_food <- df_food %>%
+  subset(State=='MT' | State=='ND' | State=='SD') %>%
+  rename(state='State',
+         county='County..State',
+         childfi_rate_2020='X.C..2020.Child.Food.Insecurity..',
+         childfi_rate_2018='X2018.Child.Food.Insecurity..') %>%
+  mutate(county=sub("\\ County.*","",county)) %>% 
+  select(c(state,county,childfi_rate_2020,childfi_rate_2018)) %>%
+  mutate(state=case_when(
+    state=='MT' ~ 'Montana',
+    state=='ND' ~ 'North Dakota',
+    state=='SD' ~ 'South Dakota')) %>%
+  rename(location=county) %>%
+  mutate(locationtype='County') %>%
+  pivot_longer(cols=c(childfi_rate_2018,childfi_rate_2020),names_to='timeframe',values_to='data') %>%
+  mutate(timeframe=case_when(
+    timeframe=='childfi_rate_2020' ~ '2020',
+    timeframe=='childfi_rate_2018' ~ '2018')) %>%
+  
+  #reformat percentage
+  mutate(data=as.numeric(gsub("[\\%,]", "",data))) %>%
+  mutate(data=data/100) %>%
+  
+  mutate(dataformat='Percent') %>%
+  mutate(varname='childfoodinsecuritymmg_specialprojection2020')
+
+#merge in location IDs with data
+
+#MONTANA COUNTY DATA  
+mt_county_food <- county_food %>%
+  subset(state=='Montana') %>%
+  mutate(location=replace(location, 
+                          state=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  left_join(MT_locationids, by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+#NORTH DAKOTA COUNTY DATA
+nd_county_food <- county_food %>%
+  subset(state=='North Dakota') %>%
+  left_join(ND_locationids, by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+#SOUTH DAKOTA COUNTY DATA
+sd_county_food <- county_food %>%
+  subset(state=='South Dakota') %>%
+  left_join(SD_locationids, by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+
+
+###########
+#STATE DATA
+#subset to only include Montana, North Dakota, and South Dakota and clean the data
+
+state_food <- df_food_state %>%
+  subset(State=='Montana' | State=='North Dakota' | State=='South Dakota') %>%
+  rename(state='State',
+         childfi_rate_2020=X2020.Projected,
+         childfi_rate_2018=X2018) %>%
+  select(c(state,childfi_rate_2020,childfi_rate_2018)) %>%
+   mutate(location=case_when(
+    state=='Montana' ~ 'Montana',
+    state=='North Dakota' ~ 'North Dakota',
+    state=='South Dakota' ~ 'South Dakota')) %>%
+  mutate(locationtype='State') %>%
+  
+  pivot_longer(cols=c(childfi_rate_2018,childfi_rate_2020),names_to='timeframe',values_to='data') %>%
+  mutate(timeframe=case_when(
+    timeframe=='childfi_rate_2020' ~ '2020',
+    timeframe=='childfi_rate_2018' ~ '2018')) %>%
+  
+  #reformat percentage
+  mutate(data=as.numeric(gsub("[\\%,]", "",data))) %>%
+  mutate(data=data/100) %>%
+  
+  mutate(dataformat='Percent') %>%
+  mutate(varname='childfoodinsecuritymmg_specialprojection2020')
+
+#merge in location IDs with data
+
+#MONTANA COUNTY DATA  
+mt_state_food <- state_food %>%
+  subset(state=='Montana') %>%
+  mutate(location=replace(location, 
+                          state=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  left_join(MT_locationids, by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+#NORTH DAKOTA COUNTY DATA
+nd_state_food <- state_food %>%
+  subset(state=='North Dakota') %>%
+  left_join(ND_locationids, by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+#SOUTH DAKOTA COUNTY DATA
+sd_state_food <- state_food %>%
+  subset(state=='South Dakota') %>%
+  left_join(SD_locationids, by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+
+
+#######################################################
+#COMBINE COUNTY AND STATE DATA, SEPARATE FOR EACH STATE
+mt_data <- mt_county_food %>%
+  bind_rows(mt_state_food)
+
+nd_data <- nd_county_food %>%
+  bind_rows(nd_state_food)
+
+sd_data <- sd_county_food %>%
+  bind_rows(sd_state_food)
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+#MONTANA
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(mt_data$locationid))>=1) {
+  print(mt_data$location[is.na(mt_data$locationid)])
+} else if (sum(is.na(mt_data$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- mt_data %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+View(mt_data)
+
+#NORTH DAKOTA
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(nd_data$locationid))>=1) {
+  print(nd_data$location[is.na(nd_data$locationid)])
+} else if (sum(is.na(nd_data$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- nd_data %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+View(nd_data)
+
+#SOUTH DAKOTA
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(sd_data$locationid))>=1) {
+  print(sd_data$location[is.na(sd_data$locationid)])
+} else if (sum(is.na(sd_data$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- sd_data %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+View(sd_data)
+```
+
+## STEP 2: COMMIT TO DATABASE
+```{r}
+#CHECK DATASETS NAMED mt_data, nd_data, AND sd_data TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',mt_data,append=TRUE,row.names=FALSE)
+dbWriteTable(con,'northdakota',nd_data,append=TRUE,row.names=FALSE)
+dbWriteTable(con,'southdakota',sd_data,append=TRUE,row.names=FALSE)
+```
+
+## STEP 3: OUTPUT DATA FOR UPLOADING TO DATA CENTER 
+**Child food insecurity by county**
+```{r}
+#write query from database to get needed format for KC data center for food insecurity only
+
+mt_food_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE varname='childfoodinsecuritymmg_specialprojection2020';")
+
+mt_upload_data_food <- dbGetQuery(con,mt_food_sql)
+
+mt_upload_data_food2 <- mt_upload_data_food %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+nd_food_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE varname='childfoodinsecuritymmg_specialprojection2020';")
+
+nd_upload_data_food <- dbGetQuery(con,nd_food_sql)
+
+nd_upload_data_food2 <- nd_upload_data_food %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+sd_food_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM southdakota WHERE varname='childfoodinsecuritymmg_specialprojection2020';")
+
+sd_upload_data_food <- dbGetQuery(con,sd_food_sql)
+
+sd_upload_data_food2 <- sd_upload_data_food %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(mt_upload_data_food2,file=paste0("./Output/economics/montana_childfoodinsecuritymmg_specialprojection2020.csv"),row.names=FALSE)
+
+write.csv(nd_upload_data_food2,file=paste0("./Output/economics/northdakota_childfoodinsecuritymmg_specialprojection2020.csv"),row.names=FALSE)
+
+write.csv(sd_upload_data_food2,file=paste0("./Output/economics/southdakota_childfoodinsecuritymmg_specialprojection2020.csv"),row.names=FALSE)
+```
+
