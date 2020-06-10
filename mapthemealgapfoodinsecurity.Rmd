@@ -33,16 +33,20 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '17'
-fullyear <- '2017' 
+year <- '18'
+fullyear <- '2018' 
 
 
-#input location ID file for MT
+#input location ID file
 MT_locationids <- read.csv("./Input/MT KC Location IDs.csv")
+MT_locationids$Location <- as.character(paste(MT_locationids$Location))
 ND_locationids <- read.csv("./Input/ND KC Location IDs.csv")
+ND_locationids$Location <- as.character(paste(ND_locationids$Location))
 SD_locationids <- read.csv("./Input/SD KC Location IDs.csv")
+SD_locationids$Location <- as.character(paste(SD_locationids$Location))
 ```
 
+## STEP 1: IMPORT THE DATA AND CHECK THAT ALL IS IMPORTED CORRECTLY
 ```{r}
 #read in the data in Excel format with multiple sheets
 
@@ -53,7 +57,11 @@ df_food <- read_excel(path=xl_data, sheet=paste0(fullyear,' County'))
 df_food_state <- read_excel(path=xl_data, sheet=paste0(fullyear,' State'))
 ```
 
+
+## STEP 2: CLEAN THE IMPORTED DATA FOR COUNTY LEVEL AND STATE LEVEL
+**This code cleans the data for both child food insecurity and average cost per meal (two separate indicators)**
 ```{r}
+############
 #COUNTY DATA
 #subset to only include Montana, North Dakota, and South Dakota and clean the data
 
@@ -121,9 +129,10 @@ sd_county_food <- county_allvars %>%
   subset(state=='South Dakota') %>%
   left_join(SD_locationids, by=c('location'='Location')) %>%
   rename(locationid=LocationId)
-```
 
-```{r}
+
+
+###########
 #STATE DATA
 #subset to only include Montana, North Dakota, and South Dakota and clean the data
 
@@ -191,9 +200,11 @@ sd_state_food <- state_allvars %>%
   subset(state=='South Dakota') %>%
   left_join(SD_locationids, by=c('location'='Location')) %>%
   rename(locationid=LocationId)
-```
-```{r}
-#combine county and state data, separate for each state
+
+
+
+#######################################################
+#COMBINE COUNTY AND STATE DATA, SEPARATE FOR EACH STATE
 mt_data <- mt_county_food %>%
   bind_rows(mt_state_food)
 
@@ -202,8 +213,80 @@ nd_data <- nd_county_food %>%
 
 sd_data <- sd_county_food %>%
   bind_rows(sd_state_food)
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+#MONTANA
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(mt_data$locationid))>=1) {
+  print(mt_data$location[is.na(mt_data$locationid)])
+} else if (sum(is.na(mt_data$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- mt_data %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+View(mt_data)
+
+#NORTH DAKOTA
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(nd_data$locationid))>=1) {
+  print(nd_data$location[is.na(nd_data$locationid)])
+} else if (sum(is.na(nd_data$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- nd_data %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+View(nd_data)
+
+#SOUTH DAKOTA
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(sd_data$locationid))>=1) {
+  print(sd_data$location[is.na(sd_data$locationid)])
+} else if (sum(is.na(sd_data$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- sd_data %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+View(sd_data)
 ```
 
+## STEP 2: COMMIT TO DATABASE
 ```{r}
 #CHECK DATASETS NAMED mt_data, nd_data, AND sd_data TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
 #add to database
@@ -211,6 +294,9 @@ dbWriteTable(con,'montana',mt_data,append=TRUE,row.names=FALSE)
 dbWriteTable(con,'northdakota',nd_data,append=TRUE,row.names=FALSE)
 dbWriteTable(con,'southdakota',sd_data,append=TRUE,row.names=FALSE)
 ```
+
+## STEP 3: OUTPUT DATA FOR UPLOADING TO DATA CENTER 
+**Child food insecurity by county**
 ```{r}
 #write query from database to get needed format for KC data center for food insecurity only
 
@@ -256,7 +342,7 @@ write.csv(nd_upload_data_food2,file=paste0("./Output/economics/northdakota_",ful
 write.csv(sd_upload_data_food2,file=paste0("./Output/economics/southdakota_",fullyear,"_childfoodinsecuritymmg.csv"),row.names=FALSE)
 ```
 
-
+**Average cost per meal by county**
 ```{r}
 #write query from database to get needed format for KC data center for average cost of meal
 
