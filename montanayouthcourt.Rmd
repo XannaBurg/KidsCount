@@ -1,0 +1,300 @@
+---
+title: "Montana Juvenile Offenses"
+author: "Xanna Burg"
+date: "6/5/2020"
+output: html_document
+---
+
+## Indicator 1: Youth referred to Youth Court
+## Indicator 2: Referrals to Youth Court
+## Indicator 3: Juvenile offenses
+
+**Created by:** Xanna Burg
+**Date:** June 2020
+**Updated by:**
+
+**Data Source:** Montana Judicial Branch, Youth Court Services
+**Purpose:** Input the youth court data
+
+**Data format:** final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Data (numeric: number, percentage, rate), DataFormat (character: "number" or "percent" or "rate"), LocationId (numeric: assigned for KIDS COUNT system)
+
+**To use this code for a new year:**
+* Update the year in the second code chunk for variable 'year' and 'fullyear'
+* Check each dataset visually and through the report logs prior to commiting to the database.
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+library(stringr)
+```
+
+```{r}
+####UPDATE to reflect the current year data working with
+year <- '19'
+fullyear <- '2019' 
+
+
+#input location ID file
+locationids <- read.csv("./Input/MT KC Location IDs.csv")
+locationids$Location <- as.character(paste(locationids$Location))
+
+#input county reference file
+MT_counties <- read.csv("./Input/MT County List.csv")
+MT_counties$Location <- as.character(paste(MT_counties$Location))
+
+```
+
+
+## ############################# ##
+## YOUTH REFERRED TO YOUTH COURT ##
+## REFERRALS TO YOUTH COURT      ##
+## ############################# ##
+
+## STEP 1: CLEAN THE COUNTS OF REFERRALS AND YOUTH
+```{r}
+#import the referral and unduplicated youth data file
+youthdata <- read_excel(path=paste0("./Input/safety/montana_",fullyear,"_juvenilereferralsandyouth.xlsx"),sheet=fullyear,skip=2)
+
+############
+#COUNTY DATA
+youthdata_county <- youthdata %>%
+  subset(County!="Unduplicated Statewide") %>%
+  
+  #merge in all county names
+  mutate(County=replace(County, 
+                          County=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+    mutate(County=replace(County, 
+                          County=='Silverbow', 
+                          'Silver Bow')) %>%
+  full_join(MT_counties,by=c('County'='Location')) %>%
+  
+  rename(location=County,
+         undup_youth='Undup Youth') %>%
+  mutate(locationtype='County') %>%
+  mutate(dataformat='Number') %>%
+  mutate(state='Montana') %>%
+  mutate(timeframe=fullyear) %>%
+  
+  #pivot wide to long
+  pivot_longer(cols=c('Referrals','undup_youth'), names_to='varname',values_to='data') %>%
+  mutate(varname=case_when(
+    varname=='Referrals' ~ 'referralstojuvenilecourt',
+    varname=='undup_youth' ~ 'childrenreferredtojuvenilecourt'))
+
+############
+#STATE DATA
+youthdata_state <- youthdata %>%
+  subset(County=="Unduplicated Statewide") %>%
+  
+  mutate(location='Montana') %>%
+  select(-c(County)) %>%
+  
+  rename(undup_youth='Undup Youth') %>%
+  mutate(locationtype='State') %>%
+  mutate(dataformat='Number') %>%
+  mutate(state='Montana') %>%
+  mutate(timeframe=fullyear) %>%
+  
+  #pivot wide to long
+  pivot_longer(cols=c('Referrals','undup_youth'), names_to='varname',values_to='data') %>%
+  mutate(varname=case_when(
+    varname=='Referrals' ~ 'referralstojuvenilecourt',
+    varname=='undup_youth' ~ 'childrenreferredtojuvenilecourt'))
+  
+
+#COMBINE COUNTY AND STATE
+youthdata_all <- youthdata_county %>%
+  bind_rows(youthdata_state) %>%
+  
+  mutate(suppress=case_when(
+    data<5 ~ 1,
+    data>=5 ~ 0)) %>%
+  
+  #suppress if NA or less than 5
+  mutate(data=as.character(paste(data))) %>%
+  mutate(data=case_when(
+    suppress==1 ~ '<5',
+     data=='NA' ~ '0',
+     suppress==0 ~ data)) %>%
+  select(-c(suppress)) %>%
+  
+  #merge in location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+####################
+###################
+#DATA QUALITY CHECKS
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(youthdata_all$locationid))>=1) {
+  print(youthdata_all$location[is.na(youthdata_all$locationid)])
+} else if (sum(is.na(youthdata_all$locationid))==0) {
+  'all locations match'
+}
+
+
+# 3. Visually inspect output data
+View(youthdata_all)
+
+```
+
+## STEP 2: COMMIT COUNTS TO DATABASE
+```{r}
+#CHECK DATASETS NAMED youthdata_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',youthdata_all,append=TRUE,row.names=FALSE)
+```
+
+## STEP 3: OUTPUT DATASETS FOR UPLOADING TO DATA CENTER
+```{r}
+#write query from database to get needed format for KC data center 
+
+#REFERRALS
+referrals_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='referralstojuvenilecourt';")
+
+referrals_upload <- dbGetQuery(con,referrals_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(referrals_upload,file=paste0("./Output/safety/montana_",fullyear,"_referralstojuvenilecourt.csv"),row.names=FALSE)
+
+#YOUTH
+youth_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='childrenreferredtojuvenilecourt';")
+
+youth_upload <- dbGetQuery(con,youth_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(youth_upload,file=paste0("./Output/safety/montana_",fullyear,"_childrenreferredtojuvenilecourt.csv"),row.names=FALSE)
+```
+
+
+## ################# ##
+## JUVENILE OFFENSES ##
+## ################# ##
+
+## STEP 1: IMPORT AND CLEAN DATA
+```{r}
+#import the data
+offensedata <- read_excel(path=paste0("./Input/safety/montana_",fullyear,"_juvenileoffenses.xlsx"),sheet=fullyear)
+
+############
+#COUNTY DATA
+offenses_county <- offensedata %>%
+  subset(County!='NULL'& !is.na(County)) %>%
+  
+  #sum by county
+  group_by(County) %>%
+  summarise(data=sum(Count)) %>%
+  ungroup %>%
+  
+  rename(location=County) %>%
+  
+  #merge in all county names
+  mutate(location=replace(location, 
+                          location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+    mutate(location=replace(location, 
+                          location=='Silverbow', 
+                          'Silver Bow')) %>%
+  full_join(MT_counties,by=c('location'='Location')) %>%
+    mutate(locationtype='County') 
+
+
+###########
+#STATE DATA
+offenses_state <- offensedata %>%
+  subset(County!='NULL'& !is.na(County)) %>%
+  
+  mutate(location='Montana') %>%
+  
+  #sums for state
+  group_by(location) %>%
+  summarise(data=sum(Count)) %>%
+  ungroup %>%
+  
+  mutate(locationtype='State') 
+
+
+##############################
+#COMBINE COUNTY AND STATE DATA
+offenses_all <- offenses_county %>%
+  bind_rows(offenses_state) %>%
+  
+  mutate(timeframe=fullyear) %>%
+  mutate(state='Montana') %>%
+  mutate(varname='juvenileoffenses') %>%
+  
+  #merge in location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  #suppress if less than 5 and change NA to zero
+  mutate(suppress=case_when(
+    data<5 ~ 1,
+    data>=5 ~ 0)) %>%
+  mutate(data=as.character(paste(data))) %>%
+  mutate(data=case_when(
+    suppress==1 ~ '<5',
+    suppress==0 ~ data,
+    data=='NA' ~ '0')) %>%
+  select(-c(suppress)) %>%
+  
+  mutate(dataformat='Number')
+
+
+####################
+###################
+#DATA QUALITY CHECKS
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(offenses_all$locationid))>=1) {
+  print(offenses_all$location[is.na(offenses_all$locationid)])
+} else if (sum(is.na(offenses_all$locationid))==0) {
+  'all locations match'
+}
+
+
+# 2. Visually inspect output data
+View(offenses_all)
+```
+
+## STEP 2: COMMIT COUNTS TO DATABASE
+```{r}
+#CHECK DATASETS NAMED offenses_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',offenses_all,append=TRUE,row.names=FALSE)
+```
+
+## STEP 3: OUTPUT DATASETS FOR UPLOADING TO DATA CENTER
+```{r}
+#write query from database to get needed format for KC data center 
+
+offenses_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='juvenileoffenses';")
+
+offenses_upload <- dbGetQuery(con,offenses_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(offenses_upload,file=paste0("./Output/safety/montana_",fullyear,"_juvenileoffenses.csv"),row.names=FALSE)
+```
+
