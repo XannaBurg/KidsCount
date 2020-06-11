@@ -1033,6 +1033,9 @@ median_all <- median_county %>%
   mutate(data_relativese=((moe/1.645)/data)*100) %>%
   mutate(keep=if_else(data_relativese>30,0,1)) %>%
   mutate(data=replace(data,keep==0,NA)) %>%
+  mutate(moe=replace(moe,keep==0,NA)) %>%
+  mutate(lci=replace(lci,keep==0,NA)) %>%
+  mutate(uci=replace(uci,keep==0,NA)) %>%
   select(-c(keep,data_relativese)) %>%
   
   #add KC variables
