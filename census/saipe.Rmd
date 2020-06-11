@@ -7,9 +7,10 @@ output: html_document
 
 ## Indicator 1: Children in poverty (1-year estimates)
 ## Indicator 2: (for SD only) School district - Children ages 5-17 in poverty (1-year estimates)
+## Indicator 3: Median household income
 
 **Created by:** Xanna Burg
-**Date:** April 2020
+**Date:** May 2020
 **Updated by:**
 
 **Data Source:** U.S. Census Bureau, Small Area Income and Poverty Estimates https://www.census.gov/programs-surveys/saipe.html
@@ -45,7 +46,7 @@ library(gt)
 ```{r}
 #metadata for available variables
 #saipe_vars <- listCensusMetadata(name="timeseries/poverty/saipe",
-                              # type="variables")
+ #                             type="variables")
 
 #saipe_vars <- listCensusMetadata(name="timeseries/poverty/saipe/schdist",
                               # type="variables")
@@ -59,7 +60,7 @@ fips <- fips_codes
 ```{r}
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
-statename <- "South Dakota"
+statename <- "North Dakota"
 year <- "2018"
 
 
@@ -961,3 +962,189 @@ saipe_schooldistrict_kcdatacenter <- saipe_district_5to17 %>%
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
 write.csv(saipe_schooldistrict_kcdatacenter,file="your path/goes here/nameyourcsv.csv",row.names=FALSE)
 ```
+
+
+
+
+## ####################### ##
+## MEDIAN HOUSEHOLD INCOME ##
+## ####################### ##
+
+# STEP 1: IMPORT AND CLEAN DATA
+```{r}
+##UNDER THE getCensus() FUNCTION, ADD YOUR OWN CENSUS API KEY IN ORDER TO USE THIS CODE. OR FOLLOW THE INSTRUCTIONS ON THE PACKAGE DOCUMENTATION TO SET YOUR API KEY IN YOUR R ENVIRONMENT
+#https://cran.r-project.org/web/packages/censusapi/vignettes/getting-started.html
+
+
+#timeseries/poverty/saipe table is: Small Area Income and Poverty Estimates
+
+############
+#COUNTY DATA
+median_county <- getCensus(name="timeseries/poverty/saipe",
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("NAME","SAEMHI_PT","SAEMHI_MOE","SAEMHI_LB90","SAEMHI_UB90"),
+          region="county:*",
+          regionin=paste0("state:",statecode),
+          YEAR=year) %>%
+  
+  #rename columns
+  rename(data=SAEMHI_PT,
+         moe=SAEMHI_MOE,
+         lci=SAEMHI_LB90,
+         uci=SAEMHI_UB90,
+         timeframe=YEAR) %>%
+    
+  #remove "County" from location
+  mutate(location=gsub("\\s*\\w*$", "", NAME)) %>%
+  #select KC database variables
+  select(c(location,timeframe,data,moe,lci,uci)) %>%
+  
+  mutate(locationtype='County')
+
+##########
+#STAE DATA
+median_state <- getCensus(name="timeseries/poverty/saipe",
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("NAME","SAEMHI_PT","SAEMHI_MOE","SAEMHI_LB90","SAEMHI_UB90"),
+          region=paste0("state:",statecode),
+          YEAR=year) %>%
+  
+  #rename columns
+  rename(location=NAME,
+         data=SAEMHI_PT,
+         moe=SAEMHI_MOE,
+         lci=SAEMHI_LB90,
+         uci=SAEMHI_UB90,
+         timeframe=YEAR) %>%
+
+  #select KC database variables
+  select(c(location,timeframe,data,moe,lci,uci)) %>%
+  
+  mutate(locationtype='State')
+
+#########################
+#COMBINE STATE AND COUNTY
+median_all <- median_county %>%
+  bind_rows(median_state) %>%
+  
+  #calculate relative SE and remove data where relative standard error is greater than 30
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(moe=as.numeric(paste(moe))) %>%
+  mutate(data_relativese=((moe/1.645)/data)*100) %>%
+  mutate(keep=if_else(data_relativese>30,0,1)) %>%
+  mutate(data=replace(data,keep==0,NA)) %>%
+  select(-c(keep,data_relativese)) %>%
+  
+  #add KC variables
+  mutate(state=statename) %>%
+  mutate(varname='medianhouseholdincome_saipe') %>%
+  mutate(dataformat='Currency') %>%
+  
+#merge in location ids
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  mutate(location=replace(location, 
+                          statename=='South Dakota' & location=='Shannon', 
+                          'Oglala Lakota')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(median_all$locationid))>=1) {
+  print(median_all$location[is.na(median_all$locationid)])
+} else if (sum(is.na(median_all$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- median_all %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+View(median_all)
+```
+
+# STEP 2: COMMIT TO DATABASE AND CREATE FILES FOR OUTPUT
+```{r}
+#CHECK DATASET NAMED median_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,median_all,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#########################
+##OUTPUT DATA CENTER FILE
+
+saipe_datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='medianhouseholdincome_saipe';")
+
+upload_data_saipe<- dbGetQuery(con,saipe_datacenter_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_saipe,file=paste0("../Output/economics/",database_state,"_",year,"_medianhouseholdincome_saipe.csv"),row.names=FALSE)
+
+
+#############################
+##OUTPUT MARGIN OF ERROR FILE
+saipe_moe_sql <- paste0("SELECT timeframe,location,data, lci, uci FROM ", database_state," WHERE timeframe='",year,"' AND varname='medianhouseholdincome_saipe' AND locationtype='County';")
+
+#alphabetize counties
+moe_output_saipe<- dbGetQuery(con,saipe_moe_sql) %>%
+  arrange(location)
+
+#state
+saipe_moe_sql2 <- paste0("SELECT timeframe,location, data, lci, uci FROM ", database_state," WHERE timeframe='",year,"' AND varname='medianhouseholdincome_saipe' AND locationtype='State';")
+
+moe_output_saipe2 <- dbGetQuery(con,saipe_moe_sql2)
+
+
+#combine county and state
+moe_output_saipe_ordered <- moe_output_saipe %>%
+  bind_rows(moe_output_saipe2) 
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(moe_output_saipe_ordered,file=paste0("../Output/economics/moe/",database_state,"_",year,"_medianhouseholdincome_saipe_moe.csv"),row.names=FALSE)
+```
+
+# STEP 2B: OUTPUT KIDS COUNT DATA CENTER FORMAT (SKIP ADDING TO DATABASE AND MARGINS OF ERROR)
+#This is code that can be used by states that do not have a database to store KIDS COUNT data, but just need a .csv output to upload to the data center.
+**You must add a file path and name the desired csv file to the write.csv code**
+```{r}
+medianincome_kcdatacenter <- median_all %>%
+  select(c(location,dataformat,data,timeframe,locationid)) %>%
+  rename(Location=location,
+         DataFormat=dataformat,
+         Data=data,
+         TimeFrame=timeframe,
+         LocationId=locationid)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(medianincome_kcdatacenter,file="your path/goes here/nameyourcsv.csv",row.names=FALSE)
+```
+
+
+
+
+
