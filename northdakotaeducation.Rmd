@@ -325,6 +325,7 @@ dbWriteTable(con,'northdakota',frl_all,append=TRUE,row.names=FALSE)
 ```
 
 ## STEP 3: OUTPUT DATASET FOR UPLOADING TO KC DATA CENTER
+**Before uploading to Data Center, check on suppression guidelines. If only one location is suppressed, need to suppress another in order to adhere to guidelines**
 ```{r}
 #########################
 ##OUTPUT DATA CENTER FILE
@@ -579,6 +580,7 @@ dbWriteTable(con,'northdakota',homeless_all,append=TRUE,row.names=FALSE)
 ```
 
 ## STEP 3: OUTPUT DATASET FOR UPLOADING TO KC DATA CENTER
+**Before uploading to Data Center, check on suppression guidelines. If only one location is suppressed, need to suppress another in order to adhere to guidelines**
 ```{r}
 #########################
 ##OUTPUT DATA CENTER FILE
