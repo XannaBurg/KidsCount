@@ -49,7 +49,6 @@ library(stringr)
 
 #county and state names that match fips codes (from tidycensus package)
 fips <- fips_codes
-fips$county_code = str_remove(fips$county_code, "^0+")
 
 #import tribal fips code (from file on local drive)
 fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
@@ -61,7 +60,7 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 statename <- "South Dakota"
-year <- "2018"
+year <- "2019"
 
 
 
@@ -112,13 +111,9 @@ statecode <- as.numeric(unique(fips$state_code[fips$state_name==statename]))
 pop_county <- getCensus(name="pep/charagegroups",
           vintage=year,
           key=Sys.getenv("CENSUS_API_KEY"),
-          vars=c("POP","DATE_CODE","DATE_DESC"),
+          vars=c("POP","DATE_CODE","DATE_DESC","AGEGROUP"),
           region="county:*",
           regionin=paste0("state:",statecode),
-          AGEGROUP=1,
-          AGEGROUP=2,
-          AGEGROUP=3,
-          AGEGROUP=4,
           RACE=0,
           RACE=1,
           RACE=2,
@@ -127,6 +122,9 @@ pop_county <- getCensus(name="pep/charagegroups",
           RACE=5,
           RACE=6,
           HISP=0) %>%
+  
+  #subset for correct age groups
+  subset(AGEGROUP=='1' | AGEGROUP=='2' | AGEGROUP=='3' | AGEGROUP=='4') %>%
   
   #create the timeframe using the Date codes
   mutate(timeframe=case_when(
@@ -160,7 +158,7 @@ pop_county <- getCensus(name="pep/charagegroups",
     RACE=='6' ~ 'Two or more races')) %>%
   
   
-  select(c(county,POP,AGEGROUP,timeframe,state_name,race))
+  select(c(county,POP,AGEGROUP,timeframe,state_name,race)) 
 
 
 
@@ -169,12 +167,8 @@ pop_county <- getCensus(name="pep/charagegroups",
 pop_state <- getCensus(name="pep/charagegroups",
           vintage=year,
           key=Sys.getenv("CENSUS_API_KEY"),
-          vars=c("POP","DATE_CODE","DATE_DESC"),
+          vars=c("POP","DATE_CODE","DATE_DESC","AGEGROUP"),
           region=paste0("state:",statecode),
-          AGEGROUP=1,
-          AGEGROUP=2,
-          AGEGROUP=3,
-          AGEGROUP=4,
           RACE=0,
           RACE=1,
           RACE=2,
@@ -183,6 +177,8 @@ pop_state <- getCensus(name="pep/charagegroups",
           RACE=5,
           RACE=6,
           HISP=0) %>%
+  
+  subset(AGEGROUP=='1' | AGEGROUP=='2' | AGEGROUP=='3' | AGEGROUP=='4') %>%
   
   #create the timeframe using the Date codes
   mutate(timeframe=case_when(
@@ -422,7 +418,7 @@ if (sum(is.na(pop$locationid))>=1) {
 
 
 # 2. Visually inspect output data
-view(pop)
+View(pop)
 
 ```
 
@@ -458,9 +454,6 @@ upload_data_pop2 <- dbGetQuery(con,pop_sql_prioryears) %>%
          DataFormat=dataformat,
          Data=data,
          Race=race)
-
-
-
 
 #combine current year and prior years to replace all data on data center
 upload_data_pop <- upload_data_pop1 %>%
