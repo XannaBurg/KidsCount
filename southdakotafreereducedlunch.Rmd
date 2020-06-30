@@ -1,0 +1,219 @@
+---
+title: "South Dakota FRL by County"
+author: "Xanna Burg"
+date: "June 2020"
+output: html_document
+---
+
+## Indicator 1: Eligible recipients of free or reduced-price lunch (county only)
+## This code also uses the same files to calculate FRL for tribal areas, where applicable in South Dakota 
+
+**Created by:** Xanna Burg
+**Date:** June 2020
+**Updated by:**
+
+**Data Source:** South Dakota Department of Education, special request from Child and Adult Nutrition Services
+**Purpose:** Input the county-level data
+
+**Data format:** final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Data (numeric: percentage), DataFormat (character: "number" or "percent" or "rate"), LocationId (numeric: assigned for KIDS COUNT system)
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+library(stringr)
+```
+
+```{r}
+####UPDATE to reflect the current year data working with
+year <- '2019'
+fullyear <- '2019/20' 
+statefile <- 'southdakota'
+statename <- 'South Dakota'
+
+#input location ID file for SD
+locationids <- read.csv("./Input/SD KC Location IDs.csv")
+locationids$Location <- as.character(locationids$Location)
+
+#input file with all SD counties
+countylist <- read.csv("./Input/SD County List.csv")
+countylist$county <- as.character(countylist$county)
+```
+
+
+## ################# ##
+## COUNTY-LEVEL DATA ##
+## ################# ##
+
+## STEP 1: IMPORT AND CLEAN DATA
+```{r}
+frl_data <- read_excel(paste0("./Input/education/southdakota_",year,"_frl.xls"),sheet='SORT BY COUNTY - PUBLIC ONLY') %>%
+  
+  #fix data so only the totals are included for each county
+  replace_with_na(replace=list(County='County Subtotal')) %>%
+  fill(County) %>%
+  rename(school='School/Agency Name',
+         studentenrollment='Student Enrollment') %>%
+  subset(is.na(school)) %>%
+  
+  #fix the capitalization in the counties
+  mutate(location=tolower(County)) %>%
+  mutate(location=tools::toTitleCase(location)) %>%
+  mutate(location=replace(location, 
+                          location=='Mccook', 
+                          'McCook')) %>%
+    mutate(location=replace(location, 
+                          location=='Mcpherson', 
+                          'McPherson')) %>%
+  
+  
+  #keep only needed variables
+  rename(data='Free & Red Price Elig %') %>%
+  select(c(location,data,studentenrollment)) %>%
+  
+  #remove state totals
+  subset(location != 'State Totals') %>%
+  
+  #assign NA value to those with **
+  mutate(studentenrollment=as.numeric(paste(studentenrollment))) %>%
+  mutate(data=replace(data,data=='**' & studentenrollment>20,'>=90%')) %>%
+  mutate(data=replace(data,data=='**' & studentenrollment<=20,NA)) %>%
+  select(-c(studentenrollment)) %>%
+  
+  #add in missing counties
+  full_join(countylist,by=c('location'='county')) %>%
+  
+  
+  #add in Kids Count variables
+  mutate(timeframe=fullyear) %>%
+  mutate(state='South Dakota') %>%
+  mutate(dataformat='Percent') %>%
+  mutate(locationtype='County') %>%
+  mutate(varname='freereducedlunch') %>%
+  
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(frl_data$locationid))>=1) {
+  print(frl_data$location[is.na(frl_data$locationid)])
+} else if (sum(is.na(frl_data$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- frl_data %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+View(frl_data)
+```
+
+## STEP 2: ADD TO DATABASE
+```{r}
+#CHECK DATASET NAMED frl_data TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,statefile,frl_data,append=TRUE,row.names=FALSE)
+```
+
+## STEP 3: OUTPUT FILE FOR DATA CENTER
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", statefile," WHERE timeframe='",year,"' AND varname='freereducedlunch' AND locationtype='County';")
+
+upload_datacenter <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter,file=paste0("./Output/education/",statefile,"_",year,"_freereducedlunch.csv"),row.names=FALSE)
+```
+
+
+
+## ################################# ##
+## PROCESS THE DATA FOR TRIBAL AREAS ##
+## ################################# ##
+
+## STEP 1: IMPORT AND CLEAN DATA
+```{r}
+#import the tribal schools crosswalk
+tribalschools <- read.csv("./Documentation/Indicator Documentation/South Dakota Data Requests/southdakota_education_tribalschoolcrosswalk.csv")
+tribalschools$school <- as.character(tribalschools$school)
+
+
+frl_data_tribal <- read_excel(paste0("./Input/education/southdakota_",year,"_frl.xls"),sheet='SORT BY SCHOOL DISTRICT') %>%
+  rename(school='School/Agency Name',
+         data='Free & Red Price Elig %',
+         studentenrollment='Student Enrollment') %>%
+  
+  #add in additional information about tribal schools
+  full_join(tribalschools,by=c('school'='school')) %>%
+  subset(!is.na(location)) %>%
+  
+  #create a variable for >=90% for those with **
+  mutate(studentenrollment=as.numeric(paste(studentenrollment))) %>%
+  mutate(data=replace(data,data=='**' & studentenrollment>20,'>=90%')) %>%
+  mutate(data=replace(data,data=='**' & studentenrollment<=20,NA)) %>%
+  
+  #add in Kids Count variables
+  select(c(data,location,tribalarea)) %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(state='South Dakota') %>%
+  mutate(dataformat='Percent') %>%
+  mutate(locationtype='Tribal Area') %>%
+  mutate(varname='freereducedlunch') 
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Output cases where percent data is greater than 1
+temp_percheck <- frl_data_tribal %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 2. Visually inspect output data
+View(frl_data_tribal)
+```
+
+## STEP 2: ADD TO DATABASE
+```{r}
+#CHECK DATASET NAMED frl_data_tribal TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,statefile,frl_data_tribal,append=TRUE,row.names=FALSE)
+```
+
+## STEP 3: OUTPUT IS DONE IN SEPARATE MARKDOWN ALONG WITH ALL TRIBAL DATA
+
+
