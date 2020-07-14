@@ -8,11 +8,15 @@ output: html_document
 
 ## Indicator: Child population by ethnicity
 
-**This code populates historic estimates of population by ethnicity for age groups. The API call does not allow for multiple predicates to filter by both age and ethnicity The dataset for 2000-2010 can be downloaded here**
-https://www.census.gov/data/datasets/time-series/demo/popest/intercensal-2000-2010-counties.html 
+**This code populates historic estimates of population by ethnicity for age groups. The API call does not allow for multiple predicates to filter by both age and ethnicity The dataset for 2000-2009 can by downloaded from CDC Wonder**
 
-**Variable codes:**
-https://www2.census.gov/programs-surveys/popest/technical-documentation/file-layouts/2000-2010/intercensal/county/co-est00int-alldata.pdf
+https://wonder.cdc.gov/controller/datarequest/
+Group results by: County, Yearly July 1st Estimates, Ethnicity
+Select State
+Ages 0 to 19
+All races, Pick both Ethnicities, then years 2000-2009
+Export results to .txt then save as CSV
+
 
 **Created by:** Xanna Burg
 **Date:** April 2020
@@ -52,7 +56,7 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 ```{r}
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
-statename <- "South Dakota"
+statename <- "Montana"
 year <- "2000"
 
 
@@ -91,190 +95,159 @@ regionids$region <- as.character(regionids$region)
 statecode <- as.numeric(unique(fips$state_code[fips$state_name==statename]))
 
 
-pop_data <- read.csv(paste0('../Input/demographics/',database_state,'_',year,'_populationbyagegroupandrace.csv'))
+pop_data <- read.csv(paste0('../Input/demographics/',database_state,'_',year,'_childpopulationbyethnicity.csv'))
 ```
 
 ```{r}
 #COUNTY DATA
 pop_county <- pop_data %>%
   
+  #subset for total rows
+  subset(Ethnicity != '') %>%
+  
   #create the timeframe using the Date codes
-  mutate(timeframe=case_when(
-    YEAR==2 ~ '2000',
-    YEAR==3 ~ '2001',
-    YEAR==4 ~ '2002',
-    YEAR==5 ~ '2003',
-    YEAR==6 ~ '2004',
-    YEAR==7 ~ '2005',
-    YEAR==8 ~ '2006',
-    YEAR==9 ~ '2007',
-    YEAR==10 ~ '2008',
-    YEAR==11 ~ '2009')) %>%
-  subset(!is.na(timeframe)) %>%
+  rename(timeframe='Yearly.July.1st.Estimates',
+         data=Population,
+         race=Ethnicity) %>%
+  mutate(location=gsub(" County.*","",County)) %>%
   
-  mutate(county=gsub("\\s*\\w*$", "", CTYNAME)) %>%
-  
-  #only include age groups 1 through 4
-  subset(AGEGRP==1 | AGEGRP==2 | AGEGRP==3 | AGEGRP==4) %>%
-  
-  #create sums for race across all child age groups
-  group_by(county,timeframe) %>%
-  summarise(totalchildpop=sum(TOT_POP),
-            hispanic=sum(H_MALE)+sum(H_FEMALE),
-            nothispanic=sum(NH_MALE)+sum(NH_FEMALE)) %>%
-  
-  #calculate percents while in wide format
-  
-  mutate(hispanic_per=hispanic/totalchildpop) %>%
-  mutate(nothispanic_per=nothispanic/totalchildpop)
- 
-
-#separate number
-pop_county_number <- pop_county %>%
-  select(-c(hispanic_per,nothispanic_per,totalchildpop)) %>%
-  pivot_longer(cols=c(hispanic,nothispanic),names_to='race',values_to='data') %>%
-  
-  rename(location=county) %>%
-  mutate(locationtype='County') %>%
-  mutate(state=statename) %>%
-  mutate(vintageyear=year) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='childpopulationbyethnicity') %>%
+  select(c(location,timeframe,data,race)) %>%
   
   mutate(race=case_when(
-    race=='hispanic' ~ 'Hispanic',
-    race=='nothispanic' ~ 'Non-Hispanic'))
-
-#separate percentage
-pop_county_percent <- pop_county %>%
-  select(-c(hispanic,nothispanic,totalchildpop)) %>%
-  pivot_longer(cols=c(hispanic_per,nothispanic_per),names_to='race',values_to='data') %>%
+    race=='Hispanic or Latino' ~ 'Hispanic',
+    race=='Not Hispanic or Latino' ~ 'Non-Hispanic')) %>%
   
-  rename(location=county) %>%
-  mutate(locationtype='County') %>%
-  mutate(state=statename) %>%
-  mutate(vintageyear=year) %>%
-  mutate(dataformat='Percent') %>%
-  mutate(varname='childpopulationbyethnicity') %>%
+  #create a wide dataset in order to calculate totals and percent
+  pivot_wider(values_from=data,names_from=race) %>%
+  mutate(totalpop=Hispanic+`Non-Hispanic`) %>%
+  mutate(percent_hispanic=Hispanic/totalpop) %>%
+  mutate(percent_nonhispanic=`Non-Hispanic`/totalpop) %>%
   
-  mutate(race=case_when(
-    race=='hispanic_per' ~ 'Hispanic',
-    race=='nothispanic_per' ~ 'Non-Hispanic'))
+  #convert back to long format
+  pivot_longer(cols=c(Hispanic,`Non-Hispanic`),names_to='race',values_to='Number') %>%
+  pivot_longer(cols=c(percent_hispanic,percent_nonhispanic),names_to='percent_race',values_to='Percent') %>%
+  mutate(percent_race=case_when(
+    percent_race=='percent_hispanic' ~ 'Hispanic',
+    percent_race=='percent_nonhispanic' ~ 'Non-Hispanic')) %>%
+  subset(race==percent_race) %>%
+  select(-c(percent_race,totalpop)) %>%
+  
+  pivot_longer(cols=c(Number,Percent),names_to='dataformat',values_to='data') %>%
+  
+  mutate(locationtype='County')
+  
   
 
 ###########
 #STATE DATA
-pop_state_number <- pop_county_number %>%
-  group_by(race,timeframe) %>%
-  summarise(data=sum(data)) %>%
+pop_state <- pop_data %>%
+  
+  #subset for total rows
+  subset(Ethnicity != '') %>%
+  
+  #create the timeframe using the Date codes
+  rename(timeframe='Yearly.July.1st.Estimates',
+         data=Population,
+         race=Ethnicity) %>%
+  mutate(location=gsub(" County.*","",County)) %>%
+  
+  select(c(location,timeframe,data,race)) %>%
+  
+  mutate(race=case_when(
+    race=='Hispanic or Latino' ~ 'Hispanic',
+    race=='Not Hispanic or Latino' ~ 'Non-Hispanic')) %>%
+  
+  #create a wide dataset in order to calculate totals and percent
+  pivot_wider(values_from=data,names_from=race) %>%
+  mutate(totalpop=Hispanic+`Non-Hispanic`) %>%
+  
+  #calculate state sums
   mutate(location=statename) %>%
-  mutate(state=statename) %>%
-  mutate(vintageyear=year) %>%
-  mutate(locationtype='State') %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='childpopulationbyethnicity')
-
-
-pop_state_percent <- pop_county %>%
-  group_by(timeframe) %>%
-  summarise(totalchildpop=sum(totalchildpop),
-            totalhispanic=sum(hispanic),
-            totalnothispanic=sum(nothispanic)) %>%
-  mutate(hispanic_per=totalhispanic/totalchildpop) %>%
-  mutate(nothispanic_per=totalnothispanic/totalchildpop) %>%
-
+  group_by(location,timeframe) %>%
+  summarise(Hispanic=sum(Hispanic),
+            `Non-Hispanic`=sum(`Non-Hispanic`),
+            totalpop=sum(totalpop)) %>%
+  ungroup %>%
   
-  select(-c(totalchildpop,totalhispanic,totalnothispanic)) %>%
+  mutate(percent_hispanic=Hispanic/totalpop) %>%
+  mutate(percent_nonhispanic=`Non-Hispanic`/totalpop) %>%
   
-  pivot_longer(cols=c(hispanic_per,nothispanic_per),names_to='race',values_to='data') %>%
+  #convert back to long format
+  pivot_longer(cols=c(Hispanic,`Non-Hispanic`),names_to='race',values_to='Number') %>%
+  pivot_longer(cols=c(percent_hispanic,percent_nonhispanic),names_to='percent_race',values_to='Percent') %>%
+  mutate(percent_race=case_when(
+    percent_race=='percent_hispanic' ~ 'Hispanic',
+    percent_race=='percent_nonhispanic' ~ 'Non-Hispanic')) %>%
+  subset(race==percent_race) %>%
+  select(-c(percent_race,totalpop)) %>%
   
-    mutate(race=case_when(
-    race=='hispanic_per' ~ 'Hispanic',
-    race=='nothispanic_per' ~ 'Non-Hispanic')) %>%
-
-  mutate(location=statename) %>%
-  mutate(state=statename) %>%
-  mutate(vintageyear=year) %>%
-  mutate(locationtype='State') %>%
-  mutate(dataformat='Percent') %>%
-  mutate(varname='childpopulationbyethnicity')
-
+  pivot_longer(cols=c(Number,Percent),names_to='dataformat',values_to='data') %>%
+  
+  mutate(locationtype='State')
 
 
 ############
 #REGION DATA
-pop_region_number <- pop_county_number %>%
-  ungroup %>%
-  mutate(location=replace(location, 
-                          statename=='Montana' & location=='Lewis and Clark', 
-                          'Lewis & Clark')) %>%
-  mutate(location=replace(location, 
-                          statename=='South Dakota' & location=='Shannon', 
-                          'Oglala Lakota')) %>%
-  left_join(regionids,by=c('location'='county')) %>%
-    
-  subset(region != '') %>%
+pop_region <- pop_data %>%
   
-  group_by(region,race,timeframe) %>%
-  summarise(data=sum(data)) %>%
+  #subset for total rows
+  subset(Ethnicity != '') %>%
+  
+  #create the timeframe using the Date codes
+  rename(timeframe='Yearly.July.1st.Estimates',
+         data=Population,
+         race=Ethnicity) %>%
+  mutate(location=gsub(" County.*","",County)) %>%
+  
+  select(c(location,timeframe,data,race)) %>%
+  
+  mutate(race=case_when(
+    race=='Hispanic or Latino' ~ 'Hispanic',
+    race=='Not Hispanic or Latino' ~ 'Non-Hispanic')) %>%
+  
+  #create a wide dataset in order to calculate totals and percent
+  pivot_wider(values_from=data,names_from=race) %>%
+  mutate(totalpop=Hispanic+`Non-Hispanic`) %>%
+  
+  #calculate state sums
+  left_join(regionids,(by=c('location'='county'))) %>%
+  subset(region!='') %>%
+  select(-c(location)) %>%
   rename(location=region) %>%
-  mutate(state=statename) %>%
-  mutate(vintageyear=year) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='childpopulationbyethnicity')
-
-
-pop_region_percent <- pop_county %>%
+  group_by(location,timeframe) %>%
+  summarise(Hispanic=sum(Hispanic),
+            `Non-Hispanic`=sum(`Non-Hispanic`),
+            totalpop=sum(totalpop)) %>%
   ungroup %>%
   
-  mutate(county=replace(county, 
-                          statename=='Montana' & county=='Lewis and Clark', 
-                          'Lewis & Clark')) %>%
-  mutate(county=replace(county, 
-                          statename=='South Dakota' & county=='Shannon', 
-                          'Oglala Lakota')) %>%
-  left_join(regionids,by=c('county'='county')) %>%
-    
-  subset(region != '') %>%
+  mutate(percent_hispanic=Hispanic/totalpop) %>%
+  mutate(percent_nonhispanic=`Non-Hispanic`/totalpop) %>%
   
-  group_by(region,timeframe) %>%
-  summarise(totalchildpop=sum(totalchildpop),
-            totalhispanic=sum(hispanic),
-            totalnothispanic=sum(nothispanic)) %>%
-  mutate(hispanic_per=totalhispanic/totalchildpop) %>%
-  mutate(nothispanic_per=totalnothispanic/totalchildpop) %>%
- 
+  #convert back to long format
+  pivot_longer(cols=c(Hispanic,`Non-Hispanic`),names_to='race',values_to='Number') %>%
+  pivot_longer(cols=c(percent_hispanic,percent_nonhispanic),names_to='percent_race',values_to='Percent') %>%
+  mutate(percent_race=case_when(
+    percent_race=='percent_hispanic' ~ 'Hispanic',
+    percent_race=='percent_nonhispanic' ~ 'Non-Hispanic')) %>%
+  subset(race==percent_race) %>%
+  select(-c(percent_race,totalpop)) %>%
   
-  select(-c(totalchildpop,totalhispanic,totalnothispanic)) %>%
+  pivot_longer(cols=c(Number,Percent),names_to='dataformat',values_to='data') %>%
   
-  pivot_longer(cols=c(hispanic_per,nothispanic_per),names_to='race',values_to='data') %>%
-  
-    mutate(race=case_when(
-    race=='hispanic_per' ~ 'Hispanic',
-    race=='nothispanic_per' ~ 'Non-Hispanic')) %>%
-
-  rename(location=region) %>%
-  mutate(state=statename) %>%
-  mutate(vintageyear=year) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(dataformat='Percent') %>%
-  mutate(varname='childpopulationbyethnicity') 
-
+  mutate(locationtype='Planning Region')
 
 ```
 
 ```{r}
 #UNION COUNTY, STATE, STATE PLANNING REGION
-pop <- pop_county_number %>%
-  bind_rows(pop_county_percent) %>%
-  bind_rows(pop_state_number) %>%
-  bind_rows(pop_state_percent) %>%
-  bind_rows(pop_region_number) %>%
-  bind_rows(pop_region_percent) %>%
+pop <- pop_county %>%
+  bind_rows(pop_state) %>%
+  bind_rows(pop_region) %>%
   
-  ungroup %>%
-
+  mutate(state=statename) %>%
+  mutate(vintageyear=year) %>%
+  mutate(varname='childpopulationbyethnicity') %>%
+  
   #merge in location ids
   mutate(location=replace(location, 
                           statename=='Montana' & location=='Lewis and Clark', 
