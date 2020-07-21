@@ -1,0 +1,126 @@
+---
+title: "NCHS Historic"
+author: "Xanna Burg"
+date: "4/29/2020"
+output: html_document
+---
+
+This code cleans data downloaded from CDC Wonder from the matching vintage year.
+https://wonder.cdc.gov/bridged-race-population.html
+
+* Group results by: Age, County 
+* Single age: <1 through 24
+* Select only current vintage year
+* Export results, and show zero values
+* Save .txt as .csv by opening in Excel
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+library(stringr)
+```
+
+
+```{r}
+#change to match the year in the dataset which shoud also be the vintage year
+year <- '2003'
+
+regionids<- read.csv("../Input/SD KC Region List.csv")
+locationids <- read.csv("../Input/SD KC Location IDs.csv")
+
+popdata <- read.csv(paste0("../Input/temp/southdakota_bridgedpopulation_",year,".csv")) %>%
+  
+  mutate(location=gsub(" County.*","",County)) %>%
+  subset(!is.na(location)) %>%
+  subset(location!='')
+
+#######
+#COUNTY
+pop_county <- popdata %>%
+  mutate(locationtype='County') %>%
+  mutate(state='South Dakota') %>%
+  mutate(timeframe=year) %>%
+  mutate(vintageyear=year) %>%
+  mutate(dataformat='Number') %>%
+  rename(data=Population,
+         age_group=Age.Code) %>%
+  mutate(varname='childpopulationbysingleyearofage') %>%
+    mutate(location=replace(location, 
+                          location=='Shannon', 
+                          'Oglala Lakota')) %>%
+  
+  select(-c(Age,County,County.Code,Notes))
+
+######
+#STATE
+
+pop_state <- popdata %>%
+  mutate(location='South Dakota') %>%
+  group_by(location,Age.Code) %>%
+  summarise(data=sum(Population)) %>%
+  ungroup %>%
+  mutate(locationtype='State') %>%
+  mutate(state='South Dakota') %>%
+  mutate(timeframe=year) %>%
+  mutate(vintageyear=year) %>%
+  mutate(dataformat='Number') %>%
+  rename(age_group=Age.Code) %>%
+  mutate(varname='childpopulationbysingleyearofage') 
+  
+######################
+#STATE PLANNING REGION
+
+pop_region <- popdata %>%
+  
+  mutate(location=replace(location, 
+                          location=='Shannon', 
+                          'Oglala Lakota')) %>%
+  left_join(regionids,by=c('location'='county'))  %>%
+  subset(region != '') %>%
+  
+  group_by(region,Age.Code) %>%
+  summarise(data=sum(Population)) %>%
+  ungroup %>%
+  
+  mutate(locationtype='Planning Region') %>%
+  mutate(state='South Dakota') %>%
+  mutate(timeframe=year) %>%
+  mutate(vintageyear=year) %>%
+  mutate(dataformat='Number') %>%
+  rename(age_group=Age.Code,
+         location=region) %>%
+  mutate(varname='childpopulationbysingleyearofage') 
+
+
+
+####UNION
+pop_all <- pop_county %>%
+  bind_rows(pop_state) %>%
+  bind_rows(pop_region) %>%
+  
+  #merge in location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
+
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(pop_all$locationid))>=1) {
+  print(pop_all$location[is.na(pop_all$locationid)])
+} else if (sum(is.na(pop_all$locationid))==0) {
+  'all locations match'
+}
+
+
+```
+
+
+```{r}
+#CHECK DATASET NAMED pop_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,'southdakota',pop_all,append=TRUE,row.names=FALSE)
+```

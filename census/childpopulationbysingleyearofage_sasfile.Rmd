@@ -1,16 +1,17 @@
 ---
-title: "Child Population by Single Year of Age"
+title: "Child Population by Single Year of Age - Using NCHS SAS File"
 author: "Xanna Burg"
-date: "2/20/2020"
+date: "July 2020"
 output: html_document
-
 ---
 
+
 **Created by:** Xanna Burg
-**Date:** April 2020
+**Date:** July 2020
 **Updated by:**
 
-**Data Source:** US Census populations with bridged race categories from NCHS. Retrieved from Missouri Census Data Center.
+**Data Source:** US Census populations with bridged race categories from NCHS. Retrieved from NCHS website SAS file.
+https://www.cdc.gov/nchs/nvss/bridged_race.htm#Newest%20Data%20Release
 **Purpose:** Obtain Population Estimates by single year of age for state, county, and planning regions.
 **Description:** This program adds the population estimates to the database and creates a dataset needed to upload to the KIDS COUNT data center.
 * Geographies: state total, county, state planning regions (where applicable, which are groups of counties)
@@ -19,27 +20,27 @@ output: html_document
 
 
 **To download the data needed for this code:**
-1. Go to the Missouri Census Data Center and select Population Estimates by Age. http://mcdc.missouri.edu/applications/population/by-age/
-2. Select one state at a time, select all years of interest within the current vintage estimates, and custom age ranges. Populate one file for single year of ages 0 through 18 and a second file for 19 through 24. To select single year age range, add the same age number to both the custom cohort fields per row (e.g. 0 to 0)
-3. Save data files as: [statename]_yyyy_childpopulationbysingleyearofage0_18.csv
-                       [statename]_yyyy_childpopulationbysingleyearofage19_24.csv
-            The yyyy matches the most current year within the post-census estimates.
-
-
+1. https://www.cdc.gov/nchs/nvss/bridged_race.htm#Newest%20Data%20Release
+2. Download the SAS file matching the most recent year that includes all previous intercensal years.
 
 ```{r,message=FALSE}
 #load required packages
 library(tidyverse)
+library(tidycensus)
 library(RPostgreSQL)
 library(readxl)
 library(stringr)
 library(zoo)
-
+library(sas7bdat)
 ```
 
+
+## STEP 1: UPDATE THE OBJECTS statename AND year
 ```{r}
-year <- '2018'
-statename <- 'North Dakota'
+#CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
+#state should match exactly as is in FIPS code in order for code to correctly run
+statename <- "South Dakota"
+year <- "2019"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -72,97 +73,106 @@ regionids <- if (statename=='Montana') {
 regionids$county <- as.character(regionids$county)
 regionids$region <- as.character(regionids$region)
 
+#RUN THIS CODE, BUT NOT REQUIRED TO CHANGE ANYTHING
+#county and state names that match fips codes (from tidycensus package)
+fips <- fips_codes
+fips$county_code = str_remove(fips$county_code, "^0+")
+fips$county_code=as.numeric(paste(fips$county_code))
+fips$state_code=as.numeric(paste(fips$state_code))
 
 
-######################################
-#set the file path for first age range
-xl_data <- paste0("../Input/demographics/",database_state,"_",year,"_childpopulationbysingleyearofage0_18.xlsx")
-#set the file path for the second age range
-xl_data2 <- paste0("../Input/demographics/",database_state,"_",year,"_childpopulationbysingleyearofage19_24.xlsx")
-
-#read in all sheets of first dataset, assign sheet name to variable location
-agedata1 <- xl_data %>%
-  excel_sheets() %>%
-  set_names() %>%
-  map_df(read_excel,path=xl_data,skip=3,.id='location')
-
-#read in all sheets of second dataset, assign sheet name to variable location
-agedata2 <- xl_data2 %>%
-  excel_sheets() %>%
-  set_names() %>%
-  map_df(read_excel,path=xl_data2,skip=3,.id='location')
-  
-#bind to include all ages 0 to 25 
-agedata <- agedata1 %>%
-  bind_rows(agedata2) %>%
-  rename(age_group='Age group') %>%
-  group_by(location) %>% 
-  mutate(year = na.locf0(Year)) %>% 
-  ungroup %>%
-  filter(age_group != "All ages") %>%
-  select(-c(Year,'% of age group',Male,'% Male',Female,'% Female')) 
+#the data will subset data to each state based on the state FIPS code: MT=30, North Dakota=38, South Dakota=46
+statecode <- as.numeric(unique(fips$state_code[fips$state_name==statename]))
+```
 
 
-########################
-#clean the imported data
+## STEP 2: IMPORT AND CLEAN DATA FROM SAS FILE
+```{r}
+fulldata <- read.sas7bdat(paste0("../Input/demographics/pcen_v2019_y1019.sas7bdat"))
 
-#STATE DATA
-statedata <- agedata %>%
-  filter(location==statename) %>%
-  mutate(locationtype='State') %>% 
-  mutate(state=statename) %>%
-  rename(timeframe=year) %>%
-  mutate(vintageyear=year) %>%
-  mutate(dataformat='Number') %>%
-  rename(data=Total) %>%
-  mutate(varname='childpopulationbysingleyearofage')
-
+############
 #COUNTY DATA
-countydata <- agedata %>%
-  filter(location != statename) %>%
-  rename(full_location=location) %>%
-  mutate(location=sub("\\ County.*","",full_location)) %>%
-  select(-c(full_location)) %>%
-  mutate(locationtype='County') %>%
+#subset for state of interest, and age range 0-24
+populationdata_county <- fulldata %>%
+  subset(ST_FIPS==statecode) %>%
+  subset(age<=24) %>%
+  
+  #remove column for April 2010, and use July 2010 instead
+  select(-c(POP2010_APR)) %>%
+  
+  #format location names for counties
+  left_join(fips,by=c('ST_FIPS'='state_code','CO_FIPS'='county_code')) %>%
+  mutate(county=gsub("\\s*\\w*$", "", county)) %>%
+  
+  #wide to long format
+  pivot_longer(cols=c(POP2010_JUL,POP2011,POP2012,POP2013,POP2014,POP2015,POP2016,POP2017,POP2018,POP2019),names_to='date',values_to='data') %>%
+  
+  #sum across race and ethnicities
+  group_by(county,date,age) %>%
+  summarise(data=sum(data)) %>%
+  ungroup %>%
+  
+  #format to KC variable names
+  mutate(timeframe=case_when(
+    date=='POP2010_JUL' ~ '2010',
+    date=='POP2011' ~ '2011',
+    date=='POP2012' ~ '2012',
+    date=='POP2013' ~ '2013',
+    date=='POP2014' ~ '2014',
+    date=='POP2015' ~ '2015',
+    date=='POP2016' ~ '2016',
+    date=='POP2017' ~ '2017',
+    date=='POP2018' ~ '2018',
+    date=='POP2019' ~ '2019')) %>% 
+  select(-c(date)) %>%
+  rename(location=county,
+         age_group=age) %>%
   mutate(state=statename) %>%
-  rename(timeframe=year) %>%
   mutate(vintageyear=year) %>%
   mutate(dataformat='Number') %>%
-  rename(data=Total) %>%
-  mutate(varname='childpopulationbysingleyearofage')
+  mutate(varname='childpopulationbysingleyearofage') %>%
+  mutate(locationtype='County')
 
 
-#STATE PLANNING REGIONS DATA
-
-stateplanningdata <- countydata %>%
+###########
+#STATE DATA
+populationdata_state <- populationdata_county %>%
   
-  #create state planning region column
-  mutate(location=replace(location, 
+  mutate(location=statename) %>%
+  group_by(location,age_group,timeframe,state,vintageyear,dataformat,varname) %>%
+  summarise(data=sum(data)) %>%
+  ungroup %>%
+  
+  mutate(locationtype='State')
+  
+
+############
+#REGION DATA
+populationdata_region <- populationdata_county %>%
+  
+    mutate(location=replace(location, 
                           statename=='Montana' & location=='Lewis and Clark', 
                           'Lewis & Clark')) %>%
   mutate(location=replace(location, 
                           statename=='South Dakota' & location=='Shannon', 
                           'Oglala Lakota')) %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region,age_group,timeframe,state,vintageyear,dataformat,varname) %>%
+  summarise(data=sum(data)) %>%
+  ungroup %>%
   
-  left_join(regionids,by=c('location'='county'))  %>%
-  
-  group_by(age_group,region,timeframe) %>%
-  summarize(region_total=sum(data, na.rm=TRUE)) %>%
   subset(region != '') %>%
   rename(location=region) %>%
-  rename(data=region_total) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(state=statename) %>%
-  mutate(vintageyear=year) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='childpopulationbysingleyearofage') 
+  mutate(locationtype='Planning Region')
 
 
-#####################################################################
-#bind county, state, and planning region data and add in location ids
-population_allgroups <- statedata %>%
-  bind_rows(countydata) %>%
-  bind_rows(stateplanningdata) %>%
+##################################
+#COMBINE COUNTY, STATE, and REGION
+populationdata <- populationdata_county %>%
+  bind_rows(populationdata_state) %>%
+  bind_rows(populationdata_region) %>%
+
+#merge location ids
   mutate(location=replace(location, 
                           statename=='Montana' & location=='Lewis and Clark', 
                           'Lewis & Clark')) %>%
@@ -170,7 +180,7 @@ population_allgroups <- statedata %>%
                           statename=='South Dakota' & location=='Shannon', 
                           'Oglala Lakota')) %>%
   left_join(locationids,by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
+  rename(locationid=LocationId) 
 
 ####################
 ####################
@@ -178,24 +188,24 @@ population_allgroups <- statedata %>%
 ### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
 
 # 1. Print name of location that has a mismatched location ID
-if (sum(is.na(population_allgroups$locationid))>=1) {
-  print(population_allgroups$location[is.na(population_allgroups$locationid)])
-} else if (sum(is.na(population_allgroups$locationid))==0) {
+if (sum(is.na(populationdata$locationid))>=1) {
+  print(populationdata$location[is.na(populationdata$locationid)])
+} else if (sum(is.na(populationdata$locationid))==0) {
   'all locations match'
 }
 
 
 # 2. Visually inspect output data
-view(population_allgroups)
-
+View(populationdata)
 ```
 
+## STEP 3: ADD TO DATABASE
 ```{r}
 #add to database
-dbWriteTable(con,database_state,population_allgroups,append=TRUE,row.names=FALSE)
-
+dbWriteTable(con,database_state,populationdata,append=TRUE,row.names=FALSE)
 ```
 
+## STEP 4: OUTPUT FILE FOR UPLOADING TO DATA CENTER
 ```{r}
 #write query from database to get needed format for KC data center
 
@@ -232,4 +242,8 @@ upload_data_pop <- upload_data_pop1 %>%
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
 write.csv(upload_data_pop,file=paste0("../Output/demographics/",database_state,"_",year,"_childpopulationbysingleyearofage.csv"),row.names=FALSE)
 ```
+
+
+
+
 

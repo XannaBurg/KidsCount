@@ -33,9 +33,10 @@ library(zoo)
 
 ```
 
+## STEP 1: IMPORT DATA FROM SQL DATABASE AND CLEAN
 ```{r}
-year <- '2018'
-statename <- 'North Dakota'
+year <- '2019'
+statename <- 'South Dakota'
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -75,18 +76,7 @@ regionids$region <- as.character(regionids$region)
 #write query from database 
 pop_sql <- paste0("SELECT locationid, location, locationtype, state, timeframe, vintageyear, age_group, dataformat, data FROM ", database_state," WHERE vintageyear='",year,"' AND varname='childpopulationbysingleyearofage';")
 
-
-#since populate a new data set each year, query the vintage data from prior to most current decennial year
-pop_sql_historic <- paste0("SELECT locationid, location, locationtype, state, timeframe, vintageyear, age_group, dataformat, data FROM ", database_state," WHERE (vintageyear='2009' OR vintageyear='1999') AND varname='childpopulationbysingleyearofage';")
-
-
-pop1 <- dbGetQuery(con,pop_sql)
-
-pop2 <- dbGetQuery(con,pop_sql_historic) 
-
-#union historic data and current vintage estimates
-popdata <- pop1 %>%
-  bind_rows(pop2) %>%
+popdata <- dbGetQuery(con,pop_sql)%>%
   
   #clean the imported data
   
@@ -100,6 +90,7 @@ popdata <- pop1 %>%
     age_group=='15' | age_group=='16' | age_group=='17' ~ '15 to 17')) %>%
   
   subset(!is.na(age_group_new)) %>%
+  mutate(data=as.numeric(paste(data))) %>%
   
   group_by(age_group_new,timeframe,vintageyear,location,locationtype) %>%
   summarise(data=sum(data))
@@ -184,12 +175,14 @@ view(popdata_final)
 
 ```
 
+## STEP 2: COMMITT TO DATABASE
 ```{r}
 #add to database
 dbWriteTable(con,database_state,popdata_final,append=TRUE,row.names=FALSE)
 
 ```
 
+## STEP 3a: EXPORT DATA FOR UPLOAD - WITH TRIBAL AREAS (ND)
 ```{r}
 #write query from database to get needed format for KC data center
 
@@ -240,4 +233,47 @@ upload_data_pop <- upload_data_pop1 %>%
 
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
 write.csv(upload_data_pop,file=paste0("../Output/demographics/",database_state,"_",year,"_childpopulationbyagegroup.csv"),row.names=FALSE)
+```
+
+
+## STEP 3B: EXPORT DATA FOR UPLOAD - WITHOUT TRIBAL AREAS (MT/SD)
+```{r}
+#write query from database to get needed format for KC data center
+
+pop_sql <- paste0("SELECT locationid, location, timeframe, age_group, dataformat, data FROM ", database_state," WHERE vintageyear='",year,"' AND varname='childpopulationbyagegroup';")
+#remove the year from the sql WHERE clause if running all available years
+
+
+#since populate a new data set each year, query the vintage data from prior to most current decennial year
+pop_sql_historic <- paste0("SELECT locationid, location, timeframe, age_group, dataformat, data FROM ", database_state," WHERE (vintageyear='2009' OR vintageyear='1999') AND varname='childpopulationbyagegroup';")
+
+
+
+upload_data_pop1 <- dbGetQuery(con,pop_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+        'Age group'=age_group)
+
+upload_data_pop2 <- dbGetQuery(con,pop_sql_historic) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+        'Age group'=age_group)
+
+
+
+upload_data_pop <- upload_data_pop1 %>%
+  bind_rows(upload_data_pop2) %>%
+  arrange(Location)
+
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_pop,file=paste0("../Output/demographics/",database_state,"_",year,"_childpopulationbyagegroup.csv"),row.names=FALSE)
+
 ```
