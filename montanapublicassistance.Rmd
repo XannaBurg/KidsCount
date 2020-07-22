@@ -262,6 +262,7 @@ childpop <- dbGetQuery(con,childpop_sql) %>%
   subset(age_group<=18) %>%
   
   #create 0 to 18 age group sums
+  mutate(data=as.numeric(paste(data))) %>%
   group_by(location,timeframe) %>%
   summarise(totalpop0to18=sum(data)) %>%
   ungroup
@@ -278,6 +279,7 @@ medicaid_pop <- dbGetQuery(con,medicaid_sql)
 medicaid_percent <- medicaid_pop %>%
   left_join(childpop,by=c('location'='location','timeframe'='timeframe')) %>%
   rename(childonmedicaid=data) %>%
+  mutate(childonmedicaid=as.numeric(paste(childonmedicaid))) %>%
   mutate(data=childonmedicaid/totalpop0to18) %>%
   select(-c(childonmedicaid,totalpop0to18)) %>%
   
@@ -636,6 +638,7 @@ childpop <- dbGetQuery(con,childpop_sql) %>%
   subset(age_group<=18) %>%
   
   #create 0 to 18 age group sums
+  mutate(data=as.numeric(paste(data))) %>%
   group_by(location,timeframe) %>%
   summarise(totalpop0to18=sum(data)) %>%
   ungroup
@@ -652,6 +655,7 @@ snap_pop <- dbGetQuery(con,snap_sql)
 snap_percent <- snap_pop %>%
   left_join(childpop,by=c('location'='location','timeframe'='timeframe')) %>%
   rename(childonsnap=data) %>%
+  mutate(childonsnap=as.numeric(paste(childonsnap))) %>%
   mutate(data=childonsnap/totalpop0to18) %>%
   select(-c(childonsnap,totalpop0to18)) %>%
   
@@ -1245,6 +1249,7 @@ childpop <- dbGetQuery(con,childpop_sql) %>%
   subset(age_group<=18) %>%
   
   #create 0 to 18 age group sums
+  mutate(data=as.numeric(paste(data))) %>%
   group_by(location,timeframe) %>%
   summarise(totalpop0to18=sum(data)) %>%
   ungroup
@@ -1261,6 +1266,7 @@ tanf_pop <- dbGetQuery(con,tanf_sql)
 tanf_percent <- tanf_pop %>%
   left_join(childpop,by=c('location'='location','timeframe'='timeframe')) %>%
   rename(childontanf=data) %>%
+  mutate(childontanf=as.numeric(paste(childontanf))) %>%
   mutate(data=childontanf/totalpop0to18) %>%
   select(-c(childontanf,totalpop0to18)) %>%
   
