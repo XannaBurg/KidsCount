@@ -1,0 +1,938 @@
+---
+title: "North Dakota Child Abuse/Neglect"
+author: "Xanna Burg"
+date: "May 2020"
+output: html_document
+---
+
+
+
+## Indicator 1: Child abuse and neglect reports
+## Indicator 2: Suspected victims of child abuse and neglect
+## Indicator 3: Victims of child abuse and neglect - services required (percent of suspected victims) 
+## Indicator 4: Victims of child abuse and neglect requiring services - rate per 1,000 children ages 0 through 17
+
+**Created by:** Xanna Burg
+**Date:** May 2020
+**Updated by:**
+
+**Data Source:** North Dakota Supreme Court, State Court Administrator's Office
+**Purpose:** Clean the court referral data
+
+**Data format:** final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Data (numeric: number, DataFormat (character: "number"), LocationId (numeric: assigned for KIDS COUNT system)
+
+**To use this code for a new year:**
+* Update the year in the second code chunk for variable 'year'
+* Check each dataset visually and through the report logs prior to commiting to the database.
+
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+library(stringr)
+```
+
+```{r}
+####UPDATE to reflect the current year data working with
+year <- '2019'
+statename <- 'North Dakota'
+
+
+#run this code to create an object needed for the database (DO NOT EDIT)
+database_state <- 'northdakota'
+
+#input location ID file for ND (DO NOT EDIT)
+locationids <- read.csv("./Input/ND KC Location IDs.csv")
+locationids$Location <- as.character(locationids$Location)
+
+#input region ID file for ND (DO NOT EDIT)
+regionids <- read.csv("./Input/ND KC Region List.csv")
+regionids$county <- as.character(regionids$county)
+
+#import the lookup table for county name (DO NOT EDIT)
+countyids <- read.csv("./Documentation/Indicator Documentation/North Dakota Data Requests/ND County Codes.csv")
+countyids$ndcounty_name <- as.character(countyids$ndcounty_name)
+```
+
+
+```{r}
+#import the data
+ncands <- read_excel(path=paste0("./Input/safety/northdakota_",year,"_ncandschildabuse.xlsx"), guess_max = 1048576) %>%
+  
+  #rename columns
+  rename(assessments='Number of assessments',
+         allegedvictims='Number of Alleged Victims',
+         victims='Number of Victims')
+```
+
+
+
+## ################################### ##
+## CHILD ABUSE AND NEGLECT ASSESSMENTS ##
+## ################################### ##
+
+## STEP 1: CLEAN DATA
+```{r}
+############
+#COUNTY DATA
+assessment_county <- ncands %>%
+  select(c(County,assessments)) %>%
+  
+  #remove totals
+  subset(County!='Totals'& County != 'Unduplicated Total*') %>%
+  
+  #suppress if 5 or fewer including 0
+  mutate(assessments=replace(assessments,assessments<=5,NA)) %>%
+  
+  #add in kc variables
+  rename(location=County,
+         data=assessments) %>%
+  mutate(locationtype='County') %>%
+  mutate(state='North Dakota') %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='childabuseandneglectreports')
+
+
+###########
+#STATE DATA
+assessment_state <- ncands %>%
+  select(c(County,assessments)) %>%
+  
+  #select only totals
+  subset(County=='Unduplicated Total*') %>%
+  
+  
+  #suppress if 5 or fewer including 0
+  mutate(assessments=replace(assessments,assessments<=5,NA)) %>%
+  
+  #add in kc variables
+  mutate(location='North Dakota') %>%
+  select(-c(County)) %>%
+  rename(data=assessments) %>%
+  mutate(locationtype='State') %>%
+  mutate(state='North Dakota') %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='childabuseandneglectreports')
+
+
+############
+#REGION DATA
+assessment_region <- ncands %>%
+  select(c(County,assessments)) %>%
+  
+  #remove totals
+  subset(County!='Totals'& County != 'Unduplicated Total*') %>%
+  
+  #add in regions and sum by group
+  left_join(regionids,by=c('County'='county')) %>%
+  group_by(region) %>%
+  summarise(data=sum(assessments)) %>%
+  ungroup %>%
+  
+  #suppress if 5 or fewer including 0
+  mutate(data=replace(data,data<=5,NA)) %>%
+  
+  #add in kc variables
+  rename(location=region) %>%
+  mutate(location=as.character(location)) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(state='North Dakota') %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='childabuseandneglectreports')
+
+
+###############################################
+#UNION COUNTY, STATE, AND STATE PLANNING REGION
+assessment <- assessment_county %>%
+  bind_rows(assessment_state) %>%
+  bind_rows(assessment_region) %>%
+  
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+```
+
+## STEP 2: UPDATE SUPPRESSION IF NEEDED
+```{r}
+
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- assessment %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(temp_testsuppression)
+}
+```
+```{r}
+
+#check all counties that match the region
+temp_checkregions <- assessment %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  
+  #******ADD IN THE REGION HERE
+  subset(region=='Planning Region 4') %>%
+  arrange(data)
+View(temp_checkregions)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+assessment$data[assessment$location=='Sargent'] <- NA
+assessment$data[assessment$location=='Pembina'] <- NA
+  
+```
+
+## STEP 3: DATA QUALITY CHECKS
+```{r}
+########## MANUAL STEP - DOUBLE  CHECK #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- assessment %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(temp_testsuppression)
+}
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(assessment$locationid))>=1) {
+  print(assessment$location[is.na(assessment$locationid)])
+} else if (sum(is.na(assessment$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are 5 or fewer including 0
+temp_suppresscheck <- assessment %>% subset(dataformat=='Number') %>% subset(data<=5)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed'
+} else if (temp_rows>=1) {
+  print(temp_suppresscheck)
+}
+
+# 3. Output cases where percent data is greater than 1
+temp_percheck <- assessment %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+
+# 4. Visually inspect output data
+View(assessment)
+
+```
+
+## STEP 4: COMMIT TO DATABASE
+```{r}
+#CHECK DATASET NAMED asessment TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,'northdakota',assessment,append=TRUE,row.names=FALSE)
+```
+
+## STEP 5: EXPORT FILE TO UPLOAD TO KIDS COUNT
+```{r}
+#write query from database to get needed format for KC data center
+
+assessment_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",year,"' AND varname='childabuseandneglectreports';")
+
+
+upload_datacenter_assessments <- dbGetQuery(con,assessment_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter_assessments,file=paste0("./Output/safety/northdakota_",year,"_childabuseandneglectreports.csv"),row.names=FALSE)
+```
+
+
+
+## ############################################ ##
+## SUSPECTED VICTIMS OF CHILD ABUSE AND NEGLECT ##
+## ############################################ ##
+
+```{r}
+## STEP 1: CALCULATE THE NUMBER FROM NCANDS DATA FILE##
+
+############
+#COUNTY DATA
+allegedvictims_county <- ncands %>%
+  select(c(County,allegedvictims)) %>%
+  
+  #remove totals
+  subset(County!='Totals'& County != 'Unduplicated Total*') %>%
+  
+  #suppress if 5 or fewer including 0
+  mutate(allegedvictims=replace(allegedvictims,allegedvictims<=5,NA)) %>%
+  
+  #add in kc variables
+  rename(location=County,
+         data=allegedvictims) %>%
+  mutate(locationtype='County') %>%
+  mutate(state='North Dakota') %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='childabuseandneglectsuspectedvictims')
+
+
+###########
+#STATE DATA
+allegedvictims_state <- ncands %>%
+  select(c(County,allegedvictims)) %>%
+  
+  #select only totals
+  subset(County=='Unduplicated Total*') %>%
+  
+  
+  #suppress if 5 or fewer including 0
+  mutate(allegedvictims=replace(allegedvictims,allegedvictims<=5,NA)) %>%
+  
+  #add in kc variables
+  mutate(location='North Dakota') %>%
+  select(-c(County)) %>%
+  rename(data=allegedvictims) %>%
+  mutate(locationtype='State') %>%
+  mutate(state='North Dakota') %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='childabuseandneglectsuspectedvictims')
+
+
+############
+#REGION DATA
+allegedvictims_region <- ncands %>%
+  select(c(County,allegedvictims)) %>%
+  
+  #remove totals
+  subset(County!='Totals'& County != 'Unduplicated Total*') %>%
+  
+  #add in regions and sum by group
+  left_join(regionids,by=c('County'='county')) %>%
+  group_by(region) %>%
+  summarise(data=sum(allegedvictims)) %>%
+  ungroup %>%
+  
+  #suppress if 5 or fewer including 0
+  mutate(data=replace(data,data<=5,NA)) %>%
+  
+  #add in kc variables
+  rename(location=region) %>%
+  mutate(location=as.character(location)) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(state='North Dakota') %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='childabuseandneglectsuspectedvictims')
+
+
+###############################################
+#UNION COUNTY, STATE, AND STATE PLANNING REGION
+allegedvictims <- allegedvictims_county %>%
+  bind_rows(allegedvictims_state) %>%
+  bind_rows(allegedvictims_region) %>%
+  
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+
+
+###########################################################
+###########################################################
+## STEP 2: CALCULATE PERCENTS USING POPULATION ESTIMATES ##
+
+##########################################
+#CALCULATE THE PERCENT FROM THE POPULATION
+
+#write the sql code needed to pull population data from the database
+childpop_sql <- paste0("SELECT location, timeframe, age_group, data FROM northdakota WHERE (timeframe='",year,"' AND vintageyear='",year,"') AND varname='childpopulationbysingleyearofage';")
+
+
+childpop <- dbGetQuery(con,childpop_sql) %>%
+  mutate(age_group=as.numeric(age_group)) %>%
+  subset(age_group<=17) %>%
+  
+  #create 0 to 17 age group sums
+  mutate(data=as.numeric(data)) %>%
+  group_by(location,timeframe) %>%
+  summarise(totalpop0to17=sum(data)) %>%
+  ungroup
+
+
+##############################
+#CALCULATE PERCENTS FOR COUNTY, STATE, and STATE PLANNING REGION
+
+#create custom population that sums up four counties reported together
+mcleantotals <- childpop %>%
+  subset(location=='Mercer' | location=='McLean' | location=='Oliver' | 
+           location=='Sheridan') %>%
+  summarise(totalpop0to17=sum(totalpop0to17))
+mcleantotals_number <- mcleantotals$totalpop0to17
+  
+
+
+allegedvictims_percent <- allegedvictims %>%
+  left_join(childpop,by=c('location'='location','timeframe'='timeframe')) %>%
+  rename(allegedvictims=data) %>%
+  
+  #add in the summed county totals
+  mutate(totalpop0to17=replace(totalpop0to17,location=='McLean',mcleantotals_number)) %>%
+  
+  #calculate percent
+  mutate(data=allegedvictims/totalpop0to17) %>%
+  select(-c(allegedvictims,totalpop0to17)) %>%
+  
+  mutate(dataformat='Percent')
+
+
+###########################
+#COMBINE NUMBER AND PERCENT
+allegedvictims_toupload <- allegedvictims %>%
+  bind_rows(allegedvictims_percent)
+```
+
+## STEP 2: UPDATE SUPPRESSION IF NEEDED
+```{r}
+
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- allegedvictims_toupload %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  view(temp_testsuppression)
+}
+```
+```{r}
+
+#check all counties that match the region
+temp_checkregions <- allegedvictims_toupload %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  
+  #******ADD IN THE REGION HERE
+  subset(region=='Planning Region 5') %>%
+  arrange(data)
+view(temp_checkregions)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+allegedvictims_toupload$data[allegedvictims_toupload$location=='Sargent'] <- NA
+  
+```
+
+## STEP 3: DATA QUALITY CHECKS
+```{r}
+########## MANUAL STEP - DOUBLE  CHECK #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- allegedvictims_toupload %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  view(temp_testsuppression)
+}
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(allegedvictims_toupload$locationid))>=1) {
+  print(allegedvictims_toupload$location[is.na(allegedvictims_toupload$locationid)])
+} else if (sum(is.na(allegedvictims_toupload$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are 5 or fewer including 0
+temp_suppresscheck <- allegedvictims_toupload %>% subset(dataformat=='Number') %>% subset(data<=5)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed'
+} else if (temp_rows>=1) {
+  print(temp_suppresscheck)
+}
+
+# 3. Output cases where percent data is greater than 1
+temp_percheck <- allegedvictims_toupload %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+
+# 4. Visually inspect output data
+view(allegedvictims_toupload)
+```
+
+## STEP 4: COMMIT TO DATABASE
+```{r}
+#CHECK DATASET NAMED allegedvictims TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,'northdakota',allegedvictims_toupload,append=TRUE,row.names=FALSE)
+```
+
+## STEP 5: EXPORT FILE TO UPLOAD TO KIDS COUNT
+```{r}
+#write query from database to get needed format for KC data center
+
+allegedvictims_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",year,"' AND varname='childabuseandneglectsuspectedvictims';")
+
+
+upload_datacenter_allegedvictims <- dbGetQuery(con,allegedvictims_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter_allegedvictims,file=paste0("./Output/safety/northdakota_",year,"_childabuseandneglectsuspectedvictims.csv"),row.names=FALSE)
+```
+
+
+
+## ##################################################################################### ##
+## VICTIMS OF CHILD ABUSE AND NEGLECT - SERVICES REQUIRED (PERCENT OF SUSPECTED VICTIMS) ##
+## ##################################################################################### ##
+
+## STEP 1: CLEAN DATA
+```{r}
+## CALCULATE THE NUMBER AND PERCEENT FROM NCANDS DATA FILE##
+
+############
+#COUNTY DATA
+victims_county <- ncands %>%
+  select(c(County,victims,allegedvictims)) %>%
+  
+  #remove totals
+  subset(County!='Totals'& County != 'Unduplicated Total*') %>%
+  
+  #suppress if 5 or fewer including 0
+  mutate(victims=replace(victims,victims<=5,NA)) %>%
+  mutate(allegedvictims=replace(allegedvictims,allegedvictims<=5,NA)) %>%
+  
+  #calculate the percent
+  mutate(Percent=victims/allegedvictims) %>%
+  #rename number for pivot
+  rename(Number=victims) %>%
+  select(-c(allegedvictims)) %>%
+  
+  #pivot wide to long
+  pivot_longer(cols=c(Number,Percent),names_to='dataformat',values_to='data') %>%
+  
+  #add in kc variables
+  rename(location=County) %>%
+  mutate(locationtype='County') %>%
+  mutate(state='North Dakota') %>%
+  mutate(timeframe=year) %>%
+  mutate(varname='childabuseandneglectservicesrequired')
+
+
+###########
+#STATE DATA
+victims_state <- ncands %>%
+  select(c(County,victims,allegedvictims)) %>%
+  
+  #select only totals
+  subset(County=='Unduplicated Total*') %>%
+  
+  
+  #suppress if 5 or fewer including 0
+  mutate(victims=replace(victims,victims<=5,NA)) %>%
+  mutate(allegedvictims=replace(allegedvictims,allegedvictims<=5,NA)) %>%
+  
+  #calculate the percent
+  mutate(Percent=victims/allegedvictims) %>%
+  #rename number for pivot
+  rename(Number=victims) %>%
+  select(-c(allegedvictims)) %>%
+  
+  #pivot wide to long
+  pivot_longer(cols=c(Number,Percent),names_to='dataformat',values_to='data') %>%
+  
+  #add in kc variables
+  mutate(location='North Dakota') %>%
+  select(-c(County)) %>%
+  mutate(locationtype='State') %>%
+  mutate(state='North Dakota') %>%
+  mutate(timeframe=year) %>%
+  mutate(varname='childabuseandneglectservicesrequired')
+
+
+############
+#REGION DATA
+victims_region <- ncands %>%
+  select(c(County,victims,allegedvictims)) %>%
+  
+  #remove totals
+  subset(County!='Totals'& County != 'Unduplicated Total*') %>%
+  
+  #add in regions and sum by group
+  left_join(regionids,by=c('County'='county')) %>%
+  group_by(region) %>%
+  summarise(Number=sum(victims),
+            Percent=sum(victims)/sum(allegedvictims)) %>%
+  ungroup %>%
+  
+  #suppress if 5 or fewer including 0
+  mutate(Number=replace(Number,Number<=5,NA)) %>%
+  mutate(Percent=replace(Percent,Number<=5,NA)) %>%
+    
+  #pivot wide to long
+  pivot_longer(cols=c(Number,Percent),names_to='dataformat',values_to='data') %>%
+  
+  #add in kc variables
+  rename(location=region) %>%
+  mutate(location=as.character(location)) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(state='North Dakota') %>%
+  mutate(timeframe=year) %>%
+  mutate(varname='childabuseandneglectservicesrequired')
+
+
+###############################################
+#UNION COUNTY, STATE, AND STATE PLANNING REGION
+victims <- victims_county %>%
+  bind_rows(victims_state) %>%
+  bind_rows(victims_region) %>%
+  
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+```
+
+## STEP 2: UPDATE SUPPRESSION IF NEEDED
+```{r}
+
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- victims %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(temp_testsuppression)
+}
+```
+
+```{r}
+
+#check all counties that match the region
+temp_checkregions <- victims %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  
+  #******ADD IN THE REGION HERE
+  subset(region=='Planning Region 4') %>%
+  arrange(data)
+View(temp_checkregions)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+victims$data[victims$location=='McKenzie'] <- NA
+victims$data[victims$location=='Pembina'] <- NA
+  
+```
+
+## STEP 3: DATA QUALITY CHECKS
+```{r}
+########## MANUAL STEP - DOUBLE  CHECK #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- victims %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(temp_testsuppression)
+}
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(victims$locationid))>=1) {
+  print(victims$location[is.na(victims$locationid)])
+} else if (sum(is.na(victims$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are 5 or fewer including 0
+temp_suppresscheck <- victims %>% subset(dataformat=='Number') %>% subset(data<=5)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed'
+} else if (temp_rows>=1) {
+  print(temp_suppresscheck)
+}
+
+# 3. Output cases where percent data is greater than 1
+temp_percheck <- victims %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+
+# 4. Visually inspect output data
+View(victims)
+
+```
+
+## STEP 4: COMMIT TO DATABASE
+```{r}
+#CHECK DATASET NAMED victims TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,'northdakota',victims,append=TRUE,row.names=FALSE)
+```
+
+## STEP 5: OUTPUT FILE TO UPLOAD TO KIDS COUNT
+```{r}
+#write query from database to get needed format for KC data center
+
+victims_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",year,"' AND varname='childabuseandneglectservicesrequired';")
+
+
+upload_datacenter_victims <- dbGetQuery(con,victims_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter_victims,file=paste0("./Output/safety/northdakota_",year,"_childabuseandneglectservicesrequired.csv"),row.names=FALSE)
+```
+
+
+
+## ####################################################### ##
+## VICTIMS OF CHILD ABUSE AND NEGLECT REQUIRING SERVICES - ##
+##      RATE PER 1,000 CHILDREN AGES 0 THROUGH 17          ##
+## ####################################################### ##
+
+## STEP 1: CLEAN DATA
+```{r}
+#write query from database to get stored data needed for calculating rate
+
+#create dataframe for victims
+victims_sql <- paste0("SELECT locationid, location, locationtype, state, timeframe, data FROM northdakota WHERE timeframe='",year,"' AND varname='childabuseandneglectservicesrequired' AND dataformat='Number';")
+victimsdata <- dbGetQuery(con,victims_sql) %>%
+  rename(victims=data) %>%
+  mutate(victims=as.numeric(paste(victims)))
+  
+
+#write the sql code needed to pull population data from the database
+childpop_sql <- paste0("SELECT location, timeframe, age_group, data FROM northdakota WHERE (timeframe='",year,"' AND vintageyear='",year,"') AND varname='childpopulationbysingleyearofage';")
+
+
+childpop <- dbGetQuery(con,childpop_sql) %>%
+  mutate(age_group=as.numeric(age_group)) %>%
+  subset(age_group<=17) %>%
+  
+  #create 0 to 17 age group sums
+  mutate(data=as.numeric(paste(data))) %>%
+  group_by(location,timeframe) %>%
+  summarise(totalpop0to17=sum(data)) %>%
+  ungroup
+
+#CREATE RATE DATA
+victims_rate <- victimsdata %>%
+  left_join(childpop,by=c('location'='location','timeframe'='timeframe')) %>%
+  
+  #calculate rate
+  mutate(data=(victims/totalpop0to17)*1000) %>%
+  select(-c(victims,totalpop0to17)) %>%
+  mutate(dataformat='Rate') %>%
+  mutate(varname='childabuseandneglectservicesrequiredrate')
+
+```
+
+## STEP 2: UPDATE SUPPRESSION IF NEEDED
+```{r}
+
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- victims_rate %>%
+  subset(locationtype=='County' & dataformat=='Rate') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(temp_testsuppression)
+}
+```
+
+```{r}
+
+#check all counties that match the region
+temp_checkregions <- victims_rate %>%
+  subset(locationtype=='County' & dataformat=='Rate') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  
+  #******ADD IN THE REGION HERE
+  subset(region=='Planning Region 4') %>%
+  arrange(data)
+View(temp_checkregions)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#victims_rate$data[victims_rate$location=='Sargent'] <- NA
+#victims_rate$data[victims_rate$location=='Pembina'] <- NA
+  
+```
+
+## STEP 3: DATA QUALITY CHECKS
+```{r}
+########## MANUAL STEP - DOUBLE  CHECK #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- victims_rate %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(temp_testsuppression)
+}
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(victims_rate$locationid))>=1) {
+  print(victims_rate$location[is.na(victims_rate$locationid)])
+} else if (sum(is.na(victims_rate$locationid))==0) {
+  'all locations match'
+}
+
+
+
+# 2. Visually inspect output data
+View(victims_rate)
+
+```
+
+## STEP 4: COMMIT TO DATABASE
+```{r}
+#CHECK DATASET NAMED victims_rate TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,'northdakota',victims_rate,append=TRUE,row.names=FALSE)
+```
+
+## STEP 5: EXPORT FILE TO UPLOAD TO KIDS COUNT
+```{r}
+#write query from database to get needed format for KC data center
+
+victims_rate_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",year,"' AND varname='childabuseandneglectservicesrequiredrate';")
+
+
+upload_datacenter_victims_rate <- dbGetQuery(con,victims_rate_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter_victims_rate,file=paste0("./Output/safety/northdakota_",year,"_childabuseandneglectservicesrequiredrate.csv"),row.names=FALSE)
+```
+
