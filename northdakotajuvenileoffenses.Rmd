@@ -1,0 +1,279 @@
+---
+title: "North Dakota Juvenile Offenses"
+author: "Xanna Burg"
+date: "4/30/2020"
+output: html_document
+---
+
+## Indicator 1: Children ages 10 to 17 referred to juvenile court
+
+**Created by:** Xanna Burg
+**Date:** May 2020
+**Updated by:**
+
+**Data Source:** North Dakota Supreme Court, State Court Administrator's Office
+**Purpose:** Clean the court referral data
+
+**Data format:** final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Data (numeric: number, DataFormat (character: "number"), LocationId (numeric: assigned for KIDS COUNT system)
+
+**To use this code for a new year:**
+* Update the year in the second code chunk for variable 'year'
+* Check each dataset visually and through the report logs prior to commiting to the database.
+
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+library(stringr)
+```
+
+```{r}
+####UPDATE to reflect the current year data working with
+year <- '2019'
+statename <- 'North Dakota'
+
+
+#run this code to create an object needed for the database (DO NOT EDIT)
+database_state <- 'northdakota'
+
+#input location ID file for ND (DO NOT EDIT)
+locationids <- read.csv("./Input/ND KC Location IDs.csv")
+locationids$Location <- as.character(locationids$Location)
+
+#input region ID file for ND (DO NOT EDIT)
+regionids <- read.csv("./Input/ND KC Region List.csv")
+regionids$county <- as.character(regionids$county)
+
+#import the lookup table for county name (DO NOT EDIT)
+countyids <- read.csv("./Documentation/Indicator Documentation/North Dakota Data Requests/ND County Codes.csv")
+countyids$ndcounty_name <- as.character(countyids$ndcounty_name)
+```
+
+
+#####STEP 1: READ IN DATA FROM ND COURTS ADMINISTRATION WHEN RECEIVE IN SPRING#####
+```{r}
+#import the data
+xl_path <- paste0("./Input/safety/northdakta_18_19_juvenilejustice.xlsx")
+offenses <- read_excel(path=xl_path,sheet=year, guess_max = 1048576)
+
+
+######################
+#CALCULATE COUNTY DATA
+offense_county <- offenses %>%
+  
+  #include those ages 10-17
+  subset(AGE_AT_OFFENSE>=10 & AGE_AT_OFFENSE<=17) %>%
+  
+  #unduplicate at the county level
+  group_by(MID,COUNTY) %>%
+  summarise(distinct_indicator=n_distinct(MID)) %>%
+  
+  #aggregate at the county level 
+  group_by(COUNTY) %>%
+  summarise(data=sum(distinct_indicator)) %>%
+  
+  #lower case all caps county
+  mutate(location=tolower(COUNTY)) %>% 
+  mutate(location=tools::toTitleCase(location)) %>%
+  
+  #merge in list of all counties since some counties have zero and are missing
+  mutate(location=replace(location, location=='Lamoure','LaMoure')) %>%
+  mutate(location=replace(location, location=='Mchenry','McHenry')) %>%
+  mutate(location=replace(location, location=='Mcintosh','McIntosh')) %>%
+  mutate(location=replace(location, location=='Mckenzie','McKenzie')) %>%
+  mutate(location=replace(location, location=='Mclean','McLean')) %>%
+  
+  right_join(countyids,by=c('location'='ndcounty_name')) %>%
+  mutate(data=replace(data,is.na(data),0)) %>%
+  
+  #add in KC database variables
+  select(c(location,data)) %>%
+  mutate(locationtype='County') %>%
+  mutate(state='North Dakota') %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='childrenreferredtojuvenilecourt')
+  
+
+#####################
+#CALCULATE STATE DATA
+offense_state <- offense_county %>%
+  mutate(location='North Dakota') %>%
+  group_by(location) %>%
+  summarise(data=sum(data)) %>%
+  
+  #add in KC database variables
+  mutate(locationtype='State') %>%
+  mutate(state='North Dakota') %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='childrenreferredtojuvenilecourt')
+
+
+#####################
+#CALCULATE REGION DATA
+offense_region <- offense_county %>%
+  
+  #add in regions
+  left_join(regionids,by=c('location'='county')) %>% 
+  group_by(region) %>%
+  summarise(data=sum(data)) %>%
+  
+  #add in KC database variables
+  rename(location=region) %>%
+  mutate(location=as.character(paste(location))) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(state='North Dakota') %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='childrenreferredtojuvenilecourt')
+
+
+#UNION COUNTY, STATE, AND STATE PLANNING REGION
+offense_data <- offense_county %>%
+  bind_rows(offense_state) %>%
+  bind_rows(offense_region) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(offense_data$locationid))>=1) {
+  print(offense_data$location[is.na(offense_data$locationid)])
+} else if (sum(is.na(offense_data$locationid))==0) {
+  'all locations match'
+}
+
+
+# 2. Visually inspect output data
+View(offense_data)
+
+```
+
+```{r}
+#CHECK DATASET NAMED offense_data TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',offense_data,append=TRUE,row.names=FALSE)
+```
+
+
+
+#####STEP 2: CREATE PERCENT ESTIMATES AFTER THE POPULATION ESTIMATES BY SINGLE YEAR OF AGE FOR VINTAGE YEAR MATCHING DATA IS UPDATED IN JUNE#####
+```{r}
+##########################################
+#CALCULATE THE PERCENT FROM THE POPULATION
+
+#write the sql code needed to pull population data from the database
+childpop_sql <- paste0("SELECT location, timeframe, age_group, data FROM northdakota WHERE (timeframe='",year,"' AND vintageyear='",year,"') AND varname='childpopulationbysingleyearofage';")
+
+
+childpop <- dbGetQuery(con,childpop_sql) %>%
+  mutate(age_group=as.numeric(age_group)) %>%
+  subset(age_group<=17 & age_group>=10) %>%
+  
+  #create 10 to 17 age group sums
+  mutate(data=as.numeric(paste(data))) %>%
+  group_by(location,timeframe) %>%
+  summarise(totalpop10to17=sum(data)) %>%
+  ungroup
+
+
+#write the sql code needed to pull the offense data that has already been published to the database
+offenses_sql <- paste0("SELECT location, locationtype, locationid, state, timeframe, dataformat, data, varname FROM northdakota WHERE timeframe='",year,"' AND varname='childrenreferredtojuvenilecourt' AND dataformat='Number';")
+
+offenses_pop <- dbGetQuery(con,offenses_sql)
+
+
+##############################
+#CALCULATE PERCENTS FOR COUNTY, STATE, and STATE PLANNING REGION
+offense_percent <- offenses_pop %>%
+  left_join(childpop,by=c('location'='location','timeframe'='timeframe')) %>%
+  rename(childoffenses=data) %>%
+  mutate(childoffenses=as.numeric(paste(childoffenses))) %>%
+  mutate(data=childoffenses/totalpop10to17) %>%
+  select(-c(childoffenses,totalpop10to17)) %>%
+  
+  mutate(dataformat='Percent')
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(offense_percent$locationid))>=1) {
+  print(offense_percent$location[is.na(offense_percent$locationid)])
+} else if (sum(is.na(offense_percent$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- offense_percent %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+View(offense_percent)
+```
+
+```{r}
+#CHECK DATASET NAMED offense_percent TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,offense_percent,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='childrenreferredtojuvenilecourt';")
+
+
+upload_datacenter_offenses <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter_offenses,file=paste0("./Output/safety/northdakota_",year,"_childrenreferredtojuvenilecourt.csv"),row.names=FALSE)
+```
+
+
+
+
+```{r}
+test <- offenses %>%
+  
+  #include those ages 10-17
+  subset(AGE_AT_OFFENSE>=10 & AGE_AT_OFFENSE<=17) %>%
+  
+  #unduplicate at the county level
+  group_by(MID) %>%
+  summarise(distinct_indicator=n_distinct(MID)) %>%
+  
+  #aggregate at the county level 
+  summarise(data=sum(distinct_indicator)) 
+
+
+```
+
+
