@@ -40,7 +40,7 @@ library(gt)
 
 
 ```{r}
-year <- "2018"
+year <- "2019"
 statename <- 'North Dakota'
 
 #county and state names that match fips codes (from tidycensus package)
@@ -190,6 +190,67 @@ afcars_all <- afcars_county %>%
   #convert wide to long
   pivot_longer(cols=c(Number,Percent),names_to='dataformat',values_to='data')
 
+```
+
+## STEP 3: UPDATE SUPPRESSION IF NEEDED
+```{r}
+
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- afcars_all %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(temp_testsuppression)
+}
+```
+
+```{r}
+
+#check all counties that match the region
+temp_checkregions <- afcars_all %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  
+  #******ADD IN THE REGION HERE
+  subset(region=='Planning Region 5') %>%
+  arrange(data)
+View(temp_checkregions)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+afcars_all$data[afcars_all$location=='Sargent'] <- NA
+afcars_all$data[afcars_all$location=='Pembina'] <- NA
+  
+```
+
+## STEP 4: DATA QUALITY CHECKS
+```{r}
+########## MANUAL STEP - DOUBLE  CHECK #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- afcars_all %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(temp_testsuppression)
+}
+
 
 ####################
 ####################
@@ -226,9 +287,10 @@ if (temp_rows==0) {
 
 # 4. Visually inspect output data
 View(afcars_all)
+
 ```
 
-## STEP 3: ADD TO DATABASE AND OUTPUT FOR UPLOADING TO DATA CENTER
+## STEP 5: ADD TO DATABASE AND OUTPUT FOR UPLOADING TO DATA CENTER
 ```{r}
 #CHECK DATASET NAMED afcars_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
 #this code adds kids count data to MBPC postgres database
