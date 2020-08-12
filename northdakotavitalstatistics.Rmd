@@ -1,0 +1,2558 @@
+---
+title: "North Dakota Vital Statistics"
+author: "Xanna Burg"
+date: "July 2020"
+output: html_document
+---
+
+## Indicator 1: Total births (1-year totals)
+## Indicator 2: Low birth weight babies (1-year totals)
+## Indicator 3: Births to women receiving prenatal care during first trimester (1-year totals)
+## Indicator 4: Births to mothers who smoked during pregnancy (1-year totals)
+## Indicator 5: Total births to unmarried women (1-year totals)
+## Indicator 6: Teen births per 1,000 females ages 1 through 19
+## Indicator 7: Total births to teens ages 12 to 19 (1-year totals)
+## Indicator 8: Total births to unmarried teens ages 12 to 19 (1-year totals)
+
+## Indicator 9: Infant mortality by region (5-year totals)
+## Indicator 10: Child and teen (ages 1-19) death rate by region (5-year totals)
+
+**Created by:** Xanna Burg
+**Date:** July 2020
+**Updated by:**
+
+**Data Source:** North Dakota Department of Health, Division of Vital Records
+**Purpose:** Input the statewide vital statistics data
+
+**Data format:** final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Race (for two indicators broken down by race; character) Data (numeric: number, percentage, rate), DataFormat (character: "number" or "percent" or "rate"), LocationId (numeric: assigned for KIDS COUNT system)
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(tidycensus)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+library(stringr)
+library(sas7bdat)
+```
+
+```{r}
+####UPDATE to reflect the current year data working with
+year <- '2019'
+
+fiveyear <- '2015-2019' 
+statefile <- 'northdakota'
+statename <- 'North Dakota'
+
+#input location ID file for ND
+locationids <- read.csv("./Input/ND KC Location IDs.csv")
+locationids$Location <- as.character(locationids$Location)
+
+#input region ID file for ND
+regionids <- read.csv("./Input/ND KC Region List.csv")
+regionids$county <- as.character(regionids$county)
+
+#input county list file
+countylist <- read.csv("./Input/ND County List.csv")
+countylist$Location <- as.character(countylist$Location)
+```
+
+
+**TOTAL BIRTHS (1-YEAR TOTALS)**
+## STEP 1: IMPORT & CLEAN DATA
+```{r}
+variablename <- 'totalbirths'
+
+#read in current birth year
+birthdata <-
+  read.csv(paste0('./Input/health/northdakota_',year,'_',variablename,'.csv'))
+```
+
+```{r}
+#clean up birth data
+
+#COUNTY DATA
+birthdata_county <- birthdata %>%
+  
+  #subset for counties
+  subset(location != 'Total' & location != 'I' & location != 'II' & 
+  location != 'III' & location != 'IV' & location != 'V' & location != 'VI' 
+  & location != 'VII' & location != 'VIII' & location != 'SPIRIT LAKE' & 
+    location != 'STANDING ROCK' & location != 'THREE AFFILIATED TRIBES' & 
+    location != 'TURTLE MOUNTAIN') %>%
+  
+  #lowercase county names
+  mutate(location=tolower(location)) %>%
+  mutate(location=str_to_title(location)) %>%
+  
+  #edit some county names
+  mutate(location=replace(location,location=='Lamoure','LaMoure')) %>%
+  mutate(location=replace(location,location=='Mchenry','McHenry')) %>%
+  mutate(location=replace(location,location=='Mcintosh','McIntosh')) %>%
+  mutate(location=replace(location,location=='Mckenzie','McKenzie')) %>%
+  mutate(location=replace(location,location=='Mclean','McLean')) %>%
+  
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='County') 
+
+
+#STATE DATA
+birthdata_state <- birthdata %>%
+  
+  #subset for state
+  subset(location == 'Total') %>%
+  mutate(location='North Dakota') %>%
+
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='State') 
+
+
+#REGION DATA
+birthdata_region <- birthdata %>%
+  
+  #subset for regions
+  subset(location == 'I' | location == 'II' | 
+  location == 'III' | location == 'IV' | location == 'V' | location == 'VI' 
+  | location == 'VII' | location == 'VIII') %>%
+  
+  #rename regions
+  mutate(location=case_when(
+    location=="I" ~ "Planning Region 1",
+    location=="II" ~ "Planning Region 2",
+    location=="III" ~ "Planning Region 3",
+    location=="IV" ~ "Planning Region 4",
+    location=="V" ~ "Planning Region 5",
+    location=="VI" ~ "Planning Region 6",
+    location=="VII" ~ "Planning Region 7",
+    location=="VIII" ~ "Planning Region 8")) %>%
+  
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='Planning Region') 
+
+  
+#TRIBAL DATA
+birthdata_tribal <- birthdata %>%
+  
+  #subset for counties
+  subset(location == 'SPIRIT LAKE' | 
+    location == 'STANDING ROCK' | location== 'THREE AFFILIATED TRIBES' | 
+    location == 'TURTLE MOUNTAIN') %>%
+  
+  #rename tribal areas
+  mutate(location=case_when(
+    location=="SPIRIT LAKE" ~ "Spirit Lake Reservation",
+    location=="STANDING ROCK" ~ "Standing Rock Reservation (North Dakota portion)",
+    location=="THREE AFFILIATED TRIBES" ~ "Fort Berthold Reservation",
+    location=="TURTLE MOUNTAIN" ~ "Turtle Mountain Reservation and Off-Reservation Trust Land (North Dakota portion)")) %>%
+  
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='Tribal Area') 
+
+
+#combine all geographies
+birthdata_all <- birthdata_county %>%
+  bind_rows(birthdata_state) %>%
+  bind_rows(birthdata_region) %>%
+  bind_rows(birthdata_tribal) %>%
+  
+  #add in location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  mutate(state=statename) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='totalbirths') %>%
+  mutate(timeframe=year) %>%
+  
+  #supress if a location is less than 6
+  mutate(data=replace(data,data<6 & data>0,NA))
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(birthdata_all$locationid))>=1) {
+  print(birthdata_all$location[is.na(birthdata_all$locationid)])
+} else if (sum(is.na(birthdata_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are 5 or fewer including 0
+temp_suppresscheck <- birthdata_all %>% subset(data<6 & data>0)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+
+#3. Check that regions will not make counties identifable
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- birthdata_all %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(temp_testsuppression)
+}
+```
+
+## STEP 2: UPDATE SUPPRESSION IF NEEDED
+```{r}
+
+#check all counties that match the region
+temp_checkregions <- birthdata_all %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  
+  #******ADD IN THE REGION HERE
+  subset(region=='Planning Region 8') %>%
+  arrange(data)
+View(temp_checkregions)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#birthdata_all$data[birthdata_all$location=='Billings'] <- NA
+
+
+
+#Then check again
+#3. Check that regions will not make counties identifable
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- birthdata_all %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(temp_testsuppression)
+}
+
+# 4. Visually inspect output data
+View(birthdata_all)
+```
+
+```{r}
+#CHECK DATASET NAMED birthdata_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',birthdata_all,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+totalbirths_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",year,"' AND varname='totalbirths';")
+
+upload_data_totalbirths <- dbGetQuery(con,totalbirths_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_totalbirths,file=paste0("./Output/health/",statefile,"_",year,"_totalbirths.csv"),row.names=FALSE)
+```
+
+
+
+**LOW BIRTH WEIGHT BABIES (1-YEAR TOTALS)**
+## STEP 1: IMPORT & CLEAN DATA
+```{r}
+variablename <- 'lowbirthweight1yeartotals'
+
+#read in current birth year
+birthdata <-
+  read.csv(paste0('./Input/health/northdakota_',year,'_',variablename,'.csv'))
+```
+
+```{r}
+#clean up birth data
+
+#COUNTY DATA
+birthdata_county <- birthdata %>%
+  
+  #subset for counties
+  subset(location != 'Total' & location != 'I' & location != 'II' & 
+  location != 'III' & location != 'IV' & location != 'V' & location != 'VI' 
+  & location != 'VII' & location != 'VIII' & location != 'SPIRIT LAKE' & 
+    location != 'STANDING ROCK' & location != 'THREE AFFILIATED TRIBES' & 
+    location != 'TURTLE MOUNTAIN') %>%
+  
+  #lowercase county names
+  mutate(location=tolower(location)) %>%
+  mutate(location=str_to_title(location)) %>%
+  
+  #edit some county names
+  mutate(location=replace(location,location=='Lamoure','LaMoure')) %>%
+  mutate(location=replace(location,location=='Mchenry','McHenry')) %>%
+  mutate(location=replace(location,location=='Mcintosh','McIntosh')) %>%
+  mutate(location=replace(location,location=='Mckenzie','McKenzie')) %>%
+  mutate(location=replace(location,location=='Mclean','McLean')) %>%
+  
+  #add in counties with zero
+  full_join(countylist,by=c('location'='Location')) %>%
+
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='County') %>%
+  
+  #assign zeroes to NA which came from full join
+  mutate(data=as.character(paste(data))) %>%
+  mutate(data=replace(data,data=='NA',0)) 
+
+
+#STATE DATA
+birthdata_state <- birthdata %>%
+  
+  #subset for state
+  subset(location == 'Total') %>%
+  mutate(location='North Dakota') %>%
+
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='State') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+
+#REGION DATA
+birthdata_region <- birthdata %>%
+  
+  #subset for regions
+  subset(location == 'I' | location == 'II' | 
+  location == 'III' | location == 'IV' | location == 'V' | location == 'VI' 
+  | location == 'VII' | location == 'VIII') %>%
+  
+  #rename regions
+  mutate(location=case_when(
+    location=="I" ~ "Planning Region 1",
+    location=="II" ~ "Planning Region 2",
+    location=="III" ~ "Planning Region 3",
+    location=="IV" ~ "Planning Region 4",
+    location=="V" ~ "Planning Region 5",
+    location=="VI" ~ "Planning Region 6",
+    location=="VII" ~ "Planning Region 7",
+    location=="VIII" ~ "Planning Region 8")) %>%
+  
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='Planning Region') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+  
+#TRIBAL DATA
+birthdata_tribal <- birthdata %>%
+  
+  #subset for counties
+  subset(location == 'SPIRIT LAKE' | 
+    location == 'STANDING ROCK' | location== 'THREE AFFILIATED TRIBES' | 
+    location == 'TURTLE MOUNTAIN') %>%
+  
+  #rename tribal areas
+  mutate(location=case_when(
+    location=="SPIRIT LAKE" ~ "Spirit Lake Reservation",
+    location=="STANDING ROCK" ~ "Standing Rock Reservation (North Dakota portion)",
+    location=="THREE AFFILIATED TRIBES" ~ "Fort Berthold Reservation",
+    location=="TURTLE MOUNTAIN" ~ "Turtle Mountain Reservation and Off-Reservation Trust Land (North Dakota portion)")) %>%
+  
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='Tribal Area') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+
+#combine all geographies
+birthdata_all <- birthdata_county %>%
+  bind_rows(birthdata_state) %>%
+  bind_rows(birthdata_region) %>%
+  bind_rows(birthdata_tribal) %>%
+  
+  #add in location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  mutate(state=statename) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='lowbirthweight1yeartotals') %>%
+  mutate(timeframe=year) %>%
+  
+  #supress if a location is less than 6
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(data=replace(data,data<6 & data>0,NA))
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(birthdata_all$locationid))>=1) {
+  print(birthdata_all$location[is.na(birthdata_all$locationid)])
+} else if (sum(is.na(birthdata_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are 5 or fewer including 0
+temp_suppresscheck <- birthdata_all %>% subset(data<6 & data>0)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+
+#3. Check that regions will not make counties identifable
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- birthdata_all %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(temp_testsuppression)
+}
+```
+
+## STEP 2: UPDATE SUPPRESSION IF NEEDED
+```{r}
+
+#check all counties that match the region
+temp_checkregions <- birthdata_all %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  
+  #******ADD IN THE REGION HERE
+  subset(region=='Planning Region 1') %>%
+  arrange(data)
+View(temp_checkregions)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#birthdata_all$data[birthdata_all$location=='McKenzie'] <- NA
+
+
+
+#Then check again
+#3. Check that regions will not make counties identifable
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- birthdata_all %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(temp_testsuppression)
+}
+
+# 4. Visually inspect output data
+View(birthdata_all)
+```
+
+```{r}
+#CHECK DATASET NAMED birthdata_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',birthdata_all,append=TRUE,row.names=FALSE)
+
+```
+
+
+## STEP 3: CALCULATE PERCENTAGE
+```{r}
+totalbirths_denominatorsql <- paste0("SELECT location, timeframe, data FROM northdakota WHERE timeframe='",year,"' AND varname='totalbirths';")
+
+totalbirths_denominator <- dbGetQuery(con,totalbirths_denominatorsql) %>%
+  rename(totalbirths=data)
+
+
+births_numbersql <-paste0("SELECT location, locationtype, locationid, state, timeframe, data FROM northdakota WHERE timeframe='",year,"' AND varname='lowbirthweight1yeartotals' AND dataformat='Number';") 
+
+births_percent <- dbGetQuery(con,births_numbersql) %>%
+  rename(unmarriedbirths=data) %>%
+  
+  left_join(totalbirths_denominator,by=c('location'='location','timeframe'='timeframe')) %>%
+  
+  #calculate percent
+  mutate(totalbirths=as.numeric(paste(totalbirths))) %>%
+  mutate(unmarriedbirths=as.numeric(paste(unmarriedbirths))) %>%
+  mutate(data=unmarriedbirths/totalbirths) %>%
+  select(-c(unmarriedbirths,totalbirths)) %>%
+  
+  #add in KC variables
+  mutate(dataformat='Percent') %>%
+  mutate(varname='lowbirthweight1yeartotals')
+
+View(births_percent)
+```
+
+```{r}
+#CHECK DATASET NAMED births_percent TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',births_percent,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+births_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",year,"' AND varname='lowbirthweight1yeartotals';")
+
+upload_data_births <- dbGetQuery(con,births_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_births,file=paste0("./Output/health/",statefile,"_",year,"_lowbirthweight1yeartotals.csv"),row.names=FALSE)
+```
+
+
+
+**BIRTHS TO WOMEN RECEIVING PRENATAL CARE DURING FIRST TRIMESTER (1-YEAR TOTALS)**
+## STEP 1: IMPORT & CLEAN DATA
+```{r}
+variablename <- 'firsttrimesterprenatal1yeartotals'
+
+#read in current birth year
+birthdata <-
+  read.csv(paste0('./Input/health/northdakota_',year,'_',variablename,'.csv'))
+```
+
+```{r}
+#clean up birth data
+
+#COUNTY DATA
+birthdata_county <- birthdata %>%
+  
+  #subset for counties
+  subset(location != 'Total' & location != 'I' & location != 'II' & 
+  location != 'III' & location != 'IV' & location != 'V' & location != 'VI' 
+  & location != 'VII' & location != 'VIII' & location != 'SPIRIT LAKE' & 
+    location != 'STANDING ROCK' & location != 'THREE AFFILIATED TRIBES' & 
+    location != 'TURTLE MOUNTAIN') %>%
+  
+  #lowercase county names
+  mutate(location=tolower(location)) %>%
+  mutate(location=str_to_title(location)) %>%
+  
+  #edit some county names
+  mutate(location=replace(location,location=='Lamoure','LaMoure')) %>%
+  mutate(location=replace(location,location=='Mchenry','McHenry')) %>%
+  mutate(location=replace(location,location=='Mcintosh','McIntosh')) %>%
+  mutate(location=replace(location,location=='Mckenzie','McKenzie')) %>%
+  mutate(location=replace(location,location=='Mclean','McLean')) %>%
+  
+  #add in counties with zero
+  full_join(countylist,by=c('location'='Location')) %>%
+
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='County') %>%
+  
+  #assign zeroes to NA which came from full join
+  mutate(data=as.character(paste(data))) %>%
+  mutate(data=replace(data,data=='NA',0)) 
+
+
+#STATE DATA
+birthdata_state <- birthdata %>%
+  
+  #subset for state
+  subset(location == 'Total') %>%
+  mutate(location='North Dakota') %>%
+
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='State') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+
+#REGION DATA
+birthdata_region <- birthdata %>%
+  
+  #subset for regions
+  subset(location == 'I' | location == 'II' | 
+  location == 'III' | location == 'IV' | location == 'V' | location == 'VI' 
+  | location == 'VII' | location == 'VIII') %>%
+  
+  #rename regions
+  mutate(location=case_when(
+    location=="I" ~ "Planning Region 1",
+    location=="II" ~ "Planning Region 2",
+    location=="III" ~ "Planning Region 3",
+    location=="IV" ~ "Planning Region 4",
+    location=="V" ~ "Planning Region 5",
+    location=="VI" ~ "Planning Region 6",
+    location=="VII" ~ "Planning Region 7",
+    location=="VIII" ~ "Planning Region 8")) %>%
+  
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='Planning Region') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+  
+#TRIBAL DATA
+birthdata_tribal <- birthdata %>%
+  
+  #subset for counties
+  subset(location == 'SPIRIT LAKE' | 
+    location == 'STANDING ROCK' | location== 'THREE AFFILIATED TRIBES' | 
+    location == 'TURTLE MOUNTAIN') %>%
+  
+  #rename tribal areas
+  mutate(location=case_when(
+    location=="SPIRIT LAKE" ~ "Spirit Lake Reservation",
+    location=="STANDING ROCK" ~ "Standing Rock Reservation (North Dakota portion)",
+    location=="THREE AFFILIATED TRIBES" ~ "Fort Berthold Reservation",
+    location=="TURTLE MOUNTAIN" ~ "Turtle Mountain Reservation and Off-Reservation Trust Land (North Dakota portion)")) %>%
+  
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='Tribal Area') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+
+#combine all geographies
+birthdata_all <- birthdata_county %>%
+  bind_rows(birthdata_state) %>%
+  bind_rows(birthdata_region) %>%
+  bind_rows(birthdata_tribal) %>%
+  
+  #add in location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  mutate(state=statename) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='firsttrimesterprenatal1yeartotals') %>%
+  mutate(timeframe=year) %>%
+  
+  #supress if a location is less than 6
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(data=replace(data,data<6 & data>0,NA))
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(birthdata_all$locationid))>=1) {
+  print(birthdata_all$location[is.na(birthdata_all$locationid)])
+} else if (sum(is.na(birthdata_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are 5 or fewer including 0
+temp_suppresscheck <- birthdata_all %>% subset(data<6 & data>0)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+
+#3. Check that regions will not make counties identifable
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- birthdata_all %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(temp_testsuppression)
+}
+```
+
+## STEP 2: UPDATE SUPPRESSION IF NEEDED
+```{r}
+
+#check all counties that match the region
+temp_checkregions <- birthdata_all %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  
+  #******ADD IN THE REGION HERE
+  subset(region=='Planning Region 8') %>%
+  arrange(data)
+View(temp_checkregions)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#birthdata_all$data[birthdata_all$location=='Billings'] <- NA
+
+
+
+#Then check again
+#3. Check that regions will not make counties identifable
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- birthdata_all %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(temp_testsuppression)
+}
+
+# 4. Visually inspect output data
+View(birthdata_all)
+```
+
+```{r}
+#CHECK DATASET NAMED birthdata_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',birthdata_all,append=TRUE,row.names=FALSE)
+
+```
+
+
+## STEP 3: CALCULATE PERCENTAGE
+```{r}
+totalbirths_denominatorsql <- paste0("SELECT location, timeframe, data FROM northdakota WHERE timeframe='",year,"' AND varname='totalbirths';")
+
+totalbirths_denominator <- dbGetQuery(con,totalbirths_denominatorsql) %>%
+  rename(totalbirths=data)
+
+
+births_numbersql <-paste0("SELECT location, locationtype, locationid, state, timeframe, data FROM northdakota WHERE timeframe='",year,"' AND varname='firsttrimesterprenatal1yeartotals' AND dataformat='Number';") 
+
+births_percent <- dbGetQuery(con,births_numbersql) %>%
+  rename(unmarriedbirths=data) %>%
+  
+  left_join(totalbirths_denominator,by=c('location'='location','timeframe'='timeframe')) %>%
+  
+  #calculate percent
+  mutate(totalbirths=as.numeric(paste(totalbirths))) %>%
+  mutate(unmarriedbirths=as.numeric(paste(unmarriedbirths))) %>%
+  mutate(data=unmarriedbirths/totalbirths) %>%
+  select(-c(unmarriedbirths,totalbirths)) %>%
+  
+  #add in KC variables
+  mutate(dataformat='Percent') %>%
+  mutate(varname='firsttrimesterprenatal1yeartotals')
+
+View(births_percent)
+```
+
+```{r}
+#CHECK DATASET NAMED births_percent TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',births_percent,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+births_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",year,"' AND varname='firsttrimesterprenatal1yeartotals';")
+
+upload_data_births <- dbGetQuery(con,births_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_births,file=paste0("./Output/health/",statefile,"_",year,"_firsttrimesterprenatal1yeartotals.csv"),row.names=FALSE)
+```
+
+
+
+**BIRTHS TO MOTHERS WHO SMOKED DURING PREGNANCY (1-YEAR TOTALS)**
+## STEP 1: IMPORT & CLEAN DATA
+```{r}
+variablename <- 'smokedprenatal1yeartotals'
+
+#read in current birth year
+birthdata <-
+  read.csv(paste0('./Input/health/northdakota_',year,'_',variablename,'.csv'))
+```
+
+```{r}
+#clean up birth data
+
+#COUNTY DATA
+birthdata_county <- birthdata %>%
+  
+  #subset for counties
+  subset(location != 'Total' & location != 'I' & location != 'II' & 
+  location != 'III' & location != 'IV' & location != 'V' & location != 'VI' 
+  & location != 'VII' & location != 'VIII' & location != 'SPIRIT LAKE' & 
+    location != 'STANDING ROCK' & location != 'THREE AFFILIATED TRIBES' & 
+    location != 'TURTLE MOUNTAIN') %>%
+  
+  #lowercase county names
+  mutate(location=tolower(location)) %>%
+  mutate(location=str_to_title(location)) %>%
+  
+  #edit some county names
+  mutate(location=replace(location,location=='Lamoure','LaMoure')) %>%
+  mutate(location=replace(location,location=='Mchenry','McHenry')) %>%
+  mutate(location=replace(location,location=='Mcintosh','McIntosh')) %>%
+  mutate(location=replace(location,location=='Mckenzie','McKenzie')) %>%
+  mutate(location=replace(location,location=='Mclean','McLean')) %>%
+  
+  #add in counties with zero
+  full_join(countylist,by=c('location'='Location')) %>%
+
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='County') %>%
+  
+  #assign zeroes to NA which came from full join
+  mutate(data=as.character(paste(data))) %>%
+  mutate(data=replace(data,data=='NA',0)) 
+
+
+#STATE DATA
+birthdata_state <- birthdata %>%
+  
+  #subset for state
+  subset(location == 'Total') %>%
+  mutate(location='North Dakota') %>%
+
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='State') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+
+#REGION DATA
+birthdata_region <- birthdata %>%
+  
+  #subset for regions
+  subset(location == 'I' | location == 'II' | 
+  location == 'III' | location == 'IV' | location == 'V' | location == 'VI' 
+  | location == 'VII' | location == 'VIII') %>%
+  
+  #rename regions
+  mutate(location=case_when(
+    location=="I" ~ "Planning Region 1",
+    location=="II" ~ "Planning Region 2",
+    location=="III" ~ "Planning Region 3",
+    location=="IV" ~ "Planning Region 4",
+    location=="V" ~ "Planning Region 5",
+    location=="VI" ~ "Planning Region 6",
+    location=="VII" ~ "Planning Region 7",
+    location=="VIII" ~ "Planning Region 8")) %>%
+  
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='Planning Region') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+  
+#TRIBAL DATA
+birthdata_tribal <- birthdata %>%
+  
+  #subset for counties
+  subset(location == 'SPIRIT LAKE' | 
+    location == 'STANDING ROCK' | location== 'THREE AFFILIATED TRIBES' | 
+    location == 'TURTLE MOUNTAIN') %>%
+  
+  #rename tribal areas
+  mutate(location=case_when(
+    location=="SPIRIT LAKE" ~ "Spirit Lake Reservation",
+    location=="STANDING ROCK" ~ "Standing Rock Reservation (North Dakota portion)",
+    location=="THREE AFFILIATED TRIBES" ~ "Fort Berthold Reservation",
+    location=="TURTLE MOUNTAIN" ~ "Turtle Mountain Reservation and Off-Reservation Trust Land (North Dakota portion)")) %>%
+  
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='Tribal Area') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+
+#combine all geographies
+birthdata_all <- birthdata_county %>%
+  bind_rows(birthdata_state) %>%
+  bind_rows(birthdata_region) %>%
+  bind_rows(birthdata_tribal) %>%
+  
+  #add in location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  mutate(state=statename) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='smokedprenatal1yeartotals') %>%
+  mutate(timeframe=year) %>%
+  
+  #supress if a location is less than 6
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(data=replace(data,data<6 & data>0,NA))
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(birthdata_all$locationid))>=1) {
+  print(birthdata_all$location[is.na(birthdata_all$locationid)])
+} else if (sum(is.na(birthdata_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are 5 or fewer including 0
+temp_suppresscheck <- birthdata_all %>% subset(data<6 & data>0)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+
+#3. Check that regions will not make counties identifable
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- birthdata_all %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(temp_testsuppression)
+}
+```
+
+## STEP 2: UPDATE SUPPRESSION IF NEEDED
+```{r}
+
+#check all counties that match the region
+temp_checkregions <- birthdata_all %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  
+  #******ADD IN THE REGION HERE
+  subset(region=='Planning Region 4') %>%
+  arrange(data)
+View(temp_checkregions)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#birthdata_all$data[birthdata_all$location=='McKenzie'] <- NA
+#birthdata_all$data[birthdata_all$location=='Walsh'] <- NA
+
+
+#Then check again
+#3. Check that regions will not make counties identifable
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- birthdata_all %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(temp_testsuppression)
+}
+
+# 4. Visually inspect output data
+View(birthdata_all)
+```
+
+```{r}
+#CHECK DATASET NAMED birthdata_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',birthdata_all,append=TRUE,row.names=FALSE)
+
+```
+
+
+## STEP 3: CALCULATE PERCENTAGE
+```{r}
+totalbirths_denominatorsql <- paste0("SELECT location, timeframe, data FROM northdakota WHERE timeframe='",year,"' AND varname='totalbirths';")
+
+totalbirths_denominator <- dbGetQuery(con,totalbirths_denominatorsql) %>%
+  rename(totalbirths=data)
+
+
+births_numbersql <-paste0("SELECT location, locationtype, locationid, state, timeframe, data FROM northdakota WHERE timeframe='",year,"' AND varname='smokedprenatal1yeartotals' AND dataformat='Number';") 
+
+births_percent <- dbGetQuery(con,births_numbersql) %>%
+  rename(unmarriedbirths=data) %>%
+  
+  left_join(totalbirths_denominator,by=c('location'='location','timeframe'='timeframe')) %>%
+  
+  #calculate percent
+  mutate(totalbirths=as.numeric(paste(totalbirths))) %>%
+  mutate(unmarriedbirths=as.numeric(paste(unmarriedbirths))) %>%
+  mutate(data=unmarriedbirths/totalbirths) %>%
+  select(-c(unmarriedbirths,totalbirths)) %>%
+  
+  #add in KC variables
+  mutate(dataformat='Percent') %>%
+  mutate(varname='smokedprenatal1yeartotals')
+
+View(births_percent)
+```
+
+```{r}
+#CHECK DATASET NAMED births_percent TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',births_percent,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+births_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",year,"' AND varname='smokedprenatal1yeartotals';")
+
+upload_data_births <- dbGetQuery(con,births_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_births,file=paste0("./Output/health/",statefile,"_",year,"_smokedprenatal1yeartotals.csv"),row.names=FALSE)
+```
+
+
+
+**TOTAL BIRTHS TO UNMARRIED WOMEN (1-YEAR TOTALS)**
+## STEP 1: IMPORT & CLEAN DATA
+```{r}
+variablename <- 'birthstounmarriedwomen'
+
+#read in current birth year
+birthdata <-
+  read.csv(paste0('./Input/health/northdakota_',year,'_',variablename,'.csv'))
+```
+
+```{r}
+#clean up birth data
+
+#COUNTY DATA
+birthdata_county <- birthdata %>%
+  
+  #subset for counties
+  subset(location != 'Total' & location != 'I' & location != 'II' & 
+  location != 'III' & location != 'IV' & location != 'V' & location != 'VI' 
+  & location != 'VII' & location != 'VIII' & location != 'SPIRIT LAKE' & 
+    location != 'STANDING ROCK' & location != 'THREE AFFILIATED TRIBES' & 
+    location != 'TURTLE MOUNTAIN') %>%
+  
+  #lowercase county names
+  mutate(location=tolower(location)) %>%
+  mutate(location=str_to_title(location)) %>%
+  
+  #edit some county names
+  mutate(location=replace(location,location=='Lamoure','LaMoure')) %>%
+  mutate(location=replace(location,location=='Mchenry','McHenry')) %>%
+  mutate(location=replace(location,location=='Mcintosh','McIntosh')) %>%
+  mutate(location=replace(location,location=='Mckenzie','McKenzie')) %>%
+  mutate(location=replace(location,location=='Mclean','McLean')) %>%
+  
+  #add in counties with zero
+  full_join(countylist,by=c('location'='Location')) %>%
+
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='County') %>%
+  
+  #assign zeroes to NA which came from full join
+  mutate(data=as.character(paste(data))) %>%
+  mutate(data=replace(data,data=='NA',0)) 
+
+
+#STATE DATA
+birthdata_state <- birthdata %>%
+  
+  #subset for state
+  subset(location == 'Total') %>%
+  mutate(location='North Dakota') %>%
+
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='State') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+
+#REGION DATA
+birthdata_region <- birthdata %>%
+  
+  #subset for regions
+  subset(location == 'I' | location == 'II' | 
+  location == 'III' | location == 'IV' | location == 'V' | location == 'VI' 
+  | location == 'VII' | location == 'VIII') %>%
+  
+  #rename regions
+  mutate(location=case_when(
+    location=="I" ~ "Planning Region 1",
+    location=="II" ~ "Planning Region 2",
+    location=="III" ~ "Planning Region 3",
+    location=="IV" ~ "Planning Region 4",
+    location=="V" ~ "Planning Region 5",
+    location=="VI" ~ "Planning Region 6",
+    location=="VII" ~ "Planning Region 7",
+    location=="VIII" ~ "Planning Region 8")) %>%
+  
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='Planning Region') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+  
+#TRIBAL DATA
+birthdata_tribal <- birthdata %>%
+  
+  #subset for counties
+  subset(location == 'SPIRIT LAKE' | 
+    location == 'STANDING ROCK' | location== 'THREE AFFILIATED TRIBES' | 
+    location == 'TURTLE MOUNTAIN') %>%
+  
+  #rename tribal areas
+  mutate(location=case_when(
+    location=="SPIRIT LAKE" ~ "Spirit Lake Reservation",
+    location=="STANDING ROCK" ~ "Standing Rock Reservation (North Dakota portion)",
+    location=="THREE AFFILIATED TRIBES" ~ "Fort Berthold Reservation",
+    location=="TURTLE MOUNTAIN" ~ "Turtle Mountain Reservation and Off-Reservation Trust Land (North Dakota portion)")) %>%
+  
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='Tribal Area') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+
+#combine all geographies
+birthdata_all <- birthdata_county %>%
+  bind_rows(birthdata_state) %>%
+  bind_rows(birthdata_region) %>%
+  bind_rows(birthdata_tribal) %>%
+  
+  #add in location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  mutate(state=statename) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='birthstounmarriedwomen') %>%
+  mutate(timeframe=year) %>%
+  
+  #supress if a location is less than 6
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(data=replace(data,data<6 & data>0,NA))
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(birthdata_all$locationid))>=1) {
+  print(birthdata_all$location[is.na(birthdata_all$locationid)])
+} else if (sum(is.na(birthdata_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are 5 or fewer including 0
+temp_suppresscheck <- birthdata_all %>% subset(data<6 & data>0)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+
+#3. Check that regions will not make counties identifable
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- birthdata_all %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(temp_testsuppression)
+}
+```
+
+## STEP 2: UPDATE SUPPRESSION IF NEEDED
+```{r}
+
+#check all counties that match the region
+temp_checkregions <- birthdata_all %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  
+  #******ADD IN THE REGION HERE
+  subset(region=='Planning Region 5') %>%
+  arrange(data)
+View(temp_checkregions)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#birthdata_all$data[birthdata_all$location=='McKenzie'] <- NA
+#birthdata_all$data[birthdata_all$location=='Cavalier'] <- NA
+#birthdata_all$data[birthdata_all$location=='Sargent'] <- NA
+
+
+#Then check again
+#3. Check that regions will not make counties identifable
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- birthdata_all %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(temp_testsuppression)
+}
+
+# 4. Visually inspect output data
+View(birthdata_all)
+```
+
+```{r}
+#CHECK DATASET NAMED birthdata_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',birthdata_all,append=TRUE,row.names=FALSE)
+
+```
+
+
+## STEP 3: CALCULATE PERCENTAGE
+```{r}
+totalbirths_denominatorsql <- paste0("SELECT location, timeframe, data FROM northdakota WHERE timeframe='",year,"' AND varname='totalbirths';")
+
+totalbirths_denominator <- dbGetQuery(con,totalbirths_denominatorsql) %>%
+  rename(totalbirths=data)
+
+
+births_numbersql <-paste0("SELECT location, locationtype, locationid, state, timeframe, data FROM northdakota WHERE timeframe='",year,"' AND varname='birthstounmarriedwomen' AND dataformat='Number';") 
+
+births_percent <- dbGetQuery(con,births_numbersql) %>%
+  rename(unmarriedbirths=data) %>%
+  
+  left_join(totalbirths_denominator,by=c('location'='location','timeframe'='timeframe')) %>%
+  
+  #calculate percent
+  mutate(totalbirths=as.numeric(paste(totalbirths))) %>%
+  mutate(unmarriedbirths=as.numeric(paste(unmarriedbirths))) %>%
+  mutate(data=unmarriedbirths/totalbirths) %>%
+  select(-c(unmarriedbirths,totalbirths)) %>%
+  
+  #add in KC variables
+  mutate(dataformat='Percent') %>%
+  mutate(varname='birthstounmarriedwomen')
+
+View(births_percent)
+```
+
+```{r}
+#CHECK DATASET NAMED births_percent TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',births_percent,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+births_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",year,"' AND varname='birthstounmarriedwomen';")
+
+upload_data_births <- dbGetQuery(con,births_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_births,file=paste0("./Output/health/",statefile,"_",year,"_birthstounmarriedwomen.csv"),row.names=FALSE)
+```
+
+
+
+
+**TEEN BIRTHS PER 1,000 FEMALES AGES 15 THROUGH 19**
+## STEP 1: IMPORT & CLEAN DATA
+## In order for code chunk to work, must have SAS file downloaded for current year population by single year of age
+## MUST UPDATE THE FILE PATH FOR THE SAS FILE
+```{r}
+fips <- fips_codes
+fips$county_code = str_remove(fips$county_code, "^0+")
+fips$county_code=as.numeric(paste(fips$county_code))
+fips$state_code=as.numeric(paste(fips$state_code))
+
+# UPDATE SAS FILE FOR NEW YEAR 
+fullpopdata <- read.sas7bdat(paste0("./Input/demographics/pcen_v2019_y1019.sas7bdat"))
+
+#subset population file for specifications
+popdata_county <- fullpopdata %>%
+  #for North Dakota
+  subset(ST_FIPS==38) %>%
+  #for ages 15 to 19
+  subset(age>=15 & age<=19) %>%
+  #for females
+  subset(RACESEX==2 | RACESEX==4 | RACESEX==6 | RACESEX==8) %>%
+  
+  #format location names for counties
+  left_join(fips,by=c('ST_FIPS'='state_code','CO_FIPS'='county_code')) %>%
+  mutate(county=gsub("\\s*\\w*$", "", county)) %>%
+  
+  #select needed variables
+  select(c(county,age,RACESEX,paste0("POP",year))) %>%
+  rename(population=paste0("POP",year)) %>%
+  
+  #sum across all races and ages
+  group_by(county) %>%
+  summarise(females_15to19=sum(population)) %>%
+  ungroup %>%
+  rename(location=county) %>%
+  mutate(location=as.character(paste(location)))
+
+#create state population estimates
+popdata_state <- popdata_county %>%
+  mutate(location='North Dakota') %>%
+  group_by(location) %>%
+  summarise(females_15to19=sum(females_15to19)) %>%
+  mutate(location=as.character(paste(location)))
+
+#create region population estimates
+popdata_region <- popdata_county %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise(females_15to19=sum(females_15to19)) %>%
+  mutate(location=region) %>%
+  select(-c(region)) %>%
+  mutate(location=as.character(paste(location)))
+
+#need population dataset for American Indian females in specific counties matching reservations
+#subset population file for specifications
+popdata_tribal <- fullpopdata %>%
+  #for North Dakota
+  subset(ST_FIPS==38) %>%
+  #for ages 15 to 19
+  subset(age>=15 & age<=19) %>%
+  #for females that are American Indian
+  subset(RACESEX==6) %>%
+  
+  #format location names for counties
+  left_join(fips,by=c('ST_FIPS'='state_code','CO_FIPS'='county_code')) %>%
+  mutate(county=gsub("\\s*\\w*$", "", county)) %>%
+  
+  #create tribal area groups
+  mutate(tribalarea=case_when(
+    county=='McLean' | county=='Mercer' | county=='Dunn' | 
+      county=='Mountrail' | county=='McKenzie' ~ 'Fort Berthold Reservation',
+    county=='Ramsey' | county=='Benson' | county=='Eddy' ~ 
+      'Spirit Lake Reservation',
+    county=='Sioux' ~ 'Standing Rock Reservation (North Dakota portion)',
+    county=='Rolette' ~ 'Turtle Mountain Reservation and Off-Reservation Trust Land (North Dakota portion)')) %>%
+  
+  #select needed variables
+  select(c(tribalarea,age,RACESEX,paste0("POP",year))) %>%
+  rename(population=paste0("POP",year)) %>%
+  
+  #remove counties not assigned to tribal area
+  subset(!is.na(tribalarea)) %>%
+  
+  #sum across all races and ages
+  group_by(tribalarea) %>%
+  summarise(females_15to19=sum(population)) %>%
+  ungroup %>%
+  rename(location=tribalarea) %>%
+  mutate(location=as.character(paste(location)))
+
+
+popdata <- bind_rows(popdata_state) %>%
+  bind_rows(popdata_region) %>%
+  bind_rows(popdata_tribal)
+
+```
+
+```{r}
+variablename <- 'teenbirthsages15to19rate'
+
+#read in current birth year
+birthdata <-
+  read.csv(paste0('./Input/health/northdakota_',year,'_',variablename,'.csv'))
+```
+
+```{r}
+#clean up birth data
+
+#STATE DATA
+birthdata_state <- birthdata %>%
+  
+  #subset for state
+  subset(location == 'Total') %>%
+  mutate(location='North Dakota') %>%
+
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='State') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+
+#REGION DATA
+birthdata_region <- birthdata %>%
+  
+  #subset for regions
+  subset(location == 'I' | location == 'II' | 
+  location == 'III' | location == 'IV' | location == 'V' | location == 'VI' 
+  | location == 'VII' | location == 'VIII') %>%
+  
+  #rename regions
+  mutate(location=case_when(
+    location=="I" ~ "Planning Region 1",
+    location=="II" ~ "Planning Region 2",
+    location=="III" ~ "Planning Region 3",
+    location=="IV" ~ "Planning Region 4",
+    location=="V" ~ "Planning Region 5",
+    location=="VI" ~ "Planning Region 6",
+    location=="VII" ~ "Planning Region 7",
+    location=="VIII" ~ "Planning Region 8")) %>%
+  
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='Planning Region') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+  
+#TRIBAL DATA
+birthdata_tribal <- birthdata %>%
+  
+  #subset for counties
+  subset(location == 'SPIRIT LAKE' | 
+    location == 'STANDING ROCK' | location== 'THREE AFFILIATED TRIBES' | 
+    location == 'TURTLE MOUNTAIN') %>%
+  
+  #rename tribal areas
+  mutate(location=case_when(
+    location=="SPIRIT LAKE" ~ "Spirit Lake Reservation",
+    location=="STANDING ROCK" ~ "Standing Rock Reservation (North Dakota portion)",
+    location=="THREE AFFILIATED TRIBES" ~ "Fort Berthold Reservation",
+    location=="TURTLE MOUNTAIN" ~ "Turtle Mountain Reservation and Off-Reservation Trust Land (North Dakota portion)")) %>%
+  
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='Tribal Area') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+
+#combine all geographies
+birthdata_all <- bind_rows(birthdata_state) %>%
+  bind_rows(birthdata_region) %>%
+  bind_rows(birthdata_tribal) %>%
+  
+  #add in location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  mutate(state=statename) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='teenbirthsages15to19rate') %>%
+  mutate(timeframe=year) %>%
+  
+  #supress if a location is less than 6
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(data=replace(data,data<6 & data>0,NA))
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(birthdata_all$locationid))>=1) {
+  print(birthdata_all$location[is.na(birthdata_all$locationid)])
+} else if (sum(is.na(birthdata_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are 5 or fewer including 0
+temp_suppresscheck <- birthdata_all %>% subset(data<6 & data>0)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+# 4. Visually inspect output data
+View(birthdata_all)
+```
+
+
+## STEP 3: CALCULATE RATE
+```{r}
+#merge birth data with population data
+teenbirth_rate <- birthdata_all %>%
+  left_join(popdata,by=c('location'='location')) %>%
+  
+  #calculate rate
+  mutate(data=(data/females_15to19)*1000) %>%
+  select(-c(females_15to19)) %>%
+  mutate(dataformat='Rate') 
+  
+```
+
+```{r}
+#CHECK DATASET NAMED teenbirth_rate TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',teenbirth_rate,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+teenbirths_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",year,"' AND varname='teenbirthsages15to19rate';")
+
+upload_data_teenbirths <- dbGetQuery(con,teenbirths_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_teenbirths,file=paste0("./Output/health/",statefile,"_",year,"_teenbirthsages15to19rate.csv"),row.names=FALSE)
+```
+
+
+
+
+
+**TOTAL BIRTHS TO TEENS AGES 12 TO 19 (1-YEAR TOTALS)**
+## STEP 1: IMPORT & CLEAN DATA
+```{r}
+variablename <- 'teenbirthsages12to19'
+
+#read in current birth year
+teenbirthdata <-
+  read.csv(paste0('./Input/health/northdakota_',year,'_',variablename,'.csv'))
+```
+
+```{r}
+#clean up birth data
+
+#COUNTY DATA
+teenbirthdata_county <- teenbirthdata %>%
+  
+  #subset for counties
+  subset(location != 'Total' & location != 'I' & location != 'II' & 
+  location != 'III' & location != 'IV' & location != 'V' & location != 'VI' 
+  & location != 'VII' & location != 'VIII' & location != 'SPIRIT LAKE' & 
+    location != 'STANDING ROCK' & location != 'THREE AFFILIATED TRIBES' & 
+    location != 'TURTLE MOUNTAIN') %>%
+  
+  #lowercase county names
+  mutate(location=tolower(location)) %>%
+  mutate(location=str_to_title(location)) %>%
+  
+  #edit some county names
+  mutate(location=replace(location,location=='Lamoure','LaMoure')) %>%
+  mutate(location=replace(location,location=='Mchenry','McHenry')) %>%
+  mutate(location=replace(location,location=='Mcintosh','McIntosh')) %>%
+  mutate(location=replace(location,location=='Mckenzie','McKenzie')) %>%
+  mutate(location=replace(location,location=='Mclean','McLean')) %>%
+  
+  #add in counties with zero
+  full_join(countylist,by=c('location'='Location')) %>%
+
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='County') %>%
+  
+  #assign zeroes to NA which came from full join
+  mutate(data=as.character(paste(data))) %>%
+  mutate(data=replace(data,data=='NA',0)) 
+
+
+#STATE DATA
+teenbirthdata_state <- teenbirthdata %>%
+  
+  #subset for state
+  subset(location == 'Total') %>%
+  mutate(location='North Dakota') %>%
+
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='State') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+
+#REGION DATA
+teenbirthdata_region <- teenbirthdata %>%
+  
+  #subset for regions
+  subset(location == 'I' | location == 'II' | 
+  location == 'III' | location == 'IV' | location == 'V' | location == 'VI' 
+  | location == 'VII' | location == 'VIII') %>%
+  
+  #rename regions
+  mutate(location=case_when(
+    location=="I" ~ "Planning Region 1",
+    location=="II" ~ "Planning Region 2",
+    location=="III" ~ "Planning Region 3",
+    location=="IV" ~ "Planning Region 4",
+    location=="V" ~ "Planning Region 5",
+    location=="VI" ~ "Planning Region 6",
+    location=="VII" ~ "Planning Region 7",
+    location=="VIII" ~ "Planning Region 8")) %>%
+  
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='Planning Region') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+  
+#TRIBAL DATA
+teenbirthdata_tribal <- teenbirthdata %>%
+  
+  #subset for counties
+  subset(location == 'SPIRIT LAKE' | 
+    location == 'STANDING ROCK' | location== 'THREE AFFILIATED TRIBES' | 
+    location == 'TURTLE MOUNTAIN') %>%
+  
+  #rename tribal areas
+  mutate(location=case_when(
+    location=="SPIRIT LAKE" ~ "Spirit Lake Reservation",
+    location=="STANDING ROCK" ~ "Standing Rock Reservation (North Dakota portion)",
+    location=="THREE AFFILIATED TRIBES" ~ "Fort Berthold Reservation",
+    location=="TURTLE MOUNTAIN" ~ "Turtle Mountain Reservation and Off-Reservation Trust Land (North Dakota portion)")) %>%
+  
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='Tribal Area') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+
+#combine all geographies
+teenbirthdata_all <- teenbirthdata_county %>%
+  bind_rows(teenbirthdata_state) %>%
+  bind_rows(teenbirthdata_region) %>%
+  bind_rows(teenbirthdata_tribal) %>%
+  
+  #add in location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  mutate(state=statename) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='teenbirthsages12to19') %>%
+  mutate(timeframe=year) %>%
+  
+  #supress if a location is less than 6
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(data=replace(data,data<6 & data>0,NA))
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(teenbirthdata_all$locationid))>=1) {
+  print(teenbirthdata_all$location[is.na(teenbirthdata_all$locationid)])
+} else if (sum(is.na(teenbirthdata_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are 5 or fewer including 0
+temp_suppresscheck <- teenbirthdata_all %>% subset(data<6 & data>0)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+
+#3. Check that regions will not make counties identifable
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- teenbirthdata_all %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(temp_testsuppression)
+}
+```
+
+## STEP 2: UPDATE SUPPRESSION IF NEEDED
+```{r}
+
+#check all counties that match the region
+temp_checkregions <- teenbirthdata_all %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  
+  #******ADD IN THE REGION HERE
+  subset(region=='Planning Region 8') %>%
+  arrange(data)
+View(temp_checkregions)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#teenbirthdata_all$data[teenbirthdata_all$location=='Billings'] <- NA
+
+
+
+#Then check again
+#3. Check that regions will not make counties identifable
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- teenbirthdata_all %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(temp_testsuppression)
+}
+
+# 4. Visually inspect output data
+View(teenbirthdata_all)
+```
+
+```{r}
+#CHECK DATASET NAMED teenbirthdata_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',teenbirthdata_all,append=TRUE,row.names=FALSE)
+
+```
+
+
+## STEP 3: CALCULATE PERCENTAGE
+```{r}
+totalbirths_denominatorsql <- paste0("SELECT location, timeframe, data FROM northdakota WHERE timeframe='",year,"' AND varname='totalbirths';")
+
+totalbirths_denominator <- dbGetQuery(con,totalbirths_denominatorsql) %>%
+  rename(totalbirths=data)
+
+
+teenbirths_numbersql <-paste0("SELECT location, locationtype, locationid, state, timeframe, data FROM northdakota WHERE timeframe='",year,"' AND varname='teenbirthsages12to19' AND dataformat='Number';") 
+
+teenbirths_percent <- dbGetQuery(con,teenbirths_numbersql) %>%
+  rename(teenbirths=data) %>%
+  
+  left_join(totalbirths_denominator,by=c('location'='location','timeframe'='timeframe')) %>%
+  
+  #calculate percent
+  mutate(totalbirths=as.numeric(paste(totalbirths))) %>%
+  mutate(teenbirths=as.numeric(paste(teenbirths))) %>%
+  mutate(data=teenbirths/totalbirths) %>%
+  select(-c(teenbirths,totalbirths)) %>%
+  
+  #add in KC variables
+  mutate(dataformat='Percent') %>%
+  mutate(varname='teenbirthsages12to19')
+
+
+```
+
+```{r}
+#CHECK DATASET NAMED teenbirths_percent TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',teenbirths_percent,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+teenbirths_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",year,"' AND varname='teenbirthsages12to19';")
+
+upload_data_teenbirths <- dbGetQuery(con,teenbirths_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_teenbirths,file=paste0("./Output/health/",statefile,"_",year,"_teenbirthsages12to19.csv"),row.names=FALSE)
+```
+
+
+
+
+**TOTAL BIRTHS TO UNMARRIED TEENS AGES 12 to 19 (1-YEAR TOTALS)**
+## STEP 1: IMPORT & CLEAN DATA
+```{r}
+variablename <- 'birthstounmarriedteensages12to19'
+
+#read in current birth year
+birthdata <-
+  read.csv(paste0('./Input/health/northdakota_',year,'_',variablename,'.csv'))
+```
+
+```{r}
+#clean up birth data
+
+#COUNTY DATA
+birthdata_county <- birthdata %>%
+  
+  #subset for counties
+  subset(location != 'Total' & location != 'I' & location != 'II' & 
+  location != 'III' & location != 'IV' & location != 'V' & location != 'VI' 
+  & location != 'VII' & location != 'VIII' & location != 'SPIRIT LAKE' & 
+    location != 'STANDING ROCK' & location != 'THREE AFFILIATED TRIBES' & 
+    location != 'TURTLE MOUNTAIN') %>%
+  
+  #lowercase county names
+  mutate(location=tolower(location)) %>%
+  mutate(location=str_to_title(location)) %>%
+  
+  #edit some county names
+  mutate(location=replace(location,location=='Lamoure','LaMoure')) %>%
+  mutate(location=replace(location,location=='Mchenry','McHenry')) %>%
+  mutate(location=replace(location,location=='Mcintosh','McIntosh')) %>%
+  mutate(location=replace(location,location=='Mckenzie','McKenzie')) %>%
+  mutate(location=replace(location,location=='Mclean','McLean')) %>%
+  
+  #add in counties with zero
+  full_join(countylist,by=c('location'='Location')) %>%
+
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='County') %>%
+  
+  #assign zeroes to NA which came from full join
+  mutate(data=as.character(paste(data))) %>%
+  mutate(data=replace(data,data=='NA',0)) 
+
+
+#STATE DATA
+birthdata_state <- birthdata %>%
+  
+  #subset for state
+  subset(location == 'Total') %>%
+  mutate(location='North Dakota') %>%
+
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='State') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+
+#REGION DATA
+birthdata_region <- birthdata %>%
+  
+  #subset for regions
+  subset(location == 'I' | location == 'II' | 
+  location == 'III' | location == 'IV' | location == 'V' | location == 'VI' 
+  | location == 'VII' | location == 'VIII') %>%
+  
+  #rename regions
+  mutate(location=case_when(
+    location=="I" ~ "Planning Region 1",
+    location=="II" ~ "Planning Region 2",
+    location=="III" ~ "Planning Region 3",
+    location=="IV" ~ "Planning Region 4",
+    location=="V" ~ "Planning Region 5",
+    location=="VI" ~ "Planning Region 6",
+    location=="VII" ~ "Planning Region 7",
+    location=="VIII" ~ "Planning Region 8")) %>%
+  
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='Planning Region') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+  
+#TRIBAL DATA
+birthdata_tribal <- birthdata %>%
+  
+  #subset for counties
+  subset(location == 'SPIRIT LAKE' | 
+    location == 'STANDING ROCK' | location== 'THREE AFFILIATED TRIBES' | 
+    location == 'TURTLE MOUNTAIN') %>%
+  
+  #rename tribal areas
+  mutate(location=case_when(
+    location=="SPIRIT LAKE" ~ "Spirit Lake Reservation",
+    location=="STANDING ROCK" ~ "Standing Rock Reservation (North Dakota portion)",
+    location=="THREE AFFILIATED TRIBES" ~ "Fort Berthold Reservation",
+    location=="TURTLE MOUNTAIN" ~ "Turtle Mountain Reservation and Off-Reservation Trust Land (North Dakota portion)")) %>%
+  
+  #add in KC variables
+  rename(data=paste0("X",year)) %>%
+  mutate(locationtype='Tribal Area') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+
+#combine all geographies
+birthdata_all <- birthdata_county %>%
+  bind_rows(birthdata_state) %>%
+  bind_rows(birthdata_region) %>%
+  bind_rows(birthdata_tribal) %>%
+  
+  #add in location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  mutate(state=statename) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='birthstounmarriedteensages12to19') %>%
+  mutate(timeframe=year) %>%
+  
+  #supress if a location is less than 6
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(data=replace(data,data<6 & data>0,NA))
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(birthdata_all$locationid))>=1) {
+  print(birthdata_all$location[is.na(birthdata_all$locationid)])
+} else if (sum(is.na(birthdata_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are 5 or fewer including 0
+temp_suppresscheck <- birthdata_all %>% subset(data<6 & data>0)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+
+#3. Check that regions will not make counties identifable
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- birthdata_all %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(temp_testsuppression)
+}
+```
+
+## STEP 2: UPDATE SUPPRESSION IF NEEDED
+```{r}
+
+#check all counties that match the region
+temp_checkregions <- birthdata_all %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  
+  #******ADD IN THE REGION HERE
+  subset(region=='Planning Region 5') %>%
+  arrange(data)
+View(temp_checkregions)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#birthdata_all$data[birthdata_all$location=='McKenzie'] <- NA
+#birthdata_all$data[birthdata_all$location=='Cavalier'] <- NA
+#birthdata_all$data[birthdata_all$location=='Sargent'] <- NA
+
+
+#Then check again
+#3. Check that regions will not make counties identifable
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using regions. Within each region, there needs to be no NAs or >1 NAs.
+temp_testsuppression <- birthdata_all %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(region,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(temp_testsuppression)
+}
+
+# 4. Visually inspect output data
+View(birthdata_all)
+```
+
+```{r}
+#CHECK DATASET NAMED birthdata_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',birthdata_all,append=TRUE,row.names=FALSE)
+
+```
+
+
+## STEP 3: CALCULATE PERCENTAGE
+```{r}
+totalbirths_denominatorsql <- paste0("SELECT location, timeframe, data FROM northdakota WHERE timeframe='",year,"' AND varname='totalbirths';")
+
+totalbirths_denominator <- dbGetQuery(con,totalbirths_denominatorsql) %>%
+  rename(totalbirths=data)
+
+
+births_numbersql <-paste0("SELECT location, locationtype, locationid, state, timeframe, data FROM northdakota WHERE timeframe='",year,"' AND varname='birthstounmarriedteensages12to19' AND dataformat='Number';") 
+
+births_percent <- dbGetQuery(con,births_numbersql) %>%
+  rename(unmarriedbirths=data) %>%
+  
+  left_join(totalbirths_denominator,by=c('location'='location','timeframe'='timeframe')) %>%
+  
+  #calculate percent
+  mutate(totalbirths=as.numeric(paste(totalbirths))) %>%
+  mutate(unmarriedbirths=as.numeric(paste(unmarriedbirths))) %>%
+  mutate(data=unmarriedbirths/totalbirths) %>%
+  select(-c(unmarriedbirths,totalbirths)) %>%
+  
+  #add in KC variables
+  mutate(dataformat='Percent') %>%
+  mutate(varname='birthstounmarriedteensages12to19')
+
+View(births_percent)
+```
+
+```{r}
+#CHECK DATASET NAMED births_percent TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',births_percent,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+births_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",year,"' AND varname='birthstounmarriedteensages12to19';")
+
+upload_data_births <- dbGetQuery(con,births_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_births,file=paste0("./Output/health/",statefile,"_",year,"_birthstounmarriedteensages12to19.csv"),row.names=FALSE)
+```
+
+
+
+**INFANT MORTALITY BY REGION (5-YEAR TOTALS)**
+
+## STEP 1: IMPORT AND CLEAN THE DATA
+```{r}
+variablename <- 'infantmortality5yeartotals'
+
+#read in current birth year
+deathdata <-
+  read.csv(paste0('./Input/health/northdakota_',year,'_',variablename,'.csv'))
+```
+
+```{r}
+#clean up data
+fiveyear1 <- as.character(as.numeric(year)-4)
+fiveyear2 <- year
+
+#STATE DATA
+deathdata_state <- deathdata %>%
+  
+  #subset for state
+  subset(location == 'Total') %>%
+  mutate(location='North Dakota') %>%
+
+  #add in KC variables
+  rename(data=paste0("X",fiveyear1,".",fiveyear2)) %>%
+  mutate(locationtype='State') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+
+#REGION DATA
+deathdata_region <- deathdata %>%
+  
+  #subset for regions
+  subset(location == 'I' | location == 'II' | 
+  location == 'III' | location == 'IV' | location == 'V' | location == 'VI' 
+  | location == 'VII' | location == 'VIII') %>%
+  
+  #rename regions
+  mutate(location=case_when(
+    location=="I" ~ "Planning Region 1",
+    location=="II" ~ "Planning Region 2",
+    location=="III" ~ "Planning Region 3",
+    location=="IV" ~ "Planning Region 4",
+    location=="V" ~ "Planning Region 5",
+    location=="VI" ~ "Planning Region 6",
+    location=="VII" ~ "Planning Region 7",
+    location=="VIII" ~ "Planning Region 8")) %>%
+  
+  #add in KC variables
+  rename(data=paste0("X",fiveyear1,".",fiveyear2)) %>%
+  mutate(locationtype='Planning Region') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+  
+#combine all geographies
+deathdata_all <- bind_rows(deathdata_state) %>%
+  bind_rows(deathdata_region) %>%
+
+  #add in location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  mutate(state=statename) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='infantmortality5yeartotals') %>%
+  mutate(timeframe=fiveyear) %>%
+  
+  #supress if a location is less than 6
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(data=replace(data,data<6 & data>0,NA))
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(deathdata_all$locationid))>=1) {
+  print(deathdata_all$location[is.na(deathdata_all$locationid)])
+} else if (sum(is.na(deathdata_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are 5 or fewer including 0
+temp_suppresscheck <- deathdata_all %>% subset(data<6 & data>0)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+# 4. Visually inspect output data
+View(deathdata_all)
+```
+
+## STEP 2: ADD NUMBER DATA TO DATABASE
+```{r}
+#CHECK DATASET NAMED deathdata_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',deathdata_all,append=TRUE,row.names=FALSE)
+```
+
+## STEP 3: CALCULATE RATE
+```{r}
+year_minus1 <- as.character(as.numeric(year)-1)
+year_minus2 <- as.character(as.numeric(year)-2)
+year_minus3 <- as.character(as.numeric(year)-3)
+year_minus4 <- as.character(as.numeric(year)-4)
+
+totalbirths_denominatorsql <- paste0("SELECT location, locationtype, timeframe, data FROM northdakota WHERE (timeframe='",year,"' OR timeframe='",year_minus1,"' OR timeframe='",year_minus2,"' OR timeframe='",year_minus3,"' OR timeframe='",year_minus4,"') AND varname='totalbirths';")
+
+totalbirths_denominator <- dbGetQuery(con,totalbirths_denominatorsql) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  subset(locationtype=='State' | locationtype=='Planning Region') %>%
+  group_by(location) %>%
+  summarise(totalbirths_5year=sum(data)) %>%
+  ungroup
+
+
+
+
+deaths_numbersql <-paste0("SELECT location, locationtype, locationid, state, timeframe, data, varname FROM northdakota WHERE timeframe='",fiveyear,"' AND varname='infantmortality5yeartotals' AND dataformat='Number';") 
+
+deaths_rate <- dbGetQuery(con,deaths_numbersql) %>%
+  rename(infantdeaths=data) %>%
+  mutate(infantdeaths=as.numeric(paste(infantdeaths))) %>%
+  left_join(totalbirths_denominator,by=c('location'='location')) %>%
+  
+  #calculate rate
+  mutate(data=(infantdeaths/totalbirths_5year)*1000) %>%
+  select(-c(infantdeaths,totalbirths_5year)) %>%
+  mutate(dataformat='Rate')
+
+View(deaths_rate)
+```
+
+```{r}
+#CHECK DATASET NAMED deaths_rate TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',deaths_rate,append=TRUE,row.names=FALSE)
+
+```
+
+## STEP 4: OUTPUT DATASET FOR KC
+
+```{r}
+#write query from database to get needed format for KC data center
+
+infantdeaths_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",fiveyear,"' AND varname='infantmortality5yeartotals';")
+
+upload_data_infantdeaths <- dbGetQuery(con,infantdeaths_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_infantdeaths,file=paste0("./Output/health/",statefile,"_",year,"_infantmortality5yeartotals.csv"),row.names=FALSE)
+```
+
+
+
+
+**CHILD AND TEEN (AGES 1-19) DEATH RATE BY REGION (5-YEAR TOTALS)**
+
+## STEP 1: IMPORT AND CLEAN THE DATA
+```{r}
+variablename <- 'childandteendeaths5yeartotals'
+
+#read in current birth year
+deathdata <-
+  read.csv(paste0('./Input/health/northdakota_',year,'_',variablename,'.csv'))
+```
+
+```{r}
+#clean up data
+fiveyear1 <- as.character(as.numeric(year)-4)
+fiveyear2 <- year
+
+#STATE DATA
+deathdata_state <- deathdata %>%
+  
+  #subset for state
+  subset(location == 'Total') %>%
+  mutate(location='North Dakota') %>%
+
+  #add in KC variables
+  rename(data=paste0("X",fiveyear1,".",fiveyear2)) %>%
+  mutate(locationtype='State') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+
+#REGION DATA
+deathdata_region <- deathdata %>%
+  
+  #subset for regions
+  subset(location == 'I' | location == 'II' | 
+  location == 'III' | location == 'IV' | location == 'V' | location == 'VI' 
+  | location == 'VII' | location == 'VIII') %>%
+  
+  #rename regions
+  mutate(location=case_when(
+    location=="I" ~ "Planning Region 1",
+    location=="II" ~ "Planning Region 2",
+    location=="III" ~ "Planning Region 3",
+    location=="IV" ~ "Planning Region 4",
+    location=="V" ~ "Planning Region 5",
+    location=="VI" ~ "Planning Region 6",
+    location=="VII" ~ "Planning Region 7",
+    location=="VIII" ~ "Planning Region 8")) %>%
+  
+  #add in KC variables
+  rename(data=paste0("X",fiveyear1,".",fiveyear2)) %>%
+  mutate(locationtype='Planning Region') %>%
+  
+  #change data to character for merging
+  mutate(data=as.character(paste(data)))
+
+  
+#combine all geographies
+deathdata_all <- bind_rows(deathdata_state) %>%
+  bind_rows(deathdata_region) %>%
+
+  #add in location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  mutate(state=statename) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='childandteendeaths5yeartotals') %>%
+  mutate(timeframe=fiveyear) %>%
+  
+  #supress if a location is less than 6
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(data=replace(data,data<6 & data>0,NA))
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(deathdata_all$locationid))>=1) {
+  print(deathdata_all$location[is.na(deathdata_all$locationid)])
+} else if (sum(is.na(deathdata_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are 5 or fewer including 0
+temp_suppresscheck <- deathdata_all %>% subset(data<6 & data>0)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+# 4. Visually inspect output data
+View(deathdata_all)
+```
+
+## STEP 2: ADD NUMBER DATA TO DATABASE
+```{r}
+#CHECK DATASET NAMED deathdata_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',deathdata_all,append=TRUE,row.names=FALSE)
+```
+
+## STEP 3: CALCULATE RATE
+```{r}
+year_minus1 <- as.character(as.numeric(year)-1)
+year_minus2 <- as.character(as.numeric(year)-2)
+year_minus3 <- as.character(as.numeric(year)-3)
+year_minus4 <- as.character(as.numeric(year)-4)
+
+population_denominatorsql <- paste0("SELECT location, locationtype, timeframe, age_group, data FROM northdakota WHERE vintageyear='",year,"' AND (timeframe='",year,"' OR timeframe='",year_minus1,"' OR timeframe='",year_minus2,"' OR timeframe='",year_minus3,"' OR timeframe='",year_minus4,"') AND varname='childpopulationbysingleyearofage';")
+
+population_denominator <- dbGetQuery(con,population_denominatorsql) %>%
+  mutate(age_group=as.numeric(paste(age_group))) %>%
+  subset(age_group>=1 & age_group<=19) %>%
+  
+  mutate(data=as.numeric(paste(data))) %>%
+  subset(locationtype=='State' | locationtype=='Planning Region') %>%
+  group_by(location) %>%
+  summarise(population_5year=sum(data)) %>%
+  ungroup
+
+
+
+
+deaths_numbersql <-paste0("SELECT location, locationtype, locationid, state, timeframe, data, varname FROM northdakota WHERE timeframe='",fiveyear,"' AND varname='childandteendeaths5yeartotals' AND dataformat='Number';") 
+
+deaths_rate <- dbGetQuery(con,deaths_numbersql) %>%
+  rename(deaths=data) %>%
+  mutate(deaths=as.numeric(paste(deaths))) %>%
+  left_join(population_denominator,by=c('location'='location')) %>%
+  
+  #calculate rate
+  mutate(data=(deaths/population_5year)*100000) %>%
+  select(-c(deaths,population_5year)) %>%
+  mutate(dataformat='Rate')
+
+View(deaths_rate)
+```
+
+```{r}
+#CHECK DATASET NAMED deaths_rate TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',deaths_rate,append=TRUE,row.names=FALSE)
+
+```
+
+## STEP 4: OUTPUT DATASET FOR KC
+
+```{r}
+#write query from database to get needed format for KC data center
+
+infantdeaths_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",fiveyear,"' AND varname='childandteendeaths5yeartotals';")
+
+upload_data_infantdeaths <- dbGetQuery(con,infantdeaths_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_infantdeaths,file=paste0("./Output/health/",statefile,"_",year,"_childandteendeaths5yeartotals.csv"),row.names=FALSE)
+```
+
+
+
