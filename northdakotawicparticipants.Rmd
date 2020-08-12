@@ -1,0 +1,141 @@
+---
+title: "North Dakota WIC"
+author: "Xanna Burg"
+date: "July 2020"
+output: html_document
+---
+
+## Indicator 1: Women, infants, and children (WIC) program participants
+
+**Created by:** Xanna Burg
+**Date:** August 2020
+**Updated by:**
+
+**Data Source:** North Dakota Department of Health, Division of Nutrition and Physical Activity, WIC Program
+**Purpose:** Input the WIC data
+
+**Data format:** final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Data (numeric: number, percentage, rate), DataFormat (character: "number"), LocationId (numeric: assigned for KIDS COUNT system)
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(tidycensus)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+library(stringr)
+library(sas7bdat)
+```
+
+```{r}
+####UPDATE to reflect the current year data working with
+year <- '2019'
+
+statefile <- 'northdakota'
+statename <- 'North Dakota'
+
+#input location ID file for ND
+locationids <- read.csv("./Input/ND KC Location IDs.csv")
+locationids$Location <- as.character(locationids$Location)
+
+#input region ID file for ND
+regionids <- read.csv("./Input/ND KC Region List.csv")
+regionids$county <- as.character(regionids$county)
+
+#input county list file
+countylist <- read.csv("./Input/ND County List.csv")
+countylist$Location <- as.character(countylist$Location)
+```
+
+
+## STEP 1: IMPORT AND CLEAN THE DATA
+```{r}
+wicdata <- read.csv(paste0("./Input/Health/northdakota_",year,"_wicparticipants.csv")) %>%
+  select(c(Location,Total)) %>%
+  mutate(Location=as.character(paste(Location))) %>%
+  
+  mutate(Location=replace(Location,Location=='Mclean','McLean')) %>%
+  mutate(Location=replace(Location,Location=='Lamoure','LaMoure')) 
+  
+
+#county data
+wicdata_county <- wicdata %>%
+  subset(Location != 'Statewide') %>%
+  mutate(locationtype='County')
+
+#state data
+wicdata_state <- wicdata %>%
+  subset(Location=='Statewide') %>%
+  mutate(Location='North Dakota') %>%
+  mutate(locationtype='State')
+
+#region data
+wicdata_region <- wicdata_county %>%
+  left_join(regionids,by=c('Location'='county')) %>%
+  group_by(region) %>%
+  summarise(Total=sum(Total,na.rm=TRUE)) %>%
+  ungroup %>%
+  rename(Location=region) %>%
+  mutate(Location=as.character(paste(Location))) %>%
+  mutate(locationtype='Planning Region')
+
+
+#combine all geographies and add in KC variables
+wicdata_all <- wicdata_county %>%
+  bind_rows(wicdata_state) %>%
+  bind_rows(wicdata_region) %>%
+  
+  rename(location=Location,
+         data=Total) %>%
+  mutate(state='North Dakota') %>%
+  mutate(timeframe=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='wicparticipants') %>%
+  
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(wicdata_all$locationid))>=1) {
+  print(wicdata_all$location[is.na(wicdata_all$locationid)])
+} else if (sum(is.na(wicdata_all$locationid))==0) {
+  'all locations match'
+}
+
+# 2. View data
+View(wicdata_all)
+
+```
+
+# STEP 2: COMMIT TO DATABASE
+```{r}
+#CHECK DATASET NAMED wicdata_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',wicdata_all,append=TRUE,row.names=FALSE)
+
+```
+
+# STEP 3: OUTPUT FILE TO UPLOAD
+```{r}
+#write query from database to get needed format for KC data center
+
+wicparticipants_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",year,"' AND varname='wicparticipants';")
+
+upload_data_wicparticipants <- dbGetQuery(con,wicparticipants_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_wicparticipants,file=paste0("./Output/health/",statefile,"_",year,"_wicparticipants.csv"),row.names=FALSE)
+```
