@@ -36,7 +36,6 @@ output: html_document
 library(tidyverse)
 library(RPostgreSQL)
 library(readxl)
-
 ```
 
 ```{r}
