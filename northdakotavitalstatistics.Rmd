@@ -1495,8 +1495,7 @@ popdata <- bind_rows(popdata_state) %>%
 variablename <- 'teenbirthsages15to19rate'
 
 #read in current birth year
-birthdata <-
-  read.csv(paste0('./Input/health/northdakota_',year,'_',variablename,'.csv'))
+birthdata <- read.csv(paste0('./Input/health/northdakota_',year,'_',variablename,'.csv'))
 ```
 
 ```{r}
@@ -1623,6 +1622,8 @@ teenbirth_rate <- birthdata_all %>%
   mutate(data=(data/females_15to19)*1000) %>%
   select(-c(females_15to19)) %>%
   mutate(dataformat='Rate') 
+
+View(teenbirth_rate)
   
 ```
 
