@@ -1,28 +1,28 @@
 ---
-title: "Local Area Unemployment"
-author: "Xanna Burg"
-date: "June 2020"
+title: "LAUS Data Imports"
 output: html_document
 ---
 
-## Indicator 1: Unemployment rate (all ages)
+## Indicator 1: Annual Unemployment Rate (all ages)
+## Indicator 2: Unemployment rate (all ages), July-June average [not on Data Center, for County Profiles only]
 
 **Created by:** Xanna Burg
-**Date:** June 2020
+**Date:** May 2020
 **Updated by:**
 
-**Data Source:** U.S Bureau of Labor Statistics, Local Area Unemployment Statistics
-**Purpose:** Import LAUS data, clean data, and output dataset to upload to KIDS COUNT Data Center.
+**Data Source:** Bureau of Labor Statistics, Local Area Unemployment Statistics
+**Purpose:** Connect directly to BLS data, update to most recent vintage year
 
-**Data format:** Final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Data (numeric: percentage), DataFormat (character: "number" or "percent"), LocationId (numeric: assigned for KIDS COUNT system)
+**Data format:** Final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Data (numeric: number, percentage), DataFormat (character: "percent"), LocationId (numeric: assigned for KIDS COUNT system)
 
-**The input file that this code uses can be downloaded from:**
-https://data.bls.gov/PDQWeb/la
-* Select the more formatting options and select the non-seasonally adjusted, specified year range, Annual data, and Multi-series table; then download as Excel file
 
 **To use this code for a new year:**
-* Update the year in the second code chunk for variable 'year'
+* Update the year or year1 in appropriate code chunk
+* Update the state name (exactly as appears in FIPS) of interest
 * Check each dataset visually and through the report logs prior to commiting to the database.
+
+**Note:**
+* Data is unseasonally adjusted at both the county and state level in this dataset
 
 
 ```{r,message=FALSE}
@@ -40,13 +40,10 @@ library(stringr)
 library(readxl)
 ```
 
-
 ```{r}
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 statename <- "Montana"
-year <- "2019"
-
 
 #run this code to create an object needed for the database (DO NOT EDIT)
 if (statename=='Montana') {
@@ -71,108 +68,175 @@ locationids$Location <- as.character(locationids$Location) #assign as character 
 lausids <- read.csv("../Input/laus_countyids.csv")
 lausids$laus_id <- as.character(paste(lausids$laus_id))
 
+#this code creates the text file extension needed for each state
+#run this code to create an object needed for the database (DO NOT EDIT)
+if (statename=='Montana') {
+  bls_filename <- '33.Montana'
+} else if (statename=='North Dakota') {
+  bls_filename <- '41.NorthDakota'
+} else if (statename=='South Dakota') {
+  bls_filename <- '49.SouthDakota'
+}
+
 ```
 
 
-## ############################ ##
-## UNEMPLOYMENT RATE (ALL AGES) ##
-## ############################ ##
-
-## STEP 1: IMPORT AND CLEAN THE DATA
+## STEP 1: IMPORT THE MOST RECENT DATA FROM A TEXT FILE ON THE BLS WEBSITE
 ```{r}
-#import the data downloaded from BLS
-laus_data <- read_excel(path=paste0("/Users/xannaburg/Documents/KidsCountData/Input/economics/",database_state,"_laus_",year,".xlsx"),skip=3,guess_max = 1048576) %>%
-    rename(seriesID='Series ID') 
+#all options for data files found here: https://download.bls.gov/pub/time.series/la/
 
-###########
-#STATE DATA
-laus_state <- laus_data %>%
-  filter(grepl("LAUST",seriesID)) %>%
+#function written by Kimberly Coffey: http://www.kimberlycoffey.com/blog/2015/12/19/import-from-bureau-of-labor-statistics
+import.from.bls <- function(web.address) {
+
+    # Import data
+    temp <- tempfile()
+    download.file(web.address, temp)
+    data <- read.table(temp,
+                           header=FALSE,
+                           sep="\t",
+                           skip=1,
+                           stringsAsFactors=FALSE,
+                           strip.white=TRUE,
+                           quote = NULL)
+
+    # Add column headers
+    topline <- readLines(web.address)
+    topline <- topline[1] # Select column headers
+    topline <- as.list(strsplit(x = topline, split = "\t")[[1]]) # Split the string into a list
+    colnames(data) <- topline
+    
+    unlink(temp)
+    
+    # Drop extra, unused column
+    data <- data[,1:(ncol(data) - 1)]
+    
+    # This command plucks the text that appears after the pattern below,
+    # and uses it to name the file.
+    filename <- gsub(pattern = "http://download.bls.gov/pub/time.series/la/la.","", x = web.address, ignore.case=T)
+    
+    # save the file to the global environment
+    assign(filename, data, envir = .GlobalEnv) 
+
+}
+
+#modification to include all columns for joining tables
+import.from.bls2 <- function(web.address) {
+
+    # Import data
+    temp <- tempfile()
+    download.file(web.address, temp)
+    data <- read.table(temp,
+                           header=FALSE,
+                           sep="\t",
+                           skip=1,
+                           stringsAsFactors=FALSE,
+                           strip.white=TRUE,
+                           quote = NULL)
+
+    # Add column headers
+    topline <- readLines(web.address)
+    topline <- topline[1] # Select column headers
+    topline <- as.list(strsplit(x = topline, split = "\t")[[1]]) # Split the string into a list
+    colnames(data) <- topline
+    
+    unlink(temp)
+    
+    # This command plucks the text that appears after the pattern below,
+    # and uses it to name the file.
+    filename <- gsub(pattern = "http://download.bls.gov/pub/time.series/la/la.","", x = web.address, ignore.case=T)
+    
+    # save the file to the global environment
+    assign(filename, data, envir = .GlobalEnv) 
+
+}
+
+blsdata <- import.from.bls(paste0("https://download.bls.gov/pub/time.series/la/la.data.",bls_filename))
+
+bls_periods <- import.from.bls2("https://download.bls.gov/pub/time.series/la/la.period")
+
+bls_measures <- import.from.bls2("https://download.bls.gov/pub/time.series/la/la.measure")
+```
+
+
+## STEP 2: FORMAT THE IMPORTED DATA
+```{r}
+blsdata_formatted <- blsdata %>%
   
-  #separate text from numeric
-  separate(col=seriesID,into=c(NA,'numeric'),sep="LAUST") %>%
-  #separate into state/county and indicator id
-  separate(col=numeric,into=c('locationcode','varid'),sep=5) %>%
-  #join county name
-  left_join(lausids,by=c('locationcode'='laus_id')) %>%
-  #subset to only include the unemployment rate, which ends in a 3
-  filter(grepl("3",varid)) %>%
-  select(-c(locationcode,varid)) %>%
+  #add in the description of periods/time frame
+  left_join(bls_periods,by=c('period'='period')) %>%
   
-  #convert wide to long
-  pivot_longer(cols=starts_with("Annual"),names_to='timeframe',values_to='data') %>% 
+  #add in the description of the measure
+  mutate(measure_code=as.numeric(str_sub(`series_id                     `,start=-1))) %>%
+  left_join(bls_measures,by=c('measure_code'='measure_code')) %>%
   
-  #remove word "Annual"
-  separate(col=timeframe,into=c(NA,'timeframe'),sep=7) %>%
+  #add in the location name
+  mutate(laus_id=(str_sub(`series_id                     `,start=6,end=10))) %>%
+  left_join(lausids,by=c('laus_id'='laus_id')) %>%
   
-  #add in KC variables and formatting
-  mutate(data=data/100) %>%
+  #subset for only non-seasonally adjusted data (what is available at the county level)
+  mutate(seasonal=str_sub(`series_id                     `,start=1,end=5)) %>%
+  subset(seasonal=='LAUST' | seasonal=='LAUCN')
+
+```
+
+
+## STEP 3: RUN THE DESIRED INDICATOR
+
+
+
+## ################################### ##
+## ANNUAL UNEMPLOYMENT RATE (ALL AGES) ##
+## ################################### ##
+
+```{r}
+# ***** UPDATE THE YEAR TO THE CURRENT YEAR ***** 
+year <- '2020'
+```
+
+```{r}
+#this code pulls the already calculated annual averages
+
+bls_annual <- blsdata_formatted %>%
+  
+  #subset to include only the annual average
+  subset(period_name=='Annual Average') %>%
+  subset(!is.na(Location)) %>%
+  
+  #subset for the rate
+  subset(measure_text=='unemployment rate') %>%
+  #reformat to decimal version of percent
+  mutate(`       value`=`       value`/100) %>%
+  
+  #select desired variables
+  select(c(year,`       value`,State,Location)) %>%
+  
+  #format for KC database
   rename(location=Location,
-         state=State) %>%
-  mutate(locationtype='State') %>%
-  mutate(dataformat='Percent') %>%
-  mutate(varname='lausunemployment')
-  
-############
-#COUNTY DATA
-laus_county <- laus_data %>%
-  filter(grepl("LAUCN",seriesID)) %>%
-  
-  #separate text from numeric
-  separate(col=seriesID,into=c(NA,'numeric'),sep="LAUCN") %>%
-  #separate into state/county and indicator id
-  separate(col=numeric,into=c('locationcode','varid'),sep=5) %>%
-  #join county name
-  left_join(lausids,by=c('locationcode'='laus_id')) %>%
-  #subset to only include the unemployment rate, which ends in a 3
-  filter(grepl("3",varid)) %>%
-  select(-c(locationcode,varid)) %>%
-  
-  #convert wide to long
-  pivot_longer(cols=starts_with("Annual"),names_to='timeframe',values_to='data') %>% 
-  
-  #remove word "Annual"
-  separate(col=timeframe,into=c(NA,'timeframe'),sep=7) %>%
-  
-  #add in KC variables and formatting
-  mutate(data=data/100) %>%
-  rename(location=Location,
-         state=State) %>%
-  mutate(locationtype='County') %>%
-  mutate(dataformat='Percent') %>%
-  mutate(varname='lausunemployment')
-
-
-#COMBINE STATE AND COUNTY
-laus_all <- laus_county %>%
-  bind_rows(laus_state) %>%
-  
-  #merge in location ids
-  mutate(location=as.character(paste(location))) %>%
-  mutate(location=replace(location, 
-                          statename=='Montana' & location=='Lewis and Clark', 
-                          'Lewis & Clark')) %>%
-  mutate(location=replace(location, 
-                          statename=='South Dakota' & location=='Shannon', 
-                          'Oglala Lakota')) %>%
+         state=State,
+         timeframe=year,
+         data=`       value`) %>%
+  mutate(locationtype=if_else(location=='Montana','State','County')) %>%
+  mutate(dataformat='Percent',
+         varname='lausunemployment',
+         vintageyear=year) %>%
   left_join(locationids,by=c('location'='Location')) %>%
   rename(locationid=LocationId)
-
-
+  
+  
 ####################
 ####################
 #DATA QUALITY CHECKS
 ### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
 
 # 1. Print name of location that has a mismatched location ID
-if (sum(is.na(laus_all$locationid))>=1) {
-  print(laus_all$location[is.na(laus_all$locationid)])
-} else if (sum(is.na(laus_all$locationid))==0) {
+if (sum(is.na(bls_annual$locationid))>=1) {
+  print(bls_annual$location[is.na(bls_annual$locationid)])
+} else if (sum(is.na(bls_annual$locationid))==0) {
   'all locations match'
 }
 
 # 2. Output cases where percent data is greater than 1
-temp_percheck <- laus_all %>%
+temp_percheck <- bls_annual %>%
   subset(dataformat=='Percent' & data>1)
 temp_rows <- as.numeric(nrow(temp_percheck))
 
@@ -183,23 +247,24 @@ if (temp_rows==0) {
 }
 
 # 3. Visually inspect output data
-View(laus_all)
+View(bls_annual)
 ```
 
-## STEP 2: COMMIT TO DATABASE 
 ```{r}
-#CHECK DATASET NAMED laus_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+## COMMIT TO DATABASE 
+
+#CHECK DATASET NAMED bls_annual TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
 #this code adds kids count data to MBPC postgres database
 #run postgres code (separate file) first
-dbWriteTable(con,database_state,laus_all,append=TRUE,row.names=FALSE)
+dbWriteTable(con,database_state,bls_annual,append=TRUE,row.names=FALSE)
 ```
 
-## STEP 3: OUTPUT DATA FILE FOR UPLOAD
+
 ```{r}
 #########################
 ##OUTPUT DATA CENTER FILE
 
-datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='lausunemployment';")
+datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE vintageyear='",year,"' AND varname='lausunemployment';")
 
 upload_data<- dbGetQuery(con,datacenter_sql) %>%
   rename(LocationId=locationid,
@@ -212,5 +277,114 @@ upload_data<- dbGetQuery(con,datacenter_sql) %>%
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
 write.csv(upload_data,file=paste0("../Output/economics/",database_state,"_",year,"_lausunemployment.csv"),row.names=FALSE)
 ```
+
+
+
+
+## ################################################ ##
+## UNEMPLOYMENT RATE (ALL AGES) - JULY-JUNE AVERAGE ##
+## ################################################ ##
+
+```{r}
+# ***** UPDATE THE YEAR TO THE CURRENT YEAR ***** 
+year1 <- '2020'
+
+#DO NOT EDIT
+year2 <- as.character(as.numeric(year1)-1)
+year3 <- as.character(as.numeric(year1)-2)
+```
+
+```{r}
+#this code pulls the most recent two years worth of July-June averages for the KIDS COUNT county profiles
+
+bls_averages <- blsdata_formatted %>%
+  
+  #subset to include only the years of interest
+  subset(year==year1 | year==year2 | year==year3) %>%
+  subset(!is.na(Location)) %>%
+  
+  #group by custom time intervals, July-June
+  mutate(timeframe=case_when(
+    year==year3 & (period_name=='July' | period_name=='August' | 
+                     period_name=='September' | period_name=='October' | 
+                     period_name=='November' | period_name=='December') ~ 
+      paste0(year3,"-",year2),
+    year==year2 & (period_name=='January' | period_name=='February' | 
+                     period_name=='March' | period_name=='April' | 
+                     period_name=='May' | period_name=='June') ~ 
+      paste0(year3,"-",year2),
+    year==year2 & (period_name=='July' | period_name=='August' | 
+                     period_name=='September' | period_name=='October' | 
+                     period_name=='November' | period_name=='December') ~ 
+      paste0(year2,"-",year1),
+    year==year1 & (period_name=='January' | period_name=='February' | 
+                     period_name=='March' | period_name=='April' | 
+                     period_name=='May' | period_name=='June') ~ 
+      paste0(year2,"-",year1))) %>%
+  subset(!is.na(timeframe)) %>%
+  
+  #subset for the numerator and denominator
+  subset(measure_text=='unemployment' | measure_text=='labor force') %>%
+  
+  #aggregate by custom time frame
+  group_by(timeframe,Location,State,measure_text) %>%
+  summarise(summedvalue=sum(`       value`),.groups='keep') %>%
+  ungroup %>%
+  
+  #reformat to calculate rate
+  pivot_wider(names_from=measure_text,values_from=summedvalue) %>%
+  mutate(data=unemployment/`labor force`) %>%
+  select(-c(unemployment,`labor force`)) %>%
+  
+  
+  #format for KC database
+  rename(location=Location,
+         state=State) %>%
+  mutate(locationtype=if_else(location=='Montana','State','County')) %>%
+  mutate(dataformat='Percent',
+         varname='lausunemploymentcustomjulyjune',
+         vintageyear=year1) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+  
+  
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(bls_averages$locationid))>=1) {
+  print(bls_averages$location[is.na(bls_averages$locationid)])
+} else if (sum(is.na(bls_averages$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- bls_averages %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+View(bls_averages)
+```
+
+```{r}
+## COMMIT TO DATABASE 
+
+#CHECK DATASET NAMED bls_averages TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,bls_averages,append=TRUE,row.names=FALSE)
+```
+
+
+
 
 
