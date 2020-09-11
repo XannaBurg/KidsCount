@@ -1,27 +1,21 @@
 ---
-title: "Montana Vital Statistics"
-author: "Xanna Burg"
-date: "2/28/2020"
+title: "Montana Vital Statistics 2"
 output: html_document
 ---
 
-## Indicator 1: Total births by county (5-year totals)
-## Indicator 2: Birth rate per 1,000 persons by county (5-year totals)
-## Indicator 3: Low birthweight babies by county (5-year totals)
-## Indicator 4: Births to women who initiatied prenatal care in the first trimester by county (5-year totals)
-## Indicator 5: Births to women receiving late or no prenatal care by county (5-year totals)
-## Indicator 6: Births to mothers who smoked during pregnancy by county (5-year totals)
-## Indicator 7: Teen births (ages 15-19) and teen birth rate per 1,000 females by county (5-year totals)
-## Indicator 8: Infant mortality rate per 1,000 persons by region (5-year totals)
-## Indicator 9: Child and teen (ages 1-19) death rate per 100,000 persons by region (5-year totals)
+## Indicator 1: Total births (1-year totals)
+## Indicators 2-4: Low birthweight babies by county (5-year totals), Low birthweight babies (3-year totals), Low birthweight babies by county (1-year totals)
+## Indicators 5-7: Births to women who initiatied prenatal care in the first trimester (5-year totals), Births to women who initiatied prenatal care in the first trimester (3-year totals), Births to women who initiatied prenatal care in the first trimester (1-year totals)
+## Indicator 8: Births to mothers who smoked during pregnancy (5-year totals)
+## Indicator 9: Teen (ages 15-19) birth rate per 1,000 females (5-year totals)
 ## Indicator 10: Births to women who initiated prenatal care in the first trimester by race (5-year totals)
-## Indicator 11: Births to mothers who smoked during pregnancy by race (5-year totals)
+
 
 **Created by:** Xanna Burg
 **Date:** March 2020
 **Updated by:**
 
-**Data Source:** Montana Department of Public Health and Human Services, Queried from the Montana Public Health Data System (IBIS)
+**Data Source:** Montana Department of Public Health and Human Services, Office of Epidemiology and Scientific Support
 **Purpose:** Input the statewide vital statistics data
 
 **Data format:** final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Race (for two indicators broken down by race; character) Data (numeric: number, percentage, rate), DataFormat (character: "number" or "percent" or "rate"), LocationId (numeric: assigned for KIDS COUNT system)
@@ -41,1327 +35,1548 @@ library(naniar)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '14_18'
+year <- '2019'
 
-fullyear <- '2014-2018' 
+year_minus3 <- as.character(as.numeric(year)-2)
+year_minus5 <- as.character(as.numeric(year)-4)
+
+threeyear <- paste0(year_minus3,"-",year)
+fiveyear <-  paste0(year_minus5,"-",year)
+
 statefile <- 'montana'
 statename <- 'Montana'
 
 #input location ID file for MT
 locationids <- read.csv("./Input/MT KC Location IDs.csv")
+locationids$Location <- as.character(locationids$Location)
+
+#input region ID file for MT
+regionids <- read.csv("./Input/MT KC Region List.csv")
+regionids$county <- as.character(regionids$county)
 ```
 
 
-**TOTAL BIRTHS BY COUNTY (5-YEAR TOTALS)**
-
+## IMPORT THE DATA FILES THAT WILL BE USED
 ```{r}
-variablename <- 'totalbirths'
+montana_1year <- read_excel(path=paste0("./Input/health/montana_",year,"_vitalstatistics_KIDS_COUNT_",year,".xlsx"),sheet='Montana',skip=3) 
 
-#read in current birth year
-birthdata <-
-  read.csv(paste0('./Input/health/montana_',year,'_',variablename,'.csv'))
+counties_1year <- read_excel(path=paste0("./Input/health/montana_",year,"_vitalstatistics_KIDS_COUNT_",year,".xlsx"),sheet='Counties',skip=3) 
+
+montana_3year <- read_excel(path=paste0("./Input/health/montana_",year_minus3,"_",year,"_vitalstatistics_KIDS_COUNT_",year_minus3,"_",year,".xlsx"),sheet='Montana',skip=3) 
+
+counties_3year <- read_excel(path=paste0("./Input/health/montana_",year_minus3,"_",year,"_vitalstatistics_KIDS_COUNT_",year_minus3,"_",year,".xlsx"),sheet='Counties',skip=3) 
+
+montana_5year <- read_excel(path=paste0("./Input/health/montana_",year_minus5,"_",year,"_vitalstatistics_KIDS_COUNT_",year_minus5,"_",year,".xlsx"),sheet='Montana',skip=3) 
+
+counties_5year <- read_excel(path=paste0("./Input/health/montana_",year_minus5,"_",year,"_vitalstatistics_KIDS_COUNT_",year_minus5,"_",year,".xlsx"),sheet='Counties',skip=3) 
 
 ```
 
-```{r}
-#clean up birth data
-birthdata2 <- birthdata %>%
-  select(c(Mother.s.County.of.Residence,Number.of.Live.Births)) %>%
-  rename(full_county=Mother.s.County.of.Residence,
-         births=Number.of.Live.Births) %>%
-  subset(full_county != 'Total County' & full_county != 'Unknown') %>%
-  mutate(county=sub("\\ County.*","",full_county)) %>%
-  select(-c(full_county)) %>%
-  mutate(births=gsub( ",", "", births)) %>%
-  mutate(births=as.numeric(births))
 
-#create county dataset
-countybirths <- birthdata2 %>%
-  rename(location=county) %>%
+
+
+## ############################ ##
+## TOTAL BIRTHS (1-YEAR TOTALS) ##
+## ############################ ##
+
+## STEP 1: CLEAN DATA
+```{r}
+#COUNTY DATA
+births_county <- counties_1year %>%
+  #select only needed column
+  select(c(County,`Number of Births`)) %>%
+  
+  #fix the formatting of the county names
+  #lowercase county names
+  mutate(County=tolower(County)) %>%
+  mutate(County=str_to_title(County)) %>%
+  
+  #rename
+  rename(location=County,
+         data=`Number of Births`) %>%
+  
   mutate(locationtype='County') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  rename(data=births) %>%
-  mutate(varname='totalbirths')
+  
+  #fix the name on some counties
+  mutate(location=replace(location,location=='Golden','Golden Valley')) %>%
+  mutate(location=replace(location,location=='Mccone','McCone'))
 
-#create state dataset
-statebirths <- birthdata2 %>%
-  mutate(state='Montana') %>%
-  group_by(state) %>%
-  summarise(data=sum(births)) %>%
-  rename(location=state) %>%
-  mutate(locationtype='State') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='totalbirths')
 
-#create regional dataset
-regionbirths <- birthdata2 %>%
-  mutate(region = case_when(
-  county=="Carter" | county=="Custer" | county=="Daniels" |
-    county=="Dawson" | county=="Fallon" | county=="Garfield" |
-    county=="McCone" | county=="Phillips" | county=="Powder River" | 
-    county=="Prairie" | county=="Richland" | county=="Roosevelt" | 
-    county=="Rosebud" | county =="Sheridan" | county=="Treasure" | 
-    county=="Valley" | county=="Wibaux" ~ "Region 1",
-  county=="Blaine" | county=="Cascade" | county=="Chouteau" | 
-    county=="Glacier" | county=="Hill" | county=="Liberty" | 
-    county=="Pondera" | county=="Teton" | county=="Toole" ~ 
-    "Region 2",
-  county=="Big Horn" | county=="Carbon" | county=="Fergus" | 
-    county=="Golden Valley" | county=="Judith Basin" | 
-    county=="Musselshell" | county=="Petroleum" | 
-    county=="Stillwater" | county=="Sweet Grass" | 
-    county=="Wheatland" | county=="Yellowstone" ~ 
-    "Region 3",
-  county=="Beaverhead" | county=="Broadwater" | county=="Deer Lodge" | 
-    county=="Gallatin" | county=="Granite" | county=="Jefferson" | 
-    county=="Lewis and Clark" | county=="Madison" | 
-    county=="Meagher" | county=="Park" | county=="Powell" | 
-    county=="Silver Bow" ~ "Region 4",
-  county=="Flathead" | county=="Lake" | county=="Lincoln" | 
-    county=="Mineral" | county=="Missoula" | county=="Ravalli" | 
-    county=="Sanders" ~ "Region 5"
-)) %>%
-  group_by(region) %>%
-  summarise(data=sum(births)) %>%
-  rename(location=region) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='totalbirths')
+#STATE DATA
+births_state <- montana_1year %>%
+  #select only needed column
+  select(c(Race,`Live Births`)) %>%
+  
+  #only select all
+  subset(Race=='All') %>%
+  
+  #rename
+  rename(location=Race,
+         data=`Live Births`) %>%
+  mutate(location='Montana') %>%
+  
+  mutate(locationtype='State')
   
 
-#bind county, state, and region data
-birthdata3 <- countybirths %>%
-  bind_rows(statebirths) %>%
-  bind_rows(regionbirths) %>% 
-  mutate(location=replace(location, 
-                          statename=='Montana' & location=='Lewis and Clark', 
-                          'Lewis & Clark')) %>%
-  left_join(locationids, by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
+#COMBINE GEOGRAPHIES
+births_all <- births_county %>%
+  bind_rows(births_state) %>%
+  
+  #add in KC variables
+  mutate(timeframe=year,
+         state='Montana',
+         dataformat='Number',
+         varname='totalbirths') %>%
+  
+  #merge location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  #suppress if less than 5
+  mutate(data=replace(data,data<5 & data!=0,NA))
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(births_all$locationid))>=1) {
+  print(births_all$location[is.na(births_all$locationid)])
+} else if (sum(is.na(births_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 5
+temp_suppresscheck <- births_all %>% subset(data<5 & data>0)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- births_all %>%
+  subset(locationtype=='County') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- births_all %>%
+#  subset(locationtype=='County') %>%
+#  arrange(data)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#births_all$data[births_all$location=='Billings'] <- NA
+
+
+# 4. Visually inspect output data
+View(births_all)
 
 ```
 
+## STEP 2: ADD TO DATABASE
 ```{r}
-#CHECK DATASET NAMED birthdata3 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#CHECK DATASET NAMED births_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
 #add to database
-dbWriteTable(con,'montana',birthdata3,append=TRUE,row.names=FALSE)
+dbWriteTable(con,'montana',births_all,append=TRUE,row.names=FALSE)
 
 ```
 
+## STEP 3: OUTPUT FILE FOR KC
 ```{r}
 #write query from database to get needed format for KC data center
 
-totalbirths_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='totalbirths';")
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",year,"' AND varname='totalbirths';")
 
-upload_data_totalbirths <- dbGetQuery(con,totalbirths_sql)
-
-upload_data_totalbirths2 <- upload_data_totalbirths %>%
+upload_data <- dbGetQuery(con,upload_sql) %>%
   rename(LocationId=locationid,
          Location=location,
          TimeFrame=timeframe,
          DataFormat=dataformat,
          Data=data)
 
-
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
-write.csv(upload_data_totalbirths2,file=paste0("./Output/health/",statefile,"_",year,"_totalbirths.csv"),row.names=FALSE)
+write.csv(upload_data,file=paste0("./Output/health/",statefile,"_",year,"_totalbirths.csv"),row.names=FALSE)
 ```
 
 
 
 
-**BIRTH RATE PER 1,000 PERSONS BY COUNTY (5-YEAR TOTALS)**
 
+## ###################################### ##
+## LOW BIRTHWEIGHT BABIES (1-YEAR TOTALS) ## 
+## ###################################### ##
+
+## STEP 1: CLEAN DATA
 ```{r}
-variablename <- 'birthrate5yeartotals'
-filename <- 'birthrate'
-
-#read in current birth year
-birthratedata <-
-  read.csv(paste0('./Input/health/montana_',year,'_',filename,'.csv'))
-```
-
-```{r}
-#clean up birth rate data
-birthratedata2 <- birthratedata %>%
-  select(c(Mother.s.County.of.Residence,Birth.Rate.per.1.000.Persons)) %>%
-  rename(full_county=Mother.s.County.of.Residence,
-         birthrate=Birth.Rate.per.1.000.Persons) %>%
-  subset(full_county != 'Total County' & full_county != 'Unknown') %>%
-  mutate(county=sub("\\ County.*","",full_county)) %>%
-  select(-c(full_county)) 
-
-
-#create county dataset
-countybirthrate <- birthratedata2 %>%
-  rename(location=county) %>%
+#COUNTY DATA
+births_county <- counties_1year %>%
+  #select only needed column
+  select(c(County,`Low birth-weight births (birth-weight <2,500 g or 5lbs 8oz; as percent of live births)`)) %>%
+  
+  #fix the formatting of the county names
+  #lowercase county names
+  mutate(County=tolower(County)) %>%
+  mutate(County=str_to_title(County)) %>%
+  
+  #rename
+  rename(location=County,
+         data=`Low birth-weight births (birth-weight <2,500 g or 5lbs 8oz; as percent of live births)`) %>%
+  
   mutate(locationtype='County') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Rate') %>%
-  rename(data=birthrate) %>%
-  mutate(data=na_if(data, '**')) %>%
   mutate(data=as.numeric(paste(data))) %>%
-  mutate(varname=variablename)
+  
+  #fix the name on some counties
+  mutate(location=replace(location,location=='Golden','Golden Valley')) %>%
+  mutate(location=replace(location,location=='Mccone','McCone'))
 
 
-#create state dataset
-statebirthrate <- birthratedata %>%
-  select(c(Mother.s.County.of.Residence,Birth.Rate.per.1.000.Persons)) %>%
-  rename(full_county=Mother.s.County.of.Residence,
-         birthrate=Birth.Rate.per.1.000.Persons) %>%
-  subset(full_county=='Total County') %>%
-  rename(data=birthrate) %>%
+#STATE DATA
+births_state <- montana_1year %>%
+  #select only needed column
+  select(c(Race,`Low birth-weight births (<5lbs 8oz; percent of all births)`)) %>%
+  
+  #only select all
+  subset(Race=='All') %>%
+  
+  #rename
+  rename(location=Race,
+         data=`Low birth-weight births (<5lbs 8oz; percent of all births)`) %>%
+  mutate(location='Montana') %>%
+  
+  mutate(locationtype='State')
+  
+
+#COMBINE GEOGRAPHIES
+births_all <- births_county %>%
+  bind_rows(births_state) %>%
+  
+  #add in KC variables
+  mutate(timeframe=year,
+         state='Montana',
+         dataformat='Percent',
+         varname='lowbirthweight1yeartotals') %>%
+  
+  #merge location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(births_all$locationid))>=1) {
+  print(births_all$location[is.na(births_all$locationid)])
+} else if (sum(is.na(births_all$locationid))==0) {
+  'all locations match'
+}
+
+
+#2. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- births_all %>%
+  subset(locationtype=='County') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- counties_1year %>%
+ # select(County,`Number of Low birth weight`) %>%
+#  arrange(`Number of Low birth weight`)
+#View(temp_check)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#births_all$data[births_all$location=='Billings'] <- NA
+
+
+# 4. Visually inspect output data
+View(births_all)
+
+```
+
+## STEP 2: ADD TO DATABASE
+```{r}
+#CHECK DATASET NAMED births_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',births_all,append=TRUE,row.names=FALSE)
+
+```
+
+## STEP 3: OUTPUT FILE FOR KC
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",year,"' AND varname='lowbirthweight1yeartotals';")
+
+upload_data <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("./Output/health/",statefile,"_",year,"_lowbirthweight1yeartotals.csv"),row.names=FALSE)
+```
+
+
+
+## ###################################### ##
+## LOW BIRTHWEIGHT BABIES (3-YEAR TOTALS) ## 
+## ###################################### ##
+
+## STEP 1: CLEAN DATA
+```{r}
+#COUNTY DATA
+births_county <- counties_3year %>%
+  #select only needed column
+  select(c(County,`Low birth-weight births (birth-weight <2,500 g or 5lbs 8oz; as percent of live births)`)) %>%
+  
+  #fix the formatting of the county names
+  #lowercase county names
+  mutate(County=tolower(County)) %>%
+  mutate(County=str_to_title(County)) %>%
+  
+  #rename
+  rename(location=County,
+         data=`Low birth-weight births (birth-weight <2,500 g or 5lbs 8oz; as percent of live births)`) %>%
+  
+  mutate(locationtype='County') %>%
   mutate(data=as.numeric(paste(data))) %>%
-  select(-c(full_county)) %>%
-  mutate(location='Montana') %>%
-  mutate(state='Montana') %>%
-  mutate(locationtype='State') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Rate') %>%
-  mutate(varname=variablename)
+  
+  #fix the name on some counties
+  mutate(location=replace(location,location=='Golden','Golden Valley')) %>%
+  mutate(location=replace(location,location=='Mccone','McCone'))
 
-#create regional dataset
-regionbirthrate <- birthratedata %>%
-  select(c(Mother.s.County.of.Residence,Number.of.Births,
-           Number.of.Persons.in.Population)) %>%
-  rename(full_county=Mother.s.County.of.Residence,
-         numberbirths=Number.of.Births,
-         totalpop=Number.of.Persons.in.Population) %>%
-  subset(full_county != 'Total County' & full_county != 'Unknown') %>%
-  mutate(county=sub("\\ County.*","",full_county)) %>%
-  select(-c(full_county)) %>%
-  mutate(numberbirths=gsub( ",", "", numberbirths)) %>%
-  mutate(totalpop=gsub( ",", "", totalpop)) %>%
-  mutate(numberbirths=as.numeric(numberbirths)) %>%
-  mutate(totalpop=as.numeric(totalpop)) %>%
-  mutate(region = case_when(
-  county=="Carter" | county=="Custer" | county=="Daniels" |
-    county=="Dawson" | county=="Fallon" | county=="Garfield" |
-    county=="McCone" | county=="Phillips" | county=="Powder River" | 
-    county=="Prairie" | county=="Richland" | county=="Roosevelt" | 
-    county=="Rosebud" | county =="Sheridan" | county=="Treasure" | 
-    county=="Valley" | county=="Wibaux" ~ "Region 1",
-  county=="Blaine" | county=="Cascade" | county=="Chouteau" | 
-    county=="Glacier" | county=="Hill" | county=="Liberty" | 
-    county=="Pondera" | county=="Teton" | county=="Toole" ~ 
-    "Region 2",
-  county=="Big Horn" | county=="Carbon" | county=="Fergus" | 
-    county=="Golden Valley" | county=="Judith Basin" | 
-    county=="Musselshell" | county=="Petroleum" | 
-    county=="Stillwater" | county=="Sweet Grass" | 
-    county=="Wheatland" | county=="Yellowstone" ~ 
-    "Region 3",
-  county=="Beaverhead" | county=="Broadwater" | county=="Deer Lodge" | 
-    county=="Gallatin" | county=="Granite" | county=="Jefferson" | 
-    county=="Lewis and Clark" | county=="Madison" | 
-    county=="Meagher" | county=="Park" | county=="Powell" | 
-    county=="Silver Bow" ~ "Region 4",
-  county=="Flathead" | county=="Lake" | county=="Lincoln" | 
-    county=="Mineral" | county=="Missoula" | county=="Ravalli" | 
-    county=="Sanders" ~ "Region 5"
-)) %>%
-  group_by(region) %>%
-  summarise(totalbirths=sum(numberbirths),
-            regionpop=sum(totalpop)) %>%
-  mutate(data=(totalbirths/regionpop)*1000) %>%
-  select(-c(totalbirths,regionpop)) %>%
-  rename(location=region) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Rate') %>%
-  mutate(varname=variablename)
+
+#STATE DATA
+births_state <- montana_3year %>%
+  #select only needed column
+  select(c(Race,`Low birth-weight births (<5lbs 8oz; percent of all births)`)) %>%
+  
+  #only select all
+  subset(Race=='All') %>%
+  
+  #rename
+  rename(location=Race,
+         data=`Low birth-weight births (<5lbs 8oz; percent of all births)`) %>%
+  mutate(location='Montana') %>%
+  
+  mutate(locationtype='State')
   
 
-#bind county, state, and region data
-birthratedata3 <- countybirthrate %>%
-  bind_rows(statebirthrate) %>%
-  bind_rows(regionbirthrate) %>% 
-  mutate(location=replace(location, 
-                          statename=='Montana' & location=='Lewis and Clark', 
-                          'Lewis & Clark')) %>%
-  left_join(locationids, by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
+#COMBINE GEOGRAPHIES
+births_all <- births_county %>%
+  bind_rows(births_state) %>%
+  
+  #add in KC variables
+  mutate(timeframe=threeyear,
+         state='Montana',
+         dataformat='Percent',
+         varname='lowbirthweight3yeartotals') %>%
+  
+  #merge location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(births_all$locationid))>=1) {
+  print(births_all$location[is.na(births_all$locationid)])
+} else if (sum(is.na(births_all$locationid))==0) {
+  'all locations match'
+}
+
+
+#2. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- births_all %>%
+  subset(locationtype=='County') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- counties_3year %>%
+ # select(County,`Number of Low birth weight`) %>%
+#  arrange(`Number of Low birth weight`)
+#View(temp_check)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#births_all$data[births_all$location=='Billings'] <- NA
+
+
+# 4. Visually inspect output data
+View(births_all)
+
 ```
 
+## STEP 2: CHECK ON SUPPRESSION ACROSS YEARS
 ```{r}
-#CHECK DATASET NAMED birthratedata3 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
-#add to database
-dbWriteTable(con,'montana',birthratedata3,append=TRUE,row.names=FALSE)
+year_minus3_interim <- as.character(as.numeric(year)-1)
+
+check_years_sql <- paste0("SELECT location, timeframe, data FROM montana WHERE (timeframe='",year,"' OR timeframe='",year_minus3_interim,"' OR timeframe='",year_minus3,"') AND varname='lowbirthweight1yeartotals';")
+
+check_years <- dbGetQuery(con,check_years_sql) %>%
+  
+  pivot_wider(names_from=timeframe,values_from=data) %>%
+  
+  #rename columns
+  rename(year1=all_of(year_minus3),
+         year2=all_of(year_minus3_interim),
+         year3=all_of(year)) %>%
+  
+  mutate(indicator1=case_when(
+    is.na(year1) ~ 1,
+    !is.na(year1) ~ 0)) %>%
+  mutate(indicator2=case_when(
+    is.na(year2) ~ 1,
+    !is.na(year2) ~ 0)) %>%
+  mutate(indicator3=case_when(
+    is.na(year3) ~ 1,
+    !is.na(year3) ~ 0)) %>%
+  
+  #create sums
+  mutate(sum_of_nas=indicator1+indicator2+indicator3) %>%
+  subset(sum_of_nas==1)
+
+temp_rows <- as.numeric(nrow(check_years))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(check_years)
+}
+
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Suppress the three year percentage if there is exactly one NA during the three years
+#births_all$data[births_all$location=='Roosevelt'] <- NA
 ```
 
+## STEP 3: ADD TO DATABASE
+```{r}
+#CHECK DATASET NAMED births_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',births_all,append=TRUE,row.names=FALSE)
+```
+
+## STEP 4: OUTPUT FILE FOR KC
 ```{r}
 #write query from database to get needed format for KC data center
 
-birthrate_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='birthrate5yeartotals';")
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",threeyear,"' AND varname='lowbirthweight3yeartotals';")
 
-upload_data_birthrate <- dbGetQuery(con,birthrate_sql)
-
-upload_data_birthrate2 <- upload_data_birthrate %>%
+upload_data <- dbGetQuery(con,upload_sql) %>%
   rename(LocationId=locationid,
          Location=location,
          TimeFrame=timeframe,
          DataFormat=dataformat,
          Data=data)
 
-
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
-write.csv(upload_data_birthrate2,file=paste0("./Output/health/",statefile,"_",year,"_birthrate.csv"),row.names=FALSE)
+write.csv(upload_data,file=paste0("./Output/health/",statefile,"_",year,"_lowbirthweight3yeartotals.csv"),row.names=FALSE)
 ```
 
 
 
-**LOW BIRTHWEIGHT BABIES BY COUNTY (5-YEAR TOTALS)**
 
+## ###################################### ##
+## LOW BIRTHWEIGHT BABIES (5-YEAR TOTALS) ## 
+## ###################################### ##
+
+## STEP 1: CLEAN DATA
 ```{r}
-filename <- 'lowbirthweight'
-variablename <- 'lowbirthweight5yeartotals'
-
-#read in current birth year
-lowbirthweightdata <-
-  read.csv(paste0('./Input/health/montana_',year,'_',filename,'.csv'))
-
-#read in regional dataset
-regionlowbirthweight <- read.csv(paste0('./Input/health/montana_',year,'_',filename,'_region.csv'))
-```
-
-```{r}
-#clean up birth data
-lowbirthweightdata2 <- lowbirthweightdata %>%
-  select(c(Mother.s.County.of.Residence,
-           Number.of.Low.and.Very.Low.Birth.Weight.Infants,
-           Percentage.of.Low.and.Very.Low.Birth.Weight.Infants)) %>%
-  rename(full_county=Mother.s.County.of.Residence,
-         lowbirthweightbirths=
-           Number.of.Low.and.Very.Low.Birth.Weight.Infants,
-         lowbirthweightpercent=
-           Percentage.of.Low.and.Very.Low.Birth.Weight.Infants) %>%
-  subset(full_county != 'Unknown') %>%
-  mutate(county=sub("\\ County.*","",full_county)) %>%
-  select(-c(full_county)) %>%
-  mutate(lowbirthweightbirths=na_if(lowbirthweightbirths, '**')) %>%
-  mutate(lowbirthweightbirths=gsub( ",", "", lowbirthweightbirths)) %>%
-  mutate(lowbirthweightbirths=as.numeric(lowbirthweightbirths)) %>%
-  mutate(lowbirthweightpercent=na_if(lowbirthweightpercent, '**')) %>%
-  mutate(lowbirthweightpercent=gsub( "%", "", lowbirthweightpercent)) %>%
-  mutate(lowbirthweightpercent=as.numeric(lowbirthweightpercent)) %>%
-  mutate(lowbirthweightpercent=lowbirthweightpercent/100)
-
-
-
-#create county dataset
-countylowbirthweight_count <- lowbirthweightdata2 %>%
-  subset(county != 'Total') %>%
-  select(c(lowbirthweightbirths,county)) %>%
-  rename(location=county) %>%
-  mutate(locationtype='County') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  rename(data=lowbirthweightbirths) %>%
-  mutate(varname=variablename)
-
-countylowbirthweight_percent <- lowbirthweightdata2 %>%
-  subset(county != 'Total') %>%
-  select(c(lowbirthweightpercent,county)) %>%
-  rename(location=county) %>%
-  mutate(locationtype='County') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Percent') %>%
-  rename(data=lowbirthweightpercent) %>%
-  mutate(varname=variablename)
-
-#create state dataset
-statelowbirthweight_count <- lowbirthweightdata2 %>%
-  subset(county=='Total') %>%
-  select(c(lowbirthweightbirths)) %>%
-  mutate(location='Montana') %>%
-  mutate(locationtype='State') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  rename(data=lowbirthweightbirths) %>%
-  mutate(varname=variablename)
-
-statelowbirthweight_percent <- lowbirthweightdata2 %>%
-  subset(county=='Total') %>%
-  select(c(lowbirthweightpercent)) %>%
-  mutate(location='Montana') %>%
-  mutate(locationtype='State') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Percent') %>%
-  rename(data=lowbirthweightpercent) %>%
-  mutate(varname=variablename)
-
-
-#create regional dataset
-regionlowbirthweight_count <- regionlowbirthweight %>%
-  select(c(Montana.Health.Planning.Regions.ID,
-           Number.of.Low.and.Very.Low.Birth.Weight.Infants)) %>%
-  mutate(region=case_when(
-    Montana.Health.Planning.Regions.ID==1 ~ 'Region 1',
-    Montana.Health.Planning.Regions.ID==2 ~ 'Region 2',
-    Montana.Health.Planning.Regions.ID==3 ~ 'Region 3',
-    Montana.Health.Planning.Regions.ID==4 ~ 'Region 4',
-    Montana.Health.Planning.Regions.ID==5 ~ 'Region 5')) %>%
-  select(-c( Montana.Health.Planning.Regions.ID)) %>%
-  rename(lowbirthweightbirths=
-           Number.of.Low.and.Very.Low.Birth.Weight.Infants) %>%
-  mutate(lowbirthweightbirths=na_if(lowbirthweightbirths, '**')) %>%
-  mutate(lowbirthweightbirths=gsub( ",", "", lowbirthweightbirths)) %>%
-  mutate(lowbirthweightbirths=as.numeric(lowbirthweightbirths)) %>%
-  group_by(region) %>%
-  summarise(data=sum(lowbirthweightbirths)) %>%
-  rename(location=region) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname=variablename)
+#COUNTY DATA
+births_county <- counties_5year %>%
+  #select only needed column
+  select(c(County,`Low birth-weight births (birth-weight <2,500 g or 5lbs 8oz; as percent of live births)`)) %>%
   
-regionlowbirthweight_percent <- regionlowbirthweight %>%
-  select(c(Montana.Health.Planning.Regions.ID,
-           Number.of.Low.and.Very.Low.Birth.Weight.Infants,
-           Number.of.Live.Births)) %>%
-  mutate(region=case_when(
-    Montana.Health.Planning.Regions.ID==1 ~ 'Region 1',
-    Montana.Health.Planning.Regions.ID==2 ~ 'Region 2',
-    Montana.Health.Planning.Regions.ID==3 ~ 'Region 3',
-    Montana.Health.Planning.Regions.ID==4 ~ 'Region 4',
-    Montana.Health.Planning.Regions.ID==5 ~ 'Region 5')) %>%
-  select(-c(Montana.Health.Planning.Regions.ID)) %>%
-  rename(lowbirthweightbirths=
-           Number.of.Low.and.Very.Low.Birth.Weight.Infants,
-         totalbirths=Number.of.Live.Births) %>%
-  mutate(totalbirths=gsub( ",", "", totalbirths)) %>%
-  mutate(totalbirths=as.numeric(totalbirths)) %>%
-  mutate(lowbirthweightbirths=na_if(lowbirthweightbirths, '**')) %>%
-  mutate(lowbirthweightbirths=gsub( ",", "", lowbirthweightbirths)) %>%
-  mutate(lowbirthweightbirths=as.numeric(lowbirthweightbirths)) %>%
-  group_by(region) %>%
-  summarise(regionlowbirthweightbirths=sum(lowbirthweightbirths),
-            regiontotalbirths=sum(totalbirths)) %>%
-  mutate(data=regionlowbirthweightbirths/regiontotalbirths) %>%
-  select(-c(regionlowbirthweightbirths,regiontotalbirths)) %>%
-  rename(location=region) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Percent') %>%
-  mutate(varname=variablename)
+  #fix the formatting of the county names
+  #lowercase county names
+  mutate(County=tolower(County)) %>%
+  mutate(County=str_to_title(County)) %>%
+  
+  #rename
+  rename(location=County,
+         data=`Low birth-weight births (birth-weight <2,500 g or 5lbs 8oz; as percent of live births)`) %>%
+  
+  mutate(locationtype='County') %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  
+  #fix the name on some counties
+  mutate(location=replace(location,location=='Golden','Golden Valley')) %>%
+  mutate(location=replace(location,location=='Mccone','McCone'))
 
 
+#STATE DATA
+births_state <- montana_5year %>%
+  #select only needed column
+  select(c(Race,`Low birth-weight births (<5lbs 8oz; percent of all births)`)) %>%
+  
+  #only select all
+  subset(Race=='All') %>%
+  
+  #rename
+  rename(location=Race,
+         data=`Low birth-weight births (<5lbs 8oz; percent of all births)`) %>%
+  mutate(location='Montana') %>%
+  
+  mutate(locationtype='State')
+  
 
-#bind county, state, and region data
-lowbirthweightdata3 <- countylowbirthweight_count %>%
-  bind_rows(countylowbirthweight_percent) %>%
-  bind_rows(statelowbirthweight_count) %>% 
-  bind_rows(statelowbirthweight_percent) %>%
-  bind_rows(regionlowbirthweight_count) %>%
-  bind_rows(regionlowbirthweight_percent) %>%
-  mutate(location=replace(location, 
-                          statename=='Montana' & location=='Lewis and Clark', 
-                          'Lewis & Clark')) %>%
-  left_join(locationids, by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
+#COMBINE GEOGRAPHIES
+births_all <- births_county %>%
+  bind_rows(births_state) %>%
+  
+  #add in KC variables
+  mutate(timeframe=fiveyear,
+         state='Montana',
+         dataformat='Percent',
+         varname='lowbirthweight5yeartotals') %>%
+  
+  #merge location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(births_all$locationid))>=1) {
+  print(births_all$location[is.na(births_all$locationid)])
+} else if (sum(is.na(births_all$locationid))==0) {
+  'all locations match'
+}
+
+
+#2. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- births_all %>%
+  subset(locationtype=='County') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- counties_5year %>%
+ # select(County,`Number of Low birth weight`) %>%
+#  arrange(`Number of Low birth weight`)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#births_all$data[births_all$location=='Golden Valley'] <- NA
+
+
+# 4. Visually inspect output data
+View(births_all)
+
 ```
+
+## STEP 2: CHECK ON SUPPRESSION ACROSS YEARS
 ```{r}
-#CHECK DATASET NAMED lowbirthweightdata3 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
-#add to database
-dbWriteTable(con,'montana',lowbirthweightdata3,append=TRUE,row.names=FALSE)
+year_minus5_interim1 <- as.character(as.numeric(year)-1)
+year_minus5_interim2 <- as.character(as.numeric(year)-3)
 
+check_years_sql <- paste0("SELECT location, timeframe, data FROM montana WHERE (timeframe='",year,"' OR timeframe='",year_minus5_interim1,"' OR timeframe='",year_minus3,"' OR timeframe='",year_minus5_interim2,"' OR timeframe='",year_minus5,"') AND varname='lowbirthweight1yeartotals';")
+
+check_years <- dbGetQuery(con,check_years_sql) %>%
+  
+  pivot_wider(names_from=timeframe,values_from=data) %>%
+  
+  #rename columns
+  rename(year1=all_of(year_minus5),
+         year2=all_of(year_minus5_interim2),
+         year3=all_of(year_minus3),
+         year4=all_of(year_minus5_interim1),
+         year5=all_of(year)) %>%
+  
+  mutate(indicator1=case_when(
+    is.na(year1) ~ 1,
+    !is.na(year1) ~ 0)) %>%
+  mutate(indicator2=case_when(
+    is.na(year2) ~ 1,
+    !is.na(year2) ~ 0)) %>%
+  mutate(indicator3=case_when(
+    is.na(year3) ~ 1,
+    !is.na(year3) ~ 0)) %>%
+  mutate(indicator4=case_when(
+    is.na(year4) ~ 1,
+    !is.na(year4) ~ 0)) %>%
+  mutate(indicator5=case_when(
+    is.na(year5) ~ 1,
+    !is.na(year5) ~ 0)) %>%
+  
+  #create sums
+  mutate(sum_of_nas=indicator1+indicator2+indicator3+indicator4+indicator5) %>%
+  subset(sum_of_nas==1)
+
+temp_rows <- as.numeric(nrow(check_years))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(check_years)
+}
+
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Suppress the three year percentage if there is exactly one NA during the five years
+#births_all$data[births_all$location=='Ravalli'] <- NA
 ```
 
+## STEP 3: ADD TO DATABASE
+```{r}
+#CHECK DATASET NAMED births_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',births_all,append=TRUE,row.names=FALSE)
+```
+
+## STEP 4: OUTPUT FILE FOR KC
 ```{r}
 #write query from database to get needed format for KC data center
 
-lowbirthweight_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='lowbirthweight5yeartotals';")
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fiveyear,"' AND varname='lowbirthweight5yeartotals';")
 
-upload_data_lowbirthweight <- dbGetQuery(con,lowbirthweight_sql)
-
-upload_data_lowbirthweight2 <- upload_data_lowbirthweight %>%
+upload_data <- dbGetQuery(con,upload_sql) %>%
   rename(LocationId=locationid,
          Location=location,
          TimeFrame=timeframe,
          DataFormat=dataformat,
          Data=data)
 
-
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
-write.csv(upload_data_lowbirthweight2,file=paste0("./Output/health/",statefile,"_",year,"_lowbirthweight.csv"),row.names=FALSE)
+write.csv(upload_data,file=paste0("./Output/health/",statefile,"_",year,"_lowbirthweight5yeartotals.csv"),row.names=FALSE)
 ```
 
 
-**BIRTHS TO WOMEN WHO INITIATED PRENATAL CARE IN THE FIRST TRIMESTER BY COUNTY (5-YEAR TOTALS)**
 
+## ############################################################## ##
+## BIRTHS TO WOMEN RECEIVING PRENATAL CARE DURING FIRST TRIMESTER ## 
+## ################ (1-YEAR TOTALS) ############################# ##
+## ############################################################## ##
+
+## STEP 1: CLEAN DATA
 ```{r}
-filename <- 'firsttrimester'
-variablename <- 'firsttrimesterprenatal5yeartotals'
-
-#read in current birth year
-firsttrimesterdata <- 
-  read.csv(paste0('./Input/health/montana_',year,'_',filename,'.csv'))
-```
-
-```{r}
-#clean up birth data
-firsttrimesterdata2 <- firsttrimesterdata %>%
-  select(c(Mother.s.County.of.Residence,
-           Number.With.Prenatal.Care.in.the.First.Trimester,
-           Percentage.With.Prenatal.Care.in.the.First.Trimester,
-           Number.of.Live.Births)) %>%
-  rename(full_county=Mother.s.County.of.Residence,
-         firsttrimesterbirths=
-           Number.With.Prenatal.Care.in.the.First.Trimester,
-         firsttrimesterpercent=
-           Percentage.With.Prenatal.Care.in.the.First.Trimester,
-         totalbirths=Number.of.Live.Births) %>%
-  subset(full_county != 'Unknown') %>%
-  mutate(county=sub("\\ County.*","",full_county)) %>%
-  select(-c(full_county)) %>%
-  mutate(firsttrimesterbirths=na_if(firsttrimesterbirths, '**')) %>%
-  mutate(firsttrimesterbirths=gsub( ",", "", firsttrimesterbirths)) %>%
-  mutate(firsttrimesterbirths=as.numeric(firsttrimesterbirths)) %>%
-  mutate(firsttrimesterpercent=na_if(firsttrimesterpercent, '**')) %>%
-  mutate(firsttrimesterpercent=gsub( "%", "", firsttrimesterpercent)) %>%
-  mutate(firsttrimesterpercent=as.numeric(firsttrimesterpercent)) %>%
-  mutate(firsttrimesterpercent=firsttrimesterpercent/100) %>%
-  mutate(totalbirths=na_if(totalbirths, '**')) %>%
-  mutate(totalbirths=gsub( ",", "", totalbirths)) %>%
-  mutate(totalbirths=as.numeric(totalbirths)) 
-
-
-
-#create county dataset
-countyfirsttrimester_count <- firsttrimesterdata2 %>%
-  subset(county != 'Total') %>%
-  select(c(firsttrimesterbirths,county)) %>%
-  rename(location=county) %>%
+#COUNTY DATA
+births_county <- counties_1year %>%
+  #select only needed column
+  select(c(County,`Births to mothers starting prenatal care during 1st trimester (during first three months of pregnancy; as percent of live births)`)) %>%
+  
+  #fix the formatting of the county names
+  #lowercase county names
+  mutate(County=tolower(County)) %>%
+  mutate(County=str_to_title(County)) %>%
+  
+  #rename
+  rename(location=County,
+         data=`Births to mothers starting prenatal care during 1st trimester (during first three months of pregnancy; as percent of live births)`) %>%
+  
   mutate(locationtype='County') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  rename(data=firsttrimesterbirths) %>%
-  mutate(varname=variablename)
+  mutate(data=as.numeric(paste(data))) %>%
+  
+  #fix the name on some counties
+  mutate(location=replace(location,location=='Golden','Golden Valley')) %>%
+  mutate(location=replace(location,location=='Mccone','McCone'))
 
-countyfirsttrimester_percent <- firsttrimesterdata2 %>%
-  subset(county != 'Total') %>%
-  select(c(firsttrimesterpercent,county)) %>%
-  rename(location=county) %>%
-  mutate(locationtype='County') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Percent') %>%
-  rename(data=firsttrimesterpercent) %>%
-  mutate(varname=variablename)
 
-#create state dataset
-statefirsttrimester_count <- firsttrimesterdata2 %>%
-  subset(county=='Total') %>%
-  select(c(firsttrimesterbirths)) %>%
+#STATE DATA
+births_state <- montana_1year %>%
+  #select only needed column
+  select(c(Race,`Births to mothers receiving prenatal care beginning in 1st trimester (percent of all births)`)) %>%
+  
+  #only select all
+  subset(Race=='All') %>%
+  
+  #rename
+  rename(location=Race,
+         data=`Births to mothers receiving prenatal care beginning in 1st trimester (percent of all births)`) %>%
   mutate(location='Montana') %>%
-  mutate(locationtype='State') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  rename(data=firsttrimesterbirths) %>%
-  mutate(varname=variablename)
+  
+  mutate(locationtype='State')
+  
 
-statefirsttrimester_percent <- firsttrimesterdata2 %>%
-  subset(county=='Total') %>%
-  select(c(firsttrimesterpercent)) %>%
-  mutate(location='Montana') %>%
-  mutate(locationtype='State') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Percent') %>%
-  rename(data=firsttrimesterpercent) %>%
-  mutate(varname=variablename)
-
-
-#create regional dataset
-regionfirsttrimester_count <- firsttrimesterdata2 %>%
-  subset(county != 'Total') %>%
-  mutate(region = case_when(
-  county=="Carter" | county=="Custer" | county=="Daniels" |
-    county=="Dawson" | county=="Fallon" | county=="Garfield" |
-    county=="McCone" | county=="Phillips" | county=="Powder River" | 
-    county=="Prairie" | county=="Richland" | county=="Roosevelt" | 
-    county=="Rosebud" | county =="Sheridan" | county=="Treasure" | 
-    county=="Valley" | county=="Wibaux" ~ "Region 1",
-  county=="Blaine" | county=="Cascade" | county=="Chouteau" | 
-    county=="Glacier" | county=="Hill" | county=="Liberty" | 
-    county=="Pondera" | county=="Teton" | county=="Toole" ~ 
-    "Region 2",
-  county=="Big Horn" | county=="Carbon" | county=="Fergus" | 
-    county=="Golden Valley" | county=="Judith Basin" | 
-    county=="Musselshell" | county=="Petroleum" | 
-    county=="Stillwater" | county=="Sweet Grass" | 
-    county=="Wheatland" | county=="Yellowstone" ~ 
-    "Region 3",
-  county=="Beaverhead" | county=="Broadwater" | county=="Deer Lodge" | 
-    county=="Gallatin" | county=="Granite" | county=="Jefferson" | 
-    county=="Lewis and Clark" | county=="Madison" | 
-    county=="Meagher" | county=="Park" | county=="Powell" | 
-    county=="Silver Bow" ~ "Region 4",
-  county=="Flathead" | county=="Lake" | county=="Lincoln" | 
-    county=="Mineral" | county=="Missoula" | county=="Ravalli" | 
-    county=="Sanders" ~ "Region 5"
-)) %>%
-  group_by(region) %>%
-  summarise(data=sum(firsttrimesterbirths)) %>% 
-  rename(location=region) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname=variablename)
+#COMBINE GEOGRAPHIES
+births_all <- births_county %>%
+  bind_rows(births_state) %>%
+  
+  #add in KC variables
+  mutate(timeframe=year,
+         state='Montana',
+         dataformat='Percent',
+         varname='firsttrimesterprenatal1yeartotals') %>%
+  
+  #merge location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
 
 
-regionfirsttrimester_percent <- firsttrimesterdata2 %>%
-  subset(county != 'Total') %>%
-  mutate(region = case_when(
-  county=="Carter" | county=="Custer" | county=="Daniels" |
-    county=="Dawson" | county=="Fallon" | county=="Garfield" |
-    county=="McCone" | county=="Phillips" | county=="Powder River" | 
-    county=="Prairie" | county=="Richland" | county=="Roosevelt" | 
-    county=="Rosebud" | county =="Sheridan" | county=="Treasure" | 
-    county=="Valley" | county=="Wibaux" ~ "Region 1",
-  county=="Blaine" | county=="Cascade" | county=="Chouteau" | 
-    county=="Glacier" | county=="Hill" | county=="Liberty" | 
-    county=="Pondera" | county=="Teton" | county=="Toole" ~ 
-    "Region 2",
-  county=="Big Horn" | county=="Carbon" | county=="Fergus" | 
-    county=="Golden Valley" | county=="Judith Basin" | 
-    county=="Musselshell" | county=="Petroleum" | 
-    county=="Stillwater" | county=="Sweet Grass" | 
-    county=="Wheatland" | county=="Yellowstone" ~ 
-    "Region 3",
-  county=="Beaverhead" | county=="Broadwater" | county=="Deer Lodge" | 
-    county=="Gallatin" | county=="Granite" | county=="Jefferson" | 
-    county=="Lewis and Clark" | county=="Madison" | 
-    county=="Meagher" | county=="Park" | county=="Powell" | 
-    county=="Silver Bow" ~ "Region 4",
-  county=="Flathead" | county=="Lake" | county=="Lincoln" | 
-    county=="Mineral" | county=="Missoula" | county=="Ravalli" | 
-    county=="Sanders" ~ "Region 5"
-)) %>%
-  group_by(region) %>%
-  summarise(regionfirsttrimesterbirths=sum(firsttrimesterbirths),
-            regiontotalbirths=sum(totalbirths)) %>%
-  mutate(data=regionfirsttrimesterbirths/regiontotalbirths) %>%
-  select(-c(regionfirsttrimesterbirths,regiontotalbirths)) %>%
-  rename(location=region) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Percent') %>%
-  mutate(varname=variablename)
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(births_all$locationid))>=1) {
+  print(births_all$location[is.na(births_all$locationid)])
+} else if (sum(is.na(births_all$locationid))==0) {
+  'all locations match'
+}
 
 
+#2. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- births_all %>%
+  subset(locationtype=='County') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
 
-#bind county, state, and region data
-firsttrimesterdata3 <- countyfirsttrimester_count %>%
-  bind_rows(countyfirsttrimester_percent) %>%
-  bind_rows(statefirsttrimester_count) %>% 
-  bind_rows(statefirsttrimester_percent) %>%
-  bind_rows(regionfirsttrimester_count) %>%
-  bind_rows(regionfirsttrimester_percent) %>%
-  mutate(location=replace(location, 
-                          statename=='Montana' & location=='Lewis and Clark', 
-                          'Lewis & Clark')) %>%
-  left_join(locationids, by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- counties_1year %>%
+#  select(County,`Number Starting PNC in 1st Trimester`) %>%
+#  arrange(`Number Starting PNC in 1st Trimester`)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#births_all$data[births_all$location=='Billings'] <- NA
+
+
+# 4. Visually inspect output data
+View(births_all)
+
 ```
 
+## STEP 2: ADD TO DATABASE
 ```{r}
-#CHECK DATASET NAMED firsttrimesterdata3 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#CHECK DATASET NAMED births_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
 #add to database
-dbWriteTable(con,'montana',firsttrimesterdata3,append=TRUE,row.names=FALSE)
+dbWriteTable(con,'montana',births_all,append=TRUE,row.names=FALSE)
+
 ```
 
+## STEP 3: OUTPUT FILE FOR KC
 ```{r}
 #write query from database to get needed format for KC data center
 
-firsttrimester_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='firsttrimesterprenatal5yeartotals';")
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",year,"' AND varname='firsttrimesterprenatal1yeartotals';")
 
-upload_data_firsttrimester <- dbGetQuery(con,firsttrimester_sql)
-
-upload_data_firsttrimester2 <- upload_data_firsttrimester %>%
+upload_data <- dbGetQuery(con,upload_sql) %>%
   rename(LocationId=locationid,
          Location=location,
          TimeFrame=timeframe,
          DataFormat=dataformat,
          Data=data)
 
-
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
-write.csv(upload_data_firsttrimester2,file=paste0("./Output/health/",statefile,"_",year,"_firsttrimesterprenatal.csv"),row.names=FALSE)
+write.csv(upload_data,file=paste0("./Output/health/",statefile,"_",year,"_firsttrimesterprenatal1yeartotals.csv"),row.names=FALSE)
 ```
 
 
 
-**BIRTHS TO WOMEN WHO INITIATED PRENATAL CARE IN THE FIRST TRIMESTER BY RACE** 
-**FOR REGION AND STATE ONLY**
+## ############################################################## ##
+## BIRTHS TO WOMEN RECEIVING PRENATAL CARE DURING FIRST TRIMESTER ## 
+## ################ (3-YEAR TOTALS) ############################# ##
+## ############################################################## ##
 
+## STEP 1: CLEAN DATA
 ```{r}
-filename <- 'firsttrimesterprenatal_region_race'
-variablename <- 'firsttrimesterprenatalrace5yeartotals'
-
-#read in current birth year
-firsttrimesterracedata <- 
-  read.csv(paste0('./Input/health/montana_',year,'_',filename,'.csv'))
-
-#read in state data
-statefirsttrimesterracedata <- 
-  read.csv(paste0('./Input/health/montana_',year,'_firsttrimesterprenatal_state_race.csv'))
-```
-
-```{r}
-#clean up birth data
-firsttrimesterracedata2 <- firsttrimesterracedata %>%
-  select(c(Montana.Health.Planning.Regions.ID,
-           Mother.s.Race.and.Ethnicity,
-           Number.With.Prenatal.Care.in.the.First.Trimester,
-           Percentage.With.Prenatal.Care.in.the.First.Trimester)) %>%
-  rename(firsttrimesterbirths=
-           Number.With.Prenatal.Care.in.the.First.Trimester,
-         firsttrimesterpercent=
-           Percentage.With.Prenatal.Care.in.the.First.Trimester,
-         race=Mother.s.Race.and.Ethnicity) %>%
-  subset(Montana.Health.Planning.Regions.ID != '.') %>%
-  mutate(region=case_when(
-    Montana.Health.Planning.Regions.ID=='1' ~ 'Region 1',
-    Montana.Health.Planning.Regions.ID=='2' ~ 'Region 2',
-    Montana.Health.Planning.Regions.ID=='3' ~ 'Region 3',
-    Montana.Health.Planning.Regions.ID=='4' ~ 'Region 4',
-    Montana.Health.Planning.Regions.ID=='5' ~ 'Region 5')) %>%
-  select(-c(Montana.Health.Planning.Regions.ID)) %>%
-  mutate(firsttrimesterbirths=na_if(firsttrimesterbirths, '**')) %>%
-  mutate(firsttrimesterbirths=gsub( ",", "", firsttrimesterbirths)) %>%
-  mutate(firsttrimesterbirths=as.numeric(firsttrimesterbirths)) %>%
-  mutate(firsttrimesterpercent=na_if(firsttrimesterpercent, '**')) %>%
-  mutate(firsttrimesterpercent=gsub( "%", "", firsttrimesterpercent)) %>%
-  mutate(firsttrimesterpercent=as.numeric(firsttrimesterpercent)) %>%
-  mutate(firsttrimesterpercent=firsttrimesterpercent/100) %>%
-  mutate(race=case_when(
-    race=='American Indian' ~ 'American Indian',
-    race=='White' ~ 'White',
-    race=='All Others' ~ 'All others')) 
-
-
-#create region dataset
-regionfirsttrimesterrace_count <- firsttrimesterracedata2 %>%
-  select(c(firsttrimesterbirths,region,race)) %>%
-  rename(location=region) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  rename(data=firsttrimesterbirths) %>%
-  mutate(varname=variablename)
-
-regionfirsttrimesterrace_percent <- firsttrimesterracedata2 %>%
-  select(c(firsttrimesterpercent,region,race)) %>%
-  rename(location=region) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Percent') %>%
-  rename(data=firsttrimesterpercent) %>%
-  mutate(varname=variablename)
-
-
-#create state dataset
-statefirsttrimesterrace_count <- statefirsttrimesterracedata %>%
-  select(c(Mother.s.Race.and.Ethnicity,
-           Number.With.Prenatal.Care.in.the.First.Trimester)) %>%
-  rename(race=Mother.s.Race.and.Ethnicity,
-         firsttrimesterbirths=
-           Number.With.Prenatal.Care.in.the.First.Trimester) %>%
-  mutate(firsttrimesterbirths=na_if(firsttrimesterbirths, '**')) %>%
-  mutate(firsttrimesterbirths=gsub( ",", "", firsttrimesterbirths)) %>%
-  mutate(firsttrimesterbirths=as.numeric(firsttrimesterbirths)) %>%
-  mutate(location='Montana') %>%
-  group_by(location,race) %>%
-  summarise(data=sum(firsttrimesterbirths)) %>%
-  mutate(locationtype='State') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname=variablename) %>%
-  mutate(race=case_when(
-    race=='American Indian' ~ 'American Indian',
-    race=='White' ~ 'White',
-    race=='All Others' ~ 'All others'))
-
-statefirsttrimesterrace_percent <- statefirsttrimesterracedata %>%
-  select(c(Mother.s.Race.and.Ethnicity,
-           Number.With.Prenatal.Care.in.the.First.Trimester,
-           Number.of.Live.Births)) %>%
-  rename(race=Mother.s.Race.and.Ethnicity,
-         firsttrimesterbirths=
-           Number.With.Prenatal.Care.in.the.First.Trimester,
-         totalbirths=Number.of.Live.Births) %>%
-  mutate(firsttrimesterbirths=na_if(firsttrimesterbirths, '**')) %>%
-  mutate(firsttrimesterbirths=gsub( ",", "", firsttrimesterbirths)) %>%
-  mutate(firsttrimesterbirths=as.numeric(firsttrimesterbirths)) %>%
-  mutate(totalbirths=na_if(totalbirths, '**')) %>%
-  mutate(totalbirths=gsub( ",", "", totalbirths)) %>%
-  mutate(totalbirths=as.numeric(totalbirths)) %>%
-  mutate(location='Montana') %>%
-  group_by(location,race) %>%
-  summarise(firsttrimesterbirths_allyears=sum(firsttrimesterbirths),
-            totalbirths_allyears=sum(totalbirths)) %>%
-  mutate(data=firsttrimesterbirths_allyears/totalbirths_allyears) %>%
-  mutate(locationtype='State') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Percent') %>%
-  mutate(varname=variablename) %>%
-  mutate(race=case_when(
-    race=='American Indian' ~ 'American Indian',
-    race=='White' ~ 'White',
-    race=='All Others' ~ 'All others')) %>%
-  select(-c(firsttrimesterbirths_allyears,totalbirths_allyears))
-
-
-#bind state, and region data
-firsttrimesterracedata3 <- regionfirsttrimesterrace_count %>%
-  bind_rows(regionfirsttrimesterrace_percent) %>%
-  bind_rows(statefirsttrimesterrace_count) %>% 
-  bind_rows(statefirsttrimesterrace_percent) %>%
-  mutate(location=replace(location, 
-                          statename=='Montana' & location=='Lewis and Clark', 
-                          'Lewis & Clark')) %>%
-  left_join(locationids, by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
-```
-
-```{r}
-#CHECK DATASET NAMED firsttrimesterracedata3 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
-#add to database
-dbWriteTable(con,'montana',firsttrimesterracedata3,append=TRUE,row.names=FALSE)
-```
-
-```{r}
-#write query from database to get needed format for KC data center
-
-firsttrimesterrace_sql <- paste0("SELECT locationid, location, race, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='firsttrimesterprenatalrace5yeartotals';")
-
-upload_data_firsttrimesterrace <- dbGetQuery(con,firsttrimesterrace_sql)
-
-upload_data_firsttrimesterrace2 <- upload_data_firsttrimesterrace %>%
-  rename(LocationId=locationid,
-         Location=location,
-         Race=race,
-         TimeFrame=timeframe,
-         DataFormat=dataformat,
-         Data=data)
-
-
-#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
-write.csv(upload_data_firsttrimesterrace2,file=paste0("./Output/health/",statefile,"_",year,"_firsttrimesterprenatalrace.csv"),row.names=FALSE)
-```
-
-
-
-
-**BIRTHS TO MOTHERS RECEIVING LATE OR NO PRENATAL CARE BY COUNTY (5-YEAR TOTALS)**
-
-```{r}
-filename <- 'latenoprenatal'
-variablename <- 'latenoprenatal5yeartotals'
-
-#read in current birth year
-latenoprenataldata <- 
-  read.csv(paste0('./Input/health/montana_',year,'_',filename,'.csv'))
-
-state_latenoprenataldata <- read.csv(paste0('./Input/health/montana_',year,'_',filename,'_state.csv'))
-
-region_latenoprenataldata <- read.csv(paste0('./Input/health/montana_',year,'_',filename,'_region.csv'))
-```
-
-```{r}
-#clean the data to extract the count of late or no prenatal births to import into database
-
-#for counties
-latenoprenataldata2 <- latenoprenataldata %>%
-  select(c(Mother.s.County.of.Residence,
-           Number.of.Live.Births)) %>%
-  rename(full_county=Mother.s.County.of.Residence,
-         latenoprenatalbirths=Number.of.Live.Births) %>%
-  subset(full_county != 'Unknown' & full_county!='Total County') %>%
-  mutate(county=sub("\\ County.*","",full_county)) %>%
-  select(-c(full_county)) %>%
-  mutate(latenoprenatalbirths=na_if(latenoprenatalbirths, '**')) %>%
-  mutate(latenoprenatalbirths=gsub( ",", "", latenoprenatalbirths)) %>%
-  mutate(latenoprenatalbirths=as.numeric(latenoprenatalbirths)) %>%
-  rename(location=county,
-         data=latenoprenatalbirths) %>%
+#COUNTY DATA
+births_county <- counties_3year %>%
+  #select only needed column
+  select(c(County,`Births to mothers starting prenatal care during 1st trimester (during first three months of pregnancy; as percent of live births)`)) %>%
+  
+  #fix the formatting of the county names
+  #lowercase county names
+  mutate(County=tolower(County)) %>%
+  mutate(County=str_to_title(County)) %>%
+  
+  #rename
+  rename(location=County,
+         data=`Births to mothers starting prenatal care during 1st trimester (during first three months of pregnancy; as percent of live births)`) %>%
+  
   mutate(locationtype='County') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(state='Montana') %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname=variablename) 
+  mutate(data=as.numeric(paste(data))) %>%
+  
+  #fix the name on some counties
+  mutate(location=replace(location,location=='Golden','Golden Valley')) %>%
+  mutate(location=replace(location,location=='Mccone','McCone'))
 
-#for state
-state_latenoprenataldata2 <- state_latenoprenataldata %>%
-  select(c(Year,Number.of.Live.Births)) %>%
-  subset(Year != "Total") %>%
-  rename(totalbirths=Number.of.Live.Births) %>%
-  mutate(Year=as.numeric(paste(Year))) %>%
-  mutate(totalbirths=as.numeric(paste(totalbirths))) %>%
-  mutate(state='Montana') %>%
-  group_by(state) %>%
-  summarise(data=sum(totalbirths)) %>%
+
+#STATE DATA
+births_state <- montana_3year %>%
+  #select only needed column
+  select(c(Race,`Births to mothers receiving prenatal care beginning in 1st trimester (percent of all births)`)) %>%
+  
+  #only select all
+  subset(Race=='All') %>%
+  
+  #rename
+  rename(location=Race,
+         data=`Births to mothers receiving prenatal care beginning in 1st trimester (percent of all births)`) %>%
   mutate(location='Montana') %>%
-  mutate(locationtype='State') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname=variablename)
   
+  mutate(locationtype='State')
   
-#for region
-region_latenoprenataldata2 <- region_latenoprenataldata %>%
-  select(c(Montana.Health.Planning.Regions.ID,
-           Number.of.Live.Births)) %>%
-  rename(totalbirths=Number.of.Live.Births,
-         region_number=Montana.Health.Planning.Regions.ID) %>%
-  mutate(region_number=as.numeric(paste(region_number))) %>%
-  subset(region_number != 9 & !is.na(region_number)) %>%
-  mutate(region=case_when(
-    region_number==1 ~ 'Region 1',
-    region_number==2 ~ 'Region 2',
-    region_number==3 ~ 'Region 3',
-    region_number==4 ~ 'Region 4',
-    region_number==5 ~ 'Region 5')) %>%
-  select(-c(region_number)) %>%
-    mutate(totalbirths=gsub( ",", "", totalbirths)) %>%
-  mutate(totalbirths=as.numeric(paste(totalbirths))) %>%
-  group_by(region) %>%
-  summarise(data=sum(totalbirths)) %>%
-  rename(location=region) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(state='Montana') %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname=variablename)
+
+#COMBINE GEOGRAPHIES
+births_all <- births_county %>%
+  bind_rows(births_state) %>%
+  
+  #add in KC variables
+  mutate(timeframe=threeyear,
+         state='Montana',
+         dataformat='Percent',
+         varname='firsttrimesterprenatal3yeartotals') %>%
+  
+  #merge location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
 
 
-latenoprenatal_upload <- latenoprenataldata2 %>%
-  bind_rows(state_latenoprenataldata2) %>%
-  bind_rows(region_latenoprenataldata2) %>%
-  mutate(location=replace(location, 
-                          statename=='Montana' & location=='Lewis and Clark', 
-                          'Lewis & Clark')) %>%
-  left_join(locationids, by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(births_all$locationid))>=1) {
+  print(births_all$location[is.na(births_all$locationid)])
+} else if (sum(is.na(births_all$locationid))==0) {
+  'all locations match'
+}
+
+
+#2. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- births_all %>%
+  subset(locationtype=='County') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- counties_3year %>%
+#  select(County,`Number Starting PNC in 1st Trimester`) %>%
+#  arrange(`Number Starting PNC in 1st Trimester`)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#births_all$data[births_all$location=='Billings'] <- NA
+
+
+# 4. Visually inspect output data
+View(births_all)
+
 ```
+
+## STEP 2: CHECK ON SUPPRESSION ACROSS YEARS
 ```{r}
-#CHECK DATASET NAMED latenoprenatal_upload TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+year_minus3_interim <- as.character(as.numeric(year)-1)
+
+check_years_sql <- paste0("SELECT location, timeframe, data FROM montana WHERE (timeframe='",year,"' OR timeframe='",year_minus3_interim,"' OR timeframe='",year_minus3,"') AND varname='firsttrimesterprenatal1yeartotals';")
+
+check_years <- dbGetQuery(con,check_years_sql) %>%
+  
+  pivot_wider(names_from=timeframe,values_from=data) %>%
+  
+  #rename columns
+  rename(year1=all_of(year_minus3),
+         year2=all_of(year_minus3_interim),
+         year3=all_of(year)) %>%
+  
+  mutate(indicator1=case_when(
+    is.na(year1) ~ 1,
+    !is.na(year1) ~ 0)) %>%
+  mutate(indicator2=case_when(
+    is.na(year2) ~ 1,
+    !is.na(year2) ~ 0)) %>%
+  mutate(indicator3=case_when(
+    is.na(year3) ~ 1,
+    !is.na(year3) ~ 0)) %>%
+  
+  #create sums
+  mutate(sum_of_nas=indicator1+indicator2+indicator3) %>%
+  subset(sum_of_nas==1)
+
+temp_rows <- as.numeric(nrow(check_years))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(check_years)
+}
+
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Suppress the three year percentage if there is exactly one NA during the three years
+#births_all$data[births_all$location=='Billings'] <- NA
+
+```
+
+## STEP 3: ADD TO DATABASE
+```{r}
+#CHECK DATASET NAMED births_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
 #add to database
-dbWriteTable(con,'montana',latenoprenatal_upload,append=TRUE,row.names=FALSE)
+dbWriteTable(con,'montana',births_all,append=TRUE,row.names=FALSE)
 ```
 
-```{r}
-#write query from database to get data to calculate percent
-
-latenoprenatal_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data, varname, locationtype FROM montana WHERE timeframe='",fullyear,"' AND (varname='latenoprenatal5yeartotals' OR varname='totalbirths');")
-
-latenoprenatal_percent <- dbGetQuery(con,latenoprenatal_sql)
-
-latenoprenatal_percent2 <- latenoprenatal_percent %>%
-  spread(varname,data) %>%
-  mutate(data=latenoprenatal5yeartotals/totalbirths) %>%
-  select(-c(latenoprenatal5yeartotals,totalbirths,dataformat)) %>%
-  mutate(dataformat='Percent') %>%
-  mutate(state='Montana') %>%
-  mutate(varname=variablename)
-```
-
-```{r}
-#CHECK DATASET NAMED latenoprenatal_percent2 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
-#add to database
-dbWriteTable(con,'montana',latenoprenatal_percent2,append=TRUE,row.names=FALSE)
-```
-
+## STEP 4: OUTPUT FILE FOR KC
 ```{r}
 #write query from database to get needed format for KC data center
 
-latenoprenatal_sql2 <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='latenoprenatal5yeartotals';")
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",threeyear,"' AND varname='firsttrimesterprenatal3yeartotals';")
 
-upload_data_latenoprenatal <- dbGetQuery(con,latenoprenatal_sql2)
-
-upload_data_latenoprenatal2 <- upload_data_latenoprenatal %>%
+upload_data <- dbGetQuery(con,upload_sql) %>%
   rename(LocationId=locationid,
          Location=location,
          TimeFrame=timeframe,
          DataFormat=dataformat,
          Data=data)
 
-
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
-write.csv(upload_data_latenoprenatal2,file=paste0("./Output/health/",statefile,"_",year,"_latenoprenatal.csv"),row.names=FALSE)
+write.csv(upload_data,file=paste0("./Output/health/",statefile,"_",year,"_firsttrimesterprenatal3yeartotals.csv"),row.names=FALSE)
 ```
 
 
 
+## ############################################################## ##
+## BIRTHS TO WOMEN RECEIVING PRENATAL CARE DURING FIRST TRIMESTER ## 
+## ################ (5-YEAR TOTALS) ############################# ##
+## ############################################################## ##
 
-**BIRTHS TO MOTHERS WHO SMOKED DURING PREGNANCY BY COUNTY (5-YEAR TOTALS)**
-
+## STEP 1: CLEAN DATA
 ```{r}
-filename <- 'tobaccobirths'
-variablename <- 'smokedprenatal5yeartotals'
-
-#read in current birth year
-smokedprenataldata <- 
-  read.csv(paste0('./Input/health/montana_',year,'_',filename,'.csv'))
-
-state_smokedprenataldata <- read.csv(paste0('./Input/health/montana_',year,'_',filename,'_state.csv'))
-
-region_smokedprenataldata <- read.csv(paste0('./Input/health/montana_',year,'_',filename,'_region.csv'))
-```
-
-```{r}
-#clean the data to extract the count of births where mother smoked to import into database
-
-#for counties
-smokedprenataldata2 <- smokedprenataldata %>%
-  select(c(Mother.s.County.of.Residence,
-           Number.of.Live.Births)) %>%
-  rename(full_county=Mother.s.County.of.Residence,
-         smokedprenatalbirths=Number.of.Live.Births) %>%
-  subset(full_county != 'Unknown' & full_county!='Total County') %>%
-  mutate(county=sub("\\ County.*","",full_county)) %>%
-  select(-c(full_county)) %>%
-  mutate(smokedprenatalbirths=na_if(smokedprenatalbirths, '**')) %>%
-  mutate(smokedprenatalbirths=gsub( ",", "", smokedprenatalbirths)) %>%
-  mutate(smokedprenatalbirths=as.numeric(smokedprenatalbirths)) %>%
-  rename(location=county,
-         data=smokedprenatalbirths) %>%
+#COUNTY DATA
+births_county <- counties_5year %>%
+  #select only needed column
+  select(c(County,`Births to mothers starting prenatal care during 1st trimester (during first three months of pregnancy; as percent of live births)`)) %>%
+  
+  #fix the formatting of the county names
+  #lowercase county names
+  mutate(County=tolower(County)) %>%
+  mutate(County=str_to_title(County)) %>%
+  
+  #rename
+  rename(location=County,
+         data=`Births to mothers starting prenatal care during 1st trimester (during first three months of pregnancy; as percent of live births)`) %>%
+  
   mutate(locationtype='County') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(state='Montana') %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname=variablename) 
+  mutate(data=as.numeric(paste(data))) %>%
+  
+  #fix the name on some counties
+  mutate(location=replace(location,location=='Golden','Golden Valley')) %>%
+  mutate(location=replace(location,location=='Mccone','McCone'))
 
-#for state
-state_smokedprenataldata2 <- state_smokedprenataldata %>%
-  select(c(Year,Number.of.Live.Births)) %>%
-  rename(totalbirths=Number.of.Live.Births) %>%
-  mutate(totalbirths=gsub( ",", "", totalbirths)) %>%
-  mutate(Year=as.numeric(paste(Year))) %>%
-  mutate(totalbirths=as.numeric(paste(totalbirths))) %>%
-  mutate(state='Montana') %>%
-  group_by(state) %>%
-  summarise(data=sum(totalbirths)) %>%
+
+#STATE DATA
+births_state <- montana_5year %>%
+  #select only needed column
+  select(c(Race,`Births to mothers receiving prenatal care beginning in 1st trimester (percent of all births)`)) %>%
+  
+  #only select all
+  subset(Race=='All') %>%
+  
+  #rename
+  rename(location=Race,
+         data=`Births to mothers receiving prenatal care beginning in 1st trimester (percent of all births)`) %>%
   mutate(location='Montana') %>%
-  mutate(locationtype='State') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname=variablename)
   
+  mutate(locationtype='State')
   
-#for region
-region_smokedprenataldata2 <- region_smokedprenataldata %>%
-  select(c(Montana.Health.Planning.Regions.ID,
-           Number.of.Live.Births)) %>%
-  rename(totalbirths=Number.of.Live.Births,
-         region_number=Montana.Health.Planning.Regions.ID) %>%
-  mutate(region_number=as.numeric(paste(region_number))) %>%
-  subset(region_number != 9  & !is.na(region_number)) %>%
-  mutate(region=case_when(
-    region_number==1 ~ 'Region 1',
-    region_number==2 ~ 'Region 2',
-    region_number==3 ~ 'Region 3',
-    region_number==4 ~ 'Region 4',
-    region_number==5 ~ 'Region 5')) %>%
-  select(-c(region_number)) %>%
-  mutate(totalbirths=gsub( ",", "", totalbirths)) %>%
-  mutate(totalbirths=as.numeric(paste(totalbirths))) %>%
-  group_by(region) %>%
-  summarise(data=sum(totalbirths)) %>%
-  rename(location=region) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(state='Montana') %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname=variablename)
+
+#COMBINE GEOGRAPHIES
+births_all <- births_county %>%
+  bind_rows(births_state) %>%
+  
+  #add in KC variables
+  mutate(timeframe=fiveyear,
+         state='Montana',
+         dataformat='Percent',
+         varname='firsttrimesterprenatal5yeartotals') %>%
+  
+  #merge location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
 
 
-smokedprenatal_upload <- smokedprenataldata2 %>%
-  bind_rows(state_smokedprenataldata2) %>%
-  bind_rows(region_smokedprenataldata2) %>%
-  mutate(location=replace(location, 
-                          statename=='Montana' & location=='Lewis and Clark', 
-                          'Lewis & Clark')) %>%
-  left_join(locationids, by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(births_all$locationid))>=1) {
+  print(births_all$location[is.na(births_all$locationid)])
+} else if (sum(is.na(births_all$locationid))==0) {
+  'all locations match'
+}
+
+
+#2. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- births_all %>%
+  subset(locationtype=='County') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- counties_5year %>%
+#  select(County,`Number Starting PNC in 1st Trimester`) %>%
+#  arrange(`Number Starting PNC in 1st Trimester`)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#births_all$data[births_all$location=='Golden Valley'] <- NA
+
+
+# 4. Visually inspect output data
+View(births_all)
+
 ```
 
+## STEP 2: CHECK ON SUPPRESSION ACROSS YEARS
 ```{r}
-#CHECK DATASET NAMED smokedprenatal_upload TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+year_minus5_interim1 <- as.character(as.numeric(year)-1)
+year_minus5_interim2 <- as.character(as.numeric(year)-3)
+
+check_years_sql <- paste0("SELECT location, timeframe, data FROM montana WHERE (timeframe='",year,"' OR timeframe='",year_minus5_interim1,"' OR timeframe='",year_minus3,"' OR timeframe='",year_minus5_interim2,"' OR timeframe='",year_minus5,"') AND varname='firsttrimesterprenatal1yeartotals';")
+
+check_years <- dbGetQuery(con,check_years_sql) %>%
+  
+  pivot_wider(names_from=timeframe,values_from=data) %>%
+  
+  #rename columns
+  rename(year1=all_of(year_minus5),
+         year2=all_of(year_minus5_interim2),
+         year3=all_of(year_minus3),
+         year4=all_of(year_minus5_interim1),
+         year5=all_of(year)) %>%
+  
+  mutate(indicator1=case_when(
+    is.na(year1) ~ 1,
+    !is.na(year1) ~ 0)) %>%
+  mutate(indicator2=case_when(
+    is.na(year2) ~ 1,
+    !is.na(year2) ~ 0)) %>%
+  mutate(indicator3=case_when(
+    is.na(year3) ~ 1,
+    !is.na(year3) ~ 0)) %>%
+  mutate(indicator4=case_when(
+    is.na(year4) ~ 1,
+    !is.na(year4) ~ 0)) %>%
+  mutate(indicator5=case_when(
+    is.na(year5) ~ 1,
+    !is.na(year5) ~ 0)) %>%
+  
+  #create sums
+  mutate(sum_of_nas=indicator1+indicator2+indicator3+indicator4+indicator5) %>%
+  subset(sum_of_nas==1)
+
+temp_rows <- as.numeric(nrow(check_years))
+if (temp_rows==0) {
+  'no additional data suppression needed'
+} else if (temp_rows>=1) {
+  View(check_years)
+}
+
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Suppress the three year percentage if there is exactly one NA during the three years
+#births_all$data[births_all$location=='Billings'] <- NA
+```
+
+## STEP 3: ADD TO DATABASE
+```{r}
+#CHECK DATASET NAMED births_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
 #add to database
-dbWriteTable(con,'montana',smokedprenatal_upload,append=TRUE,row.names=FALSE)
+dbWriteTable(con,'montana',births_all,append=TRUE,row.names=FALSE)
 ```
 
-```{r}
-#write query from database to get data to calculate percent
-
-smokedprenatal_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data, varname, locationtype FROM montana WHERE timeframe='",fullyear,"' AND (varname='smokedprenatal5yeartotals' OR varname='totalbirths');")
-
-smokedprenatal_percent <- dbGetQuery(con,smokedprenatal_sql)
-
-smokedprenatal_percent2 <- smokedprenatal_percent %>%
-  spread(varname,data) %>%
-  mutate(data=smokedprenatal5yeartotals/totalbirths) %>%
-  select(-c(smokedprenatal5yeartotals,totalbirths,dataformat)) %>%
-  mutate(dataformat='Percent') %>%
-  mutate(state='Montana') %>%
-  mutate(varname=variablename)
-```
-
-
-```{r}
-#CHECK DATASET NAMED smokedprenatal_percent2 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
-#add to database
-dbWriteTable(con,'montana',smokedprenatal_percent2,append=TRUE,row.names=FALSE)
-```
-
+## STEP 4: OUTPUT FILE FOR KC
 ```{r}
 #write query from database to get needed format for KC data center
 
-smokedprenatal_sql2 <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='smokedprenatal5yeartotals';")
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fiveyear,"' AND varname='firsttrimesterprenatal5yeartotals';")
 
-upload_data_smokedprenatal <- dbGetQuery(con,smokedprenatal_sql2)
-
-upload_data_smokedprenatal2 <- upload_data_smokedprenatal %>%
+upload_data <- dbGetQuery(con,upload_sql) %>%
   rename(LocationId=locationid,
          Location=location,
          TimeFrame=timeframe,
          DataFormat=dataformat,
          Data=data)
 
-
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
-write.csv(upload_data_smokedprenatal2,file=paste0("./Output/health/",statefile,"_",year,"_smokedprenatal.csv"),row.names=FALSE)
+write.csv(upload_data,file=paste0("./Output/health/",statefile,"_",year,"_firsttrimesterprenatal5yeartotals.csv"),row.names=FALSE)
 ```
 
 
 
-**BIRTHS TO MOTHERS WHO SMOKED DURING PREGNANCY BY RACE (5-YEAR TOTALS)**
-**FOR STATE AND REGION ONLY**
 
+
+## ############################################################# ##
+## BIRTHS TO MOTHERS WHO SMOKED DURING PREGNANCY (5-YEAR TOTALS) ## 
+## ############################################################# ##
+
+## STEP 1: CLEAN DATA
 ```{r}
-filename <- 'tobaccobirths_region_race'
-variablename <- 'smokedprenatalrace5yeartotals'
+#COUNTY DATA
+births_county <- counties_5year %>%
+  #select only needed column
+  select(c(County,`Births to mothers who smoked during pregnancy (as percent of live births)`)) %>%
+  
+  #fix the formatting of the county names
+  #lowercase county names
+  mutate(County=tolower(County)) %>%
+  mutate(County=str_to_title(County)) %>%
+  
+  #rename
+  rename(location=County,
+         data=`Births to mothers who smoked during pregnancy (as percent of live births)`) %>%
+  
+  mutate(locationtype='County') %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  
+  #fix the name on some counties
+  mutate(location=replace(location,location=='Golden','Golden Valley')) %>%
+  mutate(location=replace(location,location=='Mccone','McCone'))
 
-#read in current birth year
-smokedprenatalracedata <- 
-  read.csv(paste0('./Input/health/montana_',year,'_',filename,'.csv'))
 
-totalbirthracedata <-
-  read.csv(paste0('./Input/health/montana_',year,'_totalbirths_region_race.csv'))
-
-state_smokedprenatalracedata <- read.csv(paste0('./Input/health/montana_',year,'_tobaccobirths_state_race.csv'))
-
-state_totalbirthsracedata <- read.csv(paste0('./Input/health/montana_',year,'_totalbirths_state_race.csv'))
-```
-
-```{r}
-#clean the data to extract the count of births where mother smoked to import into database
-
-
-#for state
-state_smokedprenataldatarace2 <- state_smokedprenatalracedata %>%
-  select(c(Number.of.Live.Births,Mother.s.Race.and.Ethnicity)) %>%
-  rename(smokedbirths=Number.of.Live.Births,
-         race=Mother.s.Race.and.Ethnicity) %>%
-  subset(race != 'Total') %>%
-  mutate(race=case_when(
-    race=='American Indian' ~ 'American Indian',
-    race=='White' ~ 'White',
-    race=='All Others' ~ 'All others')) %>%
-  mutate(smokedbirths=gsub( ",", "", smokedbirths)) %>%
-  mutate(smokedbirths=as.numeric(paste(smokedbirths))) %>%
-  mutate(state='Montana') %>%
-  group_by(state,race) %>%
-  summarise(data=sum(smokedbirths)) %>%
+#STATE DATA
+births_state <- montana_5year %>%
+  #select only needed column
+  select(c(Race,`Births to mothers who smoked during pregnancy (percent of all births)`)) %>%
+  
+  #only select all
+  subset(Race=='All') %>%
+  
+  #rename
+  rename(location=Race,
+         data=`Births to mothers who smoked during pregnancy (percent of all births)`) %>%
   mutate(location='Montana') %>%
-  mutate(locationtype='State') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname=variablename)
   
+  mutate(locationtype='State')
   
-#for region
-region_smokedprenatalracedata2 <- smokedprenatalracedata %>%
-  select(c(Montana.Health.Planning.Regions.ID,
-           Number.of.Live.Births,
-           Mother.s.Race.and.Ethnicity)) %>%
-  rename(smokedbirths=Number.of.Live.Births,
-         region_number=Montana.Health.Planning.Regions.ID,
-         race=Mother.s.Race.and.Ethnicity) %>%
-  mutate(smokedbirths=na_if(smokedbirths, '**')) %>%
-  mutate(smokedbirths=gsub( ",", "", smokedbirths)) %>%
-  mutate(smokedbirths=as.numeric(smokedbirths)) %>%
-  mutate(region_number=as.numeric(paste(region_number))) %>%
-  subset(region_number != 9  & !is.na(region_number) & race != 'Total') %>%
-  mutate(race=case_when(
-    race=='American Indian' ~ 'American Indian',
-    race=='White' ~ 'White',
-    race=='All Others' ~ 'All others')) %>%
-  mutate(region=case_when(
-    region_number==1 ~ 'Region 1',
-    region_number==2 ~ 'Region 2',
-    region_number==3 ~ 'Region 3',
-    region_number==4 ~ 'Region 4',
-    region_number==5 ~ 'Region 5')) %>%
-  select(-c(region_number)) %>%
-  group_by(region,race) %>%
-  summarise(data=sum(smokedbirths)) %>%
-  rename(location=region) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(state='Montana') %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname=variablename)
+
+#COMBINE GEOGRAPHIES
+births_all <- births_county %>%
+  bind_rows(births_state) %>%
+  
+  #add in KC variables
+  mutate(timeframe=fiveyear,
+         state='Montana',
+         dataformat='Percent',
+         varname='smokedprenatal5yeartotals') %>%
+  
+  #merge location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
 
 
-smokedprenatalrace_upload <- state_smokedprenataldatarace2 %>%
-  bind_rows(region_smokedprenatalracedata2) %>%
-  mutate(location=replace(location, 
-                          statename=='Montana' & location=='Lewis and Clark', 
-                          'Lewis & Clark')) %>%
-  left_join(locationids, by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(births_all$locationid))>=1) {
+  print(births_all$location[is.na(births_all$locationid)])
+} else if (sum(is.na(births_all$locationid))==0) {
+  'all locations match'
+}
+
+
+#2. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- births_all %>%
+  subset(locationtype=='County') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- counties_5year %>%
+#  select(County,`Number Starting PNC in 1st Trimester`) %>%
+#  arrange(`Number Starting PNC in 1st Trimester`)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#births_all$data[births_all$location=='Golden Valley'] <- NA
+
+
+# 4. Visually inspect output data
+View(births_all)
+
 ```
 
+## STEP 2: ADD TO DATABASE
 ```{r}
-#CHECK DATASET NAMED smokedprenatalrace_upload TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#CHECK DATASET NAMED births_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
 #add to database
-dbWriteTable(con,'montana',smokedprenatalrace_upload,append=TRUE,row.names=FALSE)
+dbWriteTable(con,'montana',births_all,append=TRUE,row.names=FALSE)
 ```
 
-```{r}
-#in order to calculate a percent, need to upload the total births by race matching the geographies and year
-
-#clean the data to extract the count of births where mother smoked to import into database
-
-#for state
-state_totalbirthsdatarace2 <- state_totalbirthsracedata %>%
-  select(c(Number.of.Live.Births,Mother.s.Race.and.Ethnicity)) %>%
-  rename(totalbirths=Number.of.Live.Births,
-         race=Mother.s.Race.and.Ethnicity) %>%
-  subset(race != 'Total') %>%
-  mutate(race=case_when(
-    race=='American Indian' ~ 'American Indian',
-    race=='White' ~ 'White',
-    race=='All Others' ~ 'All others')) %>%
-  mutate(totalbirths=gsub( ",", "", totalbirths)) %>%
-  mutate(totalbirths=as.numeric(paste(totalbirths))) %>%
-  mutate(state='Montana') %>%
-  group_by(state,race) %>%
-  summarise(data=sum(totalbirths)) %>%
-  mutate(location='Montana') %>%
-  mutate(locationtype='State') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='totalbirthsrace5yeartotals')
-  
-  
-#for region
-region_totalbirthsracedata2 <- totalbirthracedata %>%
-  select(c(Montana.Health.Planning.Regions.ID,
-           Number.of.Live.Births,
-           Mother.s.Race.and.Ethnicity)) %>%
-  rename(totalbirths=Number.of.Live.Births,
-         region_number=Montana.Health.Planning.Regions.ID,
-         race=Mother.s.Race.and.Ethnicity) %>%
-  mutate(totalbirths=na_if(totalbirths, '**')) %>%
-  mutate(totalbirths=gsub( ",", "", totalbirths)) %>%
-  mutate(totalbirths=as.numeric(totalbirths)) %>%
-  mutate(region_number=as.numeric(paste(region_number))) %>%
-  subset(region_number != 9  & !is.na(region_number) & race != 'Total') %>%
-  mutate(race=case_when(
-    race=='American Indian' ~ 'American Indian',
-    race=='White' ~ 'White',
-    race=='All Others' ~ 'All others')) %>%
-  mutate(region=case_when(
-    region_number==1 ~ 'Region 1',
-    region_number==2 ~ 'Region 2',
-    region_number==3 ~ 'Region 3',
-    region_number==4 ~ 'Region 4',
-    region_number==5 ~ 'Region 5')) %>%
-  select(-c(region_number)) %>%
-  group_by(region,race) %>%
-  summarise(data=sum(totalbirths)) %>%
-  rename(location=region) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(state='Montana') %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='totalbirthsrace5yeartotals')
-
-
-totalbirthsrace_upload <- state_totalbirthsdatarace2 %>%
-  bind_rows(region_totalbirthsracedata2) %>%
-  mutate(location=replace(location, 
-                          statename=='Montana' & location=='Lewis and Clark', 
-                          'Lewis & Clark')) %>%
-  left_join(locationids, by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
-```
-
-```{r}
-#CHECK DATASET NAMED totalbirthsrace_upload TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
-#add to database
-dbWriteTable(con,'montana',totalbirthsrace_upload,append=TRUE,row.names=FALSE)
-```
-
-
-```{r}
-#write query from database to get data to calculate percent
-
-smokedprenatalrace_sql <- paste0("SELECT locationid, location, timeframe, race, dataformat, data, varname, locationtype FROM montana WHERE timeframe='",fullyear,"' AND (varname='smokedprenatalrace5yeartotals' OR varname='totalbirthsrace5yeartotals');")
-
-smokedprenatalrace_percent <- dbGetQuery(con,smokedprenatalrace_sql)
-
-smokedprenatalrace_percent2 <- smokedprenatalrace_percent %>%
-  spread(varname,data) %>%
-  mutate(data=smokedprenatalrace5yeartotals/totalbirthsrace5yeartotals) %>%
-  select(-c(smokedprenatalrace5yeartotals,
-            totalbirthsrace5yeartotals,dataformat)) %>%
-  mutate(dataformat='Percent') %>%
-  mutate(state='Montana') %>%
-  mutate(varname=variablename)
-```
-
-
-```{r}
-#CHECK DATASET NAMED smokedprenatalrace_percent2 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
-#add to database
-dbWriteTable(con,'montana',smokedprenatalrace_percent2,append=TRUE,row.names=FALSE)
-```
-
+## STEP 3: OUTPUT FILE FOR KC
 ```{r}
 #write query from database to get needed format for KC data center
 
-smokedprenatalrace_sql2 <- paste0("SELECT locationid, location, timeframe, race, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='smokedprenatalrace5yeartotals';")
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fiveyear,"' AND varname='smokedprenatal5yeartotals';")
 
-upload_data_smokedprenatalrace <- dbGetQuery(con,smokedprenatalrace_sql2)
+upload_data <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
 
-upload_data_smokedprenatalrace2 <- upload_data_smokedprenatalrace %>%
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("./Output/health/",statefile,"_",year,"_smokedprenatal5yeartotals.csv"),row.names=FALSE)
+```
+
+
+
+
+## ############################################################## ##
+## TEEN (AGES 15-19) BIRTH RATE PER 1,000 FEMALES (5-YEAR TOTALS) ## 
+## ############################################################## ##
+
+## STEP 1: CLEAN DATA
+```{r}
+#COUNTY DATA
+births_county <- counties_5year %>%
+  #select only needed column
+  select(c(County,`Teen Birth Rate`)) %>%
+  
+  #fix the formatting of the county names
+  #lowercase county names
+  mutate(County=tolower(County)) %>%
+  mutate(County=str_to_title(County)) %>%
+  
+  #rename
+  rename(location=County,
+         data=`Teen Birth Rate`) %>%
+  
+  mutate(locationtype='County') %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  
+  #fix the name on some counties
+  mutate(location=replace(location,location=='Golden','Golden Valley')) %>%
+  mutate(location=replace(location,location=='Mccone','McCone'))
+
+
+#STATE DATA
+births_state <- montana_5year %>%
+  #select only needed column
+  select(c(Race,`Teen Birth Rate`)) %>%
+  
+  #only select all
+  subset(Race=='All') %>%
+  
+  #rename
+  rename(location=Race,
+         data=`Teen Birth Rate`) %>%
+  mutate(location='Montana') %>%
+  
+  mutate(locationtype='State')
+  
+
+#COMBINE GEOGRAPHIES
+births_all <- births_county %>%
+  bind_rows(births_state) %>%
+  
+  #add in KC variables
+  mutate(timeframe=fiveyear,
+         state='Montana',
+         dataformat='Rate',
+         varname='teenbirths5yeartotals') %>%
+  
+  #merge location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(births_all$locationid))>=1) {
+  print(births_all$location[is.na(births_all$locationid)])
+} else if (sum(is.na(births_all$locationid))==0) {
+  'all locations match'
+}
+
+
+#2. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- births_all %>%
+  subset(locationtype=='County') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- counties_5year %>%
+#  select(County,`Number Starting PNC in 1st Trimester`) %>%
+#  arrange(`Number Starting PNC in 1st Trimester`)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#births_all$data[births_all$location=='Golden Valley'] <- NA
+
+
+# 4. Visually inspect output data
+View(births_all)
+
+```
+
+## STEP 2: ADD TO DATABASE
+```{r}
+#CHECK DATASET NAMED births_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',births_all,append=TRUE,row.names=FALSE)
+```
+
+## STEP 3: OUTPUT FILE FOR KC
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fiveyear,"' AND varname='teenbirths5yeartotals';")
+
+upload_data <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("./Output/health/",statefile,"_",year,"_teenbirths5yeartotals.csv"),row.names=FALSE)
+```
+
+
+
+
+## ###################################################################### ##
+## BIRTHS TO WOMEN RECEIVING PRENATAL CARE DURING FIRST TRIMESTER BY RACE ## 
+## ######################## (1-YEAR TOTALS) ############################# ##
+## ###################################################################### ##
+
+## STEP 1: CLEAN DATA
+```{r}
+
+#STATE DATA
+births_all <- montana_1year %>%
+  #select only needed column
+  select(c(Race,`Births to mothers receiving prenatal care beginning in 1st trimester (percent of all births)`)) %>%
+  
+  #only select the two reported races
+  subset(Race=='American Indian/Alaskan Native' | Race=='White') %>%
+  
+  #rename
+  rename(race=Race,
+         data=`Births to mothers receiving prenatal care beginning in 1st trimester (percent of all births)`) %>%
+  mutate(race=if_else(race=='American Indian/Alaskan Native','American Indian','White')) %>%
+  mutate(location='Montana') %>%
+  
+  mutate(locationtype='State') %>%
+  
+  #add in KC variables
+  mutate(location='Montana',
+         timeframe=year,
+         state='Montana',
+         dataformat='Percent',
+         varname='firsttrimesterprenatalrace1yeartotals') %>%
+  
+  #merge location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(births_all$locationid))>=1) {
+  print(births_all$location[is.na(births_all$locationid)])
+} else if (sum(is.na(births_all$locationid))==0) {
+  'all locations match'
+}
+
+
+#2. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- births_all %>%
+  subset(locationtype=='County') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- counties_1year %>%
+#  select(County,`Number Starting PNC in 1st Trimester`) %>%
+#  arrange(`Number Starting PNC in 1st Trimester`)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#births_all$data[births_all$location=='Billings'] <- NA
+
+
+# 4. Visually inspect output data
+View(births_all)
+
+```
+
+## STEP 2: ADD TO DATABASE
+```{r}
+#CHECK DATASET NAMED births_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',births_all,append=TRUE,row.names=FALSE)
+
+```
+
+## STEP 3: OUTPUT FILE FOR KC
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, race, dataformat, data FROM montana WHERE timeframe='",year,"' AND varname='firsttrimesterprenatalrace1yeartotals';")
+
+upload_data <- dbGetQuery(con,upload_sql) %>%
   rename(LocationId=locationid,
          Location=location,
          TimeFrame=timeframe,
@@ -1369,481 +1584,9 @@ upload_data_smokedprenatalrace2 <- upload_data_smokedprenatalrace %>%
          Data=data,
          Race=race)
 
-
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
-write.csv(upload_data_smokedprenatalrace2,file=paste0("./Output/health/",statefile,"_",year,"_smokedprenatalrace.csv"),row.names=FALSE)
+write.csv(upload_data,file=paste0("./Output/health/",statefile,"_",year,"_firsttrimesterprenatalrace1yeartotals.csv"),row.names=FALSE)
 ```
 
 
 
-
-
-**TEEN BIRTHS AND TEEN BIRTH RATE**
-
-```{r}
-filename <- 'teenbirths'
-variablename <- 'teenbirths5yeartotals'
-
-#read in current birth year
-teenbirthsdata <-
-  read.csv(paste0('./Input/health/montana_',year,'_',filename,'.csv'))
-
-#read in state dataset
-stateteenbirths <- read.csv(paste0('./Input/health/montana_',year,'_teenbirths_state.csv'))
-
-#read in regional dataset
-regionteenbirths <- read.csv(paste0('./Input/health/montana_',year,'_teenbirths_region.csv'))
-```
-
-```{r}
-#clean up birth data
-teenbirthsdata2 <- teenbirthsdata %>%
-  select(c(Mother.s.County.of.Residence,
-           Number.of.Births,
-           Adolescent.Births.per.1.000..Girls.Age.15.19)) %>%
-  rename(full_county=Mother.s.County.of.Residence,
-         teenbirths=
-           Number.of.Births,
-         teenbirthrate=
-           Adolescent.Births.per.1.000..Girls.Age.15.19) %>%
-  subset(full_county != 'Unknown' & full_county != 'Total County') %>%
-  mutate(county=sub("\\ County.*","",full_county)) %>%
-  select(-c(full_county)) %>%
-  mutate(teenbirths=na_if(teenbirths, '**')) %>%
-  mutate(teenbirths=gsub( ",", "", teenbirths)) %>%
-  mutate(teenbirths=as.numeric(teenbirths)) %>%
-  mutate(teenbirthrate=na_if(teenbirthrate, '**')) %>%
-  mutate(teenbirthrate=as.numeric(paste(teenbirthrate)))
-
-
-
-#create county dataset
-countyteenbirths_count <- teenbirthsdata2 %>%
-  select(c(teenbirths,county)) %>%
-  rename(location=county) %>%
-  mutate(locationtype='County') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  rename(data=teenbirths) %>%
-  mutate(varname=variablename)
-
-countyteenbirths_rate <- teenbirthsdata2 %>%
-  select(c(teenbirthrate,county)) %>%
-  rename(location=county) %>%
-  mutate(locationtype='County') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Rate') %>%
-  rename(data=teenbirthrate) %>%
-  mutate(varname=variablename)
-
-#create state dataset
-stateteenbirths_count <- stateteenbirths %>%
-  select(c(Number.of.Births)) %>%
-  rename(teenbirths=
-           Number.of.Births) %>%
-  mutate(state='Montana') %>%
-  mutate(teenbirths=na_if(teenbirths, '**')) %>%
-  mutate(teenbirths=gsub( ",", "", teenbirths)) %>%
-  mutate(teenbirths=as.numeric(teenbirths)) %>%
-  group_by(state) %>%
-  summarise(data=sum(teenbirths)) %>%
-  mutate(location='Montana') %>%
-  mutate(locationtype='State') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname=variablename)
-
-stateteenbirths_rate <- stateteenbirths %>%
-  select(c(Number.of.Births,
-           Number.of.Girls.Age.15.19.in.the.Population)) %>%
-  rename(teenbirths=
-           Number.of.Births,
-         totalbirths=Number.of.Girls.Age.15.19.in.the.Population) %>%
-  mutate(teenbirths=na_if(teenbirths, '**')) %>%
-  mutate(teenbirths=gsub( ",", "", teenbirths)) %>%
-  mutate(teenbirths=as.numeric(teenbirths)) %>%
-  mutate(totalbirths=na_if(totalbirths, '**')) %>%
-  mutate(totalbirths=gsub( ",", "", totalbirths)) %>%
-  mutate(totalbirths=as.numeric(totalbirths)) %>%
-  mutate(state='Montana') %>%
-  group_by(state) %>%
-  summarise(teenbirths_allyears=sum(teenbirths),
-            totalbirths_allyears=sum(totalbirths)) %>%
-  mutate(data=(teenbirths_allyears/totalbirths_allyears)*1000) %>%
-  select(-c(teenbirths_allyears,totalbirths_allyears)) %>%
-  mutate(location='Montana') %>%
-  mutate(locationtype='State') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Rate') %>%
-  mutate(varname=variablename)
-
-
-#create regional dataset
-regionteenbirths_count <- regionteenbirths %>%
-  subset(Montana.Health.Planning.Regions.ID != '.') %>%
-  select(c(Number.of.Births,
-           Montana.Health.Planning.Regions.ID)) %>%
-  rename(teenbirths=
-           Number.of.Births) %>%
-  mutate(region=case_when(
-    Montana.Health.Planning.Regions.ID==1 ~ 'Region 1',
-    Montana.Health.Planning.Regions.ID==2 ~ 'Region 2',
-    Montana.Health.Planning.Regions.ID==3 ~ 'Region 3',
-    Montana.Health.Planning.Regions.ID==4 ~ 'Region 4',
-    Montana.Health.Planning.Regions.ID==5 ~ 'Region 5')) %>%
-  select(-c( Montana.Health.Planning.Regions.ID)) %>%
-  mutate(teenbirths=na_if(teenbirths, '**')) %>%
-  mutate(teenbirths=gsub( ",", "", teenbirths)) %>%
-  mutate(teenbirths=as.numeric(teenbirths)) %>%
-  group_by(region) %>%
-  summarise(data=sum(teenbirths)) %>%
-  rename(location=region) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname=variablename) %>%
-  mutate(state='Montana')
-
-
-regionteenbirths_rate <- regionteenbirths %>%
-  subset(Montana.Health.Planning.Regions.ID != '.') %>%
-  select(c(Number.of.Births,
-           Number.of.Girls.Age.15.19.in.the.Population,
-           Montana.Health.Planning.Regions.ID)) %>%
-  rename(teenbirths=
-           Number.of.Births,
-         totalbirths=Number.of.Girls.Age.15.19.in.the.Population) %>%
-  mutate(teenbirths=na_if(teenbirths, '**')) %>%
-  mutate(teenbirths=gsub( ",", "", teenbirths)) %>%
-  mutate(teenbirths=as.numeric(teenbirths)) %>%
-  mutate(totalbirths=na_if(totalbirths, '**')) %>%
-  mutate(totalbirths=gsub( ",", "", totalbirths)) %>%
-  mutate(totalbirths=as.numeric(totalbirths)) %>%
-  mutate(region=case_when(
-    Montana.Health.Planning.Regions.ID==1 ~ 'Region 1',
-    Montana.Health.Planning.Regions.ID==2 ~ 'Region 2',
-    Montana.Health.Planning.Regions.ID==3 ~ 'Region 3',
-    Montana.Health.Planning.Regions.ID==4 ~ 'Region 4',
-    Montana.Health.Planning.Regions.ID==5 ~ 'Region 5')) %>%
-  select(-c(Montana.Health.Planning.Regions.ID)) %>%
-  group_by(region) %>%
-  summarise(teenbirths_allyears=sum(teenbirths),
-            totalbirths_allyears=sum(totalbirths)) %>%
-  mutate(data=(teenbirths_allyears/totalbirths_allyears)*1000) %>%
-  select(-c(teenbirths_allyears,totalbirths_allyears)) %>%
-  rename(location=region) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Rate') %>%
-  mutate(varname=variablename) %>%
-  mutate(state='Montana')
-
-
-
-
-#bind county, state, and region data
-teenbirthsdata3 <- countyteenbirths_count %>%
-  bind_rows(countyteenbirths_rate) %>%
-  bind_rows(stateteenbirths_count) %>% 
-  bind_rows(stateteenbirths_rate) %>%
-  bind_rows(regionteenbirths_count) %>%
-  bind_rows(regionteenbirths_rate) %>%
-  mutate(location=replace(location, 
-                          statename=='Montana' & location=='Lewis and Clark', 
-                          'Lewis & Clark')) %>%
-  left_join(locationids, by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
-```
-
-```{r}
-#CHECK DATASET NAMED teenbirthsdata3 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
-#add to database
-dbWriteTable(con,'montana',teenbirthsdata3,append=TRUE,row.names=FALSE)
-```
-
-```{r}
-#write query from database to get needed format for KC data center
-
-teenbirths_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='teenbirths5yeartotals';")
-
-upload_data_teenbirths <- dbGetQuery(con,teenbirths_sql)
-
-upload_data_teenbirths2 <- upload_data_teenbirths %>%
-  rename(LocationId=locationid,
-         Location=location,
-         TimeFrame=timeframe,
-         DataFormat=dataformat,
-         Data=data)
-
-
-#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
-write.csv(upload_data_teenbirths2,file=paste0("./Output/health/",statefile,"_",year,"_teenbirths.csv"),row.names=FALSE)
-```
-
-
-
-**INFANT MORTALITY RATE PER 1,000 PERSONS BY REGION (5-YEAR TOTALS)**
-
-```{r}
-filename <- 'infantdeaths_region'
-variablename <- 'infantmortality5yeartotals'
-
-#read in current  year
-infantmortalitydata <-
-  read.csv(paste0('./Input/health/montana_',year,'_',filename,'.csv'))
-```
-
-```{r}
-#clean up  data
-infantmortalitydata2 <- infantmortalitydata %>%
-  select(c(Montana.Health.Planning.Regions.ID,
-           Number.of.Deaths,
-           Deaths.per.100.000.Population)) %>%
-  rename(region_number=Montana.Health.Planning.Regions.ID,
-         infantdeaths=
-           Number.of.Deaths,
-         infantmortalityrate_original=Deaths.per.100.000.Population) %>%
-  mutate(infantdeaths=na_if(infantdeaths, '**')) %>%
-  mutate(infantdeaths=gsub( ",", "", infantdeaths)) %>%
-  mutate(infantdeaths=as.numeric(infantdeaths)) %>%
-  mutate(infantmortalityrate_original=
-           na_if(infantmortalityrate_original, '**')) %>%
-  mutate(infantmortalityrate_original=
-           as.numeric(paste(infantmortalityrate_original))) %>%
-  mutate(infantmortalityrate=infantmortalityrate_original/100) %>%
-  select(-c(infantmortalityrate_original))
-
-
-
-#create regional dataset
-regioninfantmortality_count <- infantmortalitydata2 %>%
-  subset(region_number != '.') %>%
-  mutate(region=case_when(
-    region_number==1 ~ 'Region 1',
-    region_number==2 ~ 'Region 2',
-    region_number==3 ~ 'Region 3',
-    region_number==4 ~ 'Region 4',
-    region_number==5 ~ 'Region 5')) %>%
-  select(-c( region_number,infantmortalityrate)) %>%
-  rename(location=region) %>%
-  rename(data=infantdeaths) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname=variablename) %>%
-  mutate(state='Montana')
-
-regioninfantmortality_rate <- infantmortalitydata2 %>%
-  subset(region_number != '.') %>%
-  mutate(region=case_when(
-    region_number==1 ~ 'Region 1',
-    region_number==2 ~ 'Region 2',
-    region_number==3 ~ 'Region 3',
-    region_number==4 ~ 'Region 4',
-    region_number==5 ~ 'Region 5')) %>%
-  select(-c(region_number,infantdeaths)) %>%
-  rename(location=region) %>%
-  rename(data=infantmortalityrate) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Rate') %>%
-  mutate(varname=variablename) %>%
-  mutate(state='Montana')
-
-
-#create state dataset
-stateinfantmortality_count <- infantmortalitydata2 %>%
-  subset(region_number== '.') %>%
-  mutate(location='Montana') %>%
-  select(-c(region_number,infantmortalityrate)) %>%
-  rename(data=infantdeaths) %>%
-  mutate(locationtype='State') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname=variablename) %>%
-  mutate(state='Montana')
-
-stateinfantmortality_rate <- infantmortalitydata2 %>%
-  subset(region_number== '.') %>%
-  mutate(location='Montana') %>%
-  select(-c(region_number,infantdeaths)) %>%
-  rename(data=infantmortalityrate) %>%
-  mutate(locationtype='State') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Rate') %>%
-  mutate(varname=variablename) %>%
-  mutate(state='Montana')
-
-
-#bind county, state, and region data
-infantmortalitydata3 <- regioninfantmortality_count %>%
-  bind_rows(regioninfantmortality_rate) %>%
-  bind_rows(stateinfantmortality_count) %>% 
-  bind_rows(stateinfantmortality_rate) %>%
-  mutate(location=replace(location, 
-                          statename=='Montana' & location=='Lewis and Clark', 
-                          'Lewis & Clark')) %>%
-  left_join(locationids, by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
-```
-
-```{r}
-#CHECK DATASET NAMED infantmortalitydata3 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
-#add to database
-dbWriteTable(con,'montana',infantmortalitydata3,append=TRUE,row.names=FALSE)
-```
-
-```{r}
-#write query from database to get needed format for KC data center
-
-infantdeaths_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='infantmortality5yeartotals';")
-
-upload_data_infantmortality <- dbGetQuery(con,infantdeaths_sql)
-
-upload_data_infantmortality2 <- upload_data_infantmortality %>%
-  rename(LocationId=locationid,
-         Location=location,
-         TimeFrame=timeframe,
-         DataFormat=dataformat,
-         Data=data)
-
-
-#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
-write.csv(upload_data_infantmortality2,file=paste0("./Output/health/",statefile,"_",year,"_infantmortality.csv"),row.names=FALSE)
-```
-
-
-
-
-
-**CHILD AND TEEN (AGES 1-19) DEATH RATE PER 100,000 PERSONS BY REGION (5-YEAR TOTALS)**
-
-```{r}
-filename <- 'childdeaths_region'
-variablename <- 'childandteendeaths5yeartotals'
-
-#read in current  year
-childandteendeathsdata <-
-  read.csv(paste0('./Input/health/montana_',year,'_',filename,'.csv'))
-```
-
-```{r}
-#clean up  data
-childandteendeathsdata2 <- childandteendeathsdata %>%
-  select(c(Montana.Health.Planning.Regions.ID,
-           Number.of.Deaths,
-           Deaths.per.100.000.Population)) %>%
-  rename(region_number=Montana.Health.Planning.Regions.ID,
-         childdeaths=
-           Number.of.Deaths,
-         childmortalityrate=Deaths.per.100.000.Population) %>%
-  mutate(childdeaths=na_if(childdeaths, '**')) %>%
-  mutate(childdeaths=gsub( ",", "", childdeaths)) %>%
-  mutate(childdeaths=as.numeric(childdeaths)) %>%
-  mutate(childmortalityrate=
-           na_if(childmortalityrate, '**')) %>%
-  mutate(childmortalityrate=
-           as.numeric(paste(childmortalityrate))) 
-
-
-
-#create regional dataset
-regionchildandteendeaths_count <- childandteendeathsdata2 %>%
-  subset(region_number != '.') %>%
-  mutate(region=case_when(
-    region_number==1 ~ 'Region 1',
-    region_number==2 ~ 'Region 2',
-    region_number==3 ~ 'Region 3',
-    region_number==4 ~ 'Region 4',
-    region_number==5 ~ 'Region 5')) %>%
-  select(-c( region_number,childmortalityrate)) %>%
-  rename(location=region) %>%
-  rename(data=childdeaths) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname=variablename) %>%
-  mutate(state='Montana')
-
-regionchildandteendeaths_rate <- childandteendeathsdata2 %>%
-  subset(region_number != '.') %>%
-  mutate(region=case_when(
-    region_number==1 ~ 'Region 1',
-    region_number==2 ~ 'Region 2',
-    region_number==3 ~ 'Region 3',
-    region_number==4 ~ 'Region 4',
-    region_number==5 ~ 'Region 5')) %>%
-  select(-c(region_number,childdeaths)) %>%
-  rename(location=region) %>%
-  rename(data=childmortalityrate) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Rate') %>%
-  mutate(varname=variablename) %>%
-  mutate(state='Montana')
-
-
-#create state dataset
-statechildandteendeaths_count <- childandteendeathsdata2 %>%
-  subset(region_number== '.') %>%
-  mutate(location='Montana') %>%
-  select(-c(region_number,childmortalityrate)) %>%
-  rename(data=childdeaths) %>%
-  mutate(locationtype='State') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname=variablename) %>%
-  mutate(state='Montana')
-
-statechildandteendeaths_rate <- childandteendeathsdata2 %>%
-  subset(region_number== '.') %>%
-  mutate(location='Montana') %>%
-  select(-c(region_number,childdeaths)) %>%
-  rename(data=childmortalityrate) %>%
-  mutate(locationtype='State') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Rate') %>%
-  mutate(varname=variablename) %>%
-  mutate(state='Montana')
-
-
-
-
-#bind county, state, and region data
-childandteendeathsdata3 <- regionchildandteendeaths_count %>%
-  bind_rows(regionchildandteendeaths_rate) %>%
-  bind_rows(statechildandteendeaths_count) %>% 
-  bind_rows(statechildandteendeaths_rate) %>%
-  mutate(location=replace(location, 
-                          statename=='Montana' & location=='Lewis and Clark', 
-                          'Lewis & Clark')) %>%
-  left_join(locationids, by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
-```
-
-```{r}
-#CHECK DATASET NAMED childandteendeathsdata3 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
-#add to database
-dbWriteTable(con,'montana',childandteendeathsdata3,append=TRUE,row.names=FALSE)
-```
-
-```{r}
-#write query from database to get needed format for KC data center
-
-childandteendeaths_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='childandteendeaths5yeartotals';")
-
-upload_data_childandteendeaths <- dbGetQuery(con,childandteendeaths_sql)
-
-upload_data_childandteendeaths2 <- upload_data_childandteendeaths %>%
-  rename(LocationId=locationid,
-         Location=location,
-         TimeFrame=timeframe,
-         DataFormat=dataformat,
-         Data=data)
-
-
-#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
-write.csv(upload_data_childandteendeaths2,file=paste0("./Output/health/",statefile,"_",year,"_childandteendeaths.csv"),row.names=FALSE)
-```
