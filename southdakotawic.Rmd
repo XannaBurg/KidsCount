@@ -5,7 +5,8 @@ date: "6/25/2020"
 output: html_document
 ---
 
-## Indicator 1: Women, Infants, and children (WIC) average monthly enrollment
+## Indicator 1: Women, Infants, and Children (WIC) average monthly enrollment
+## Indicator 2: Women, Infants, and Children (WIC) average monthly enrollment for American Indian or Alaskan Native participants
 
 **Created by:** Xanna Burg
 **Date:** June 2020
@@ -54,10 +55,14 @@ regionids$county <- as.character(regionids$county)
 ```
 
 
+## ############################################################# ##
+## WOMEN, INFANTS, AND CHILDREN (WIC) AVERAGE MONTHLY ENROLLMENT ##
+## ############################################################# ##
+
 ## STEP 1: IMPORT AND CLEAN THE DATA
 ```{r}
 #import the data
-wicdata <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_wic.xlsx")) %>%
+wicdata <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_wic.xlsx"),sheet='Counties') %>%
   rename(location='South Dakota Average (Enrolled)')
 
 ###########
@@ -200,6 +205,50 @@ write.csv(upload_datacenter,file=paste0("./Output/economics/",database_state,"_"
 ```
 
 
+## ############################################################# ##
+## WOMEN, INFANTS, AND CHILDREN (WIC) AVERAGE MONTHLY ENROLLMENT ##
+## #####FOR AMERICAN INDIAN OR ALASKAN NATIVE PARTICIPANTS###### ##
+## ############################################################# ##
 
+## STEP 1: IMPORT AND CLEAN THE DATA
+```{r}
+wicracedata <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_wic.xlsx"),sheet='Race') %>%
+  
+  subset(`Average Participation for American Indian or Alaskan Native`=='Statewide') %>%
+  select(-c(`Average Participation for American Indian or Alaskan Native`)) %>%
+  
+  mutate(location='South Dakota',
+         locationtype='State',
+         state='South Dakota',
+         dataformat='Number',
+         varname='wicaveragemonthlyenrollmentnativeamerican',
+         race='American Indian') %>%
+  
+  pivot_longer(cols=c(`2017`,`2018`,`2019`),names_to='timeframe',values_to='data')
+
+#query overall participation to calculate a percent
+wic_sql <- paste0("SELECT locationid, location, timeframe, data FROM southdakota WHERE varname='wicaveragemonthlyenrollment' AND locationtype='State';")
+
+wicracedata_percent <- dbGetQuery(con,wic_sql) %>%
+  rename(totalparticipants=data) %>%
+  
+  left_join(wicracedata,by=c('location'='location','timeframe'='timeframe')) %>%
+  rename(aiparticipants=data) %>%
+  
+  mutate(totalparticipants=as.numeric(paste(totalparticipants))) %>%
+  mutate(data=aiparticipants/totalparticipants) %>%
+  select(-c(aiparticipants,totalparticipants)) %>%
+  mutate(dataformat='Percent')
+
+```
+
+## STEP 2: COMMIT TO DATABASE 
+```{r}
+#CHECK DATASET NAMED wicracedata and wicracedata_percent TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,wicracedata,append=TRUE,row.names=FALSE)
+dbWriteTable(con,database_state,wicracedata_percent,append=TRUE,row.names=FALSE)
+```
 
 
