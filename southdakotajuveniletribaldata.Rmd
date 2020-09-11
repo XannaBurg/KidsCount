@@ -1,0 +1,131 @@
+---
+title: "South Dakota Juvenile Tribal Data"
+output: html_document
+---
+
+## Indicator 1: Juvenile Commitments by Race and Tribe
+
+**Created by:** Xanna Burg
+**Date:** September 2020
+**Updated by:**
+
+**Data Source:** South Dakota Department of Corrections
+**Purpose:** Clean and process the data requested from SD DOC into correct format for database
+
+**Data format:** 
+
+
+**To use this code for a new year:**
+* Update the year in the second code chunk for variable 'year'
+* Check each dataset visually and through the report logs prior to committing to the database.
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+library(stringr)
+```
+
+
+```{r}
+####UPDATE to reflect the current year data working with
+year <- '2020'
+statename <- 'South Dakota'
+
+#run this code to create an object needed for the database (DO NOT EDIT)
+database_state <- 'southdakota'
+
+#input location ID file for SD
+locationids <- read.csv("./Input/SD KC Location IDs.csv")
+locationids$Location <- as.character(locationids$Location)
+
+#input a list of counties for SD
+countylist <- read.csv("./Input/SD County List.csv")
+countylist$county <- as.character(countylist$county)
+
+#input the region ID file for SD
+regionids <- read.csv("./Input/SD KC Region List.csv")
+regionids$county <- as.character(regionids$county)
+
+#input the crosswalk for tribal area and reservation
+tribalareas <- read.csv("./Documentation/Indicator Documentation/South Dakota Data Requests/southdakota_tribalareareservationcrosswalk.csv")
+```
+
+## Data is found in one dataset, Import that dataset
+```{r}
+docdata <- read_excel(path=paste0("./Input/safety/southdakota_",year,"_juvenilecommitmentsbyraceandtribe.xlsx")) 
+```
+
+
+
+## ##################################### ##
+## JUVENILE COMMITMENT BY RACE AND TRIBE ##
+## ##################################### ##
+
+## STEP 1: IMPORT AND CLEAN DATA
+```{r}
+docdata_cleaned <- docdata %>%
+
+  #join in standardized names for location and tribal area
+  full_join(tribalareas,by=c('Tribe'='Tribe_code')) %>%
+  
+  select(-c(Tribe,DESCRIPTION,fiscalYear)) %>%
+  
+  #subset to remove all others and no tribal affiliation
+  subset(!is.na(location)) %>%
+  
+  #pivot longer
+  pivot_longer(cols=c(Asian,Black,Hispanic,`Native American`,White),names_to='race',values_to='data') %>%
+  
+  #change Native American to American Indian
+  mutate(race=replace(race,race=='Native American','American Indian')) %>%
+  
+  #change NAs to zero
+  mutate(data=replace(data,is.na(data),0)) %>%
+  
+  #add in KC variables
+  mutate(timeframe=year,
+         state='South Dakota',
+         locationtype='Tribal Area',
+         dataformat='Number',
+         varname='juvenilecommitmentsbyraceandtribe') %>%
+  
+  #merge in location ids for completeness, although not needed unless adding to KC
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(docdata_cleaned$locationid))>=1) {
+  print(docdata_cleaned$location[is.na(docdata_cleaned$locationid)])
+} else if (sum(is.na(docdata_cleaned$locationid))==0) {
+  'all locations match'
+}
+
+
+# 2. Visually inspect output data
+View(docdata_cleaned)
+```
+
+
+## STEP 2: ADD TO DATABASE
+```{r}
+#CHECK DATASET NAMED docdata_cleaned TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,docdata_cleaned,append=TRUE,row.names=FALSE)
+```
+
+
+
