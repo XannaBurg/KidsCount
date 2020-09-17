@@ -62,7 +62,7 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 ```{r}
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
-statename <- "North Dakota"
+statename <- "South Dakota"
 year <- "2018"
 acsyear <- "2014-2018"
 
@@ -777,7 +777,7 @@ write.csv(moe_output_ordered,file=paste0("../Output/economics/moe/",database_sta
 ##OUTPUT DATA CENTER FILE
 
 #without tribal data (Montana, South Dakota)
-datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",acsyear,"' AND varname='employedyouthbyage' AND age_group='16 to 24' AND locationtype <> 'Tribal Area';")
+datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",acsyear,"' AND varname='employedyouthbyage' AND age_group='16 to 24' AND locationtype <> 'Tribal Area' AND locationtype <> 'Planning Region';")
 
 upload_data <- dbGetQuery(con,datacenter_sql) %>%
   rename(LocationId=locationid,
