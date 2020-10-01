@@ -6,6 +6,7 @@ output: html_document
 ---
 
 ## Indicator 1: Children ages 0 to 17 with all available parents in the labor force
+## Indicator 2: Children with all available parents in the labor force by age
 
 **Created by:** Xanna Burg
 **Date:** May 2020
@@ -61,8 +62,8 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 statename <- "Montana"
-year <- "2017"
-acsyear <- "2013-2017"
+year <- "2018"
+acsyear <- "2014-2018"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -831,3 +832,186 @@ data_kcdatacenter <- data_all %>%
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
 write.csv(data_kcdatacenter,file="your path/goes here/nameyourcsv.csv",row.names=FALSE)
 ```
+
+
+
+
+
+## ############ ##
+## BY AGE GROUP ##
+## ############ ##
+
+## STEP 5a: OUTPUT FILES - INCLUDING TRIBAL AREAS (NORTH DAKOTA)
+```{r}
+#########################
+##OUTPUT DATA CENTER FILE
+
+#with tribal data (North Dakota)
+datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, age_group, data FROM ", database_state," WHERE timeframe='",acsyear,"' AND varname='childrenwithparentsinlaborforce' AND (age_group='Under age 6' OR age_group='Ages 6-17');")
+
+upload_data <- dbGetQuery(con,datacenter_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         `Age group`=age_group) %>%
+  mutate(`Age group`=replace(`Age group`,`Age group`=='Ages 6-17','6-17'))
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("../Output/economics/",database_state,"_",year,"_childrenwithparentsinlaborforcebyage.csv"),row.names=FALSE)
+
+
+#############################
+##OUTPUT MARGIN OF ERROR FILE
+moe_sql <- paste0("SELECT location, timeframe, dataformat, age_group, data, moe FROM ", database_state," WHERE timeframe='",acsyear,"' AND varname='childrenwithparentsinlaborforce' AND locationtype='County' AND (age_group='Under age 6' OR age_group='Ages 6-17');")
+
+#alphabetize counties
+moe_output <- dbGetQuery(con,moe_sql) %>%
+  pivot_wider(names_from=dataformat,values_from=c(data,moe)) %>%
+  pivot_wider(names_from=age_group,values_from=c(data_Percent,data_Number,moe_Percent,moe_Number)) %>%
+  select(c(timeframe,location,
+           'data_Number_Under age 6','moe_Number_Under age 6',
+           'data_Percent_Under age 6','moe_Percent_Under age 6',
+           'data_Number_Ages 6-17','moe_Number_Ages 6-17',
+           'data_Percent_Ages 6-17','moe_Percent_Ages 6-17')) %>%
+  arrange(location)
+
+#state
+moe_sql2 <- paste0("SELECT location, timeframe, dataformat, age_group, data, moe FROM ", database_state," WHERE timeframe='",acsyear,"' AND varname='childrenwithparentsinlaborforce' AND locationtype='State' AND (age_group='Under age 6' OR age_group='Ages 6-17');")
+
+#alphabetize counties
+moe_output2 <- dbGetQuery(con,moe_sql2) %>%
+  pivot_wider(names_from=dataformat,values_from=c(data,moe)) %>%
+  pivot_wider(names_from=age_group,values_from=c(data_Percent,data_Number,moe_Percent,moe_Number)) %>%
+  select(c(timeframe,location,
+           'data_Number_Under age 6','moe_Number_Under age 6',
+           'data_Percent_Under age 6','moe_Percent_Under age 6',
+           'data_Number_Ages 6-17','moe_Number_Ages 6-17',
+           'data_Percent_Ages 6-17','moe_Percent_Ages 6-17')) %>%
+  arrange(location)
+
+#state planning region
+moe_sql3 <- paste0("SELECT location, timeframe, dataformat, age_group, data, moe FROM ", database_state," WHERE timeframe='",acsyear,"' AND varname='childrenwithparentsinlaborforce' AND locationtype='Planning Region' AND (age_group='Under age 6' OR age_group='Ages 6-17');")
+
+#alphabetize counties
+moe_output3 <- dbGetQuery(con,moe_sql3) %>%
+  pivot_wider(names_from=dataformat,values_from=c(data,moe)) %>%
+  pivot_wider(names_from=age_group,values_from=c(data_Percent,data_Number,moe_Percent,moe_Number)) %>%
+  select(c(timeframe,location,
+           'data_Number_Under age 6','moe_Number_Under age 6',
+           'data_Percent_Under age 6','moe_Percent_Under age 6',
+           'data_Number_Ages 6-17','moe_Number_Ages 6-17',
+           'data_Percent_Ages 6-17','moe_Percent_Ages 6-17')) %>%
+  arrange(location)
+
+#tribal area (North Dakota only)
+moe_sql4 <- paste0("SELECT location, timeframe, dataformat, age_group, data, moe FROM ", database_state," WHERE timeframe='",acsyear,"' AND varname='childrenwithparentsinlaborforce' AND locationtype='Tribal Area' AND (age_group='Under age 6' OR age_group='Ages 6-17');")
+
+#alphabetize counties
+moe_output4 <- dbGetQuery(con,moe_sql4) %>%
+  pivot_wider(names_from=dataformat,values_from=c(data,moe)) %>%
+  pivot_wider(names_from=age_group,values_from=c(data_Percent,data_Number,moe_Percent,moe_Number)) %>%
+  select(c(timeframe,location,
+           'data_Number_Under age 6','moe_Number_Under age 6',
+           'data_Percent_Under age 6','moe_Percent_Under age 6',
+           'data_Number_Ages 6-17','moe_Number_Ages 6-17',
+           'data_Percent_Ages 6-17','moe_Percent_Ages 6-17')) %>%
+  arrange(location)
+
+#combine county and state/state planning region
+moe_output_ordered <- moe_output %>%
+  bind_rows(moe_output2) %>%
+  bind_rows(moe_output3) %>%
+  
+  #for tribal area
+  bind_rows(moe_output4)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(moe_output_ordered,file=paste0("../Output/economics/moe/",database_state,"_",year,"_childrenwithparentsinlaborforcebyage_moe.csv"),row.names=FALSE)
+
+```
+
+## STEP 5b: OUTPUT FILES - DO NOT INCLUDE TRIBAL AREAS (MONTANA, SOUTH DAKOTA)
+```{r}
+#########################
+##OUTPUT DATA CENTER FILE
+
+#without tribal data (Montana, South Dakota)
+datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, age_group, data FROM ", database_state," WHERE timeframe='",acsyear,"' AND varname='childrenwithparentsinlaborforce' AND locationtype <> 'Tribal Area' AND locationtype <> 'Planning Region' AND (age_group='Under age 6' OR age_group='Ages 6-17');")
+
+upload_data <- dbGetQuery(con,datacenter_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         `Age group`=age_group) %>%
+  mutate(`Age group`=replace(`Age group`,`Age group`=='Ages 6-17','6-17'))
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("../Output/economics/",database_state,"_",year,"_childrenwithparentsinlaborforcebyage.csv"),row.names=FALSE)
+
+
+#############################
+##OUTPUT MARGIN OF ERROR FILE
+moe_sql <- paste0("SELECT location, timeframe, dataformat, age_group, data, moe FROM ", database_state," WHERE timeframe='",acsyear,"' AND varname='childrenwithparentsinlaborforce' AND locationtype='County' AND (age_group='Under age 6' OR age_group='Ages 6-17');")
+
+#alphabetize counties
+moe_output <- dbGetQuery(con,moe_sql) %>%
+  pivot_wider(names_from=dataformat,values_from=c(data,moe)) %>%
+  pivot_wider(names_from=age_group,values_from=c(data_Percent,data_Number,moe_Percent,moe_Number)) %>%
+  select(c(timeframe,location,
+           'data_Number_Under age 6','moe_Number_Under age 6',
+           'data_Percent_Under age 6','moe_Percent_Under age 6',
+           'data_Number_Ages 6-17','moe_Number_Ages 6-17',
+           'data_Percent_Ages 6-17','moe_Percent_Ages 6-17')) %>%
+  arrange(location)
+
+#state
+moe_sql2 <- paste0("SELECT location, timeframe, dataformat, age_group, data, moe FROM ", database_state," WHERE timeframe='",acsyear,"' AND varname='childrenwithparentsinlaborforce' AND locationtype='State' AND (age_group='Under age 6' OR age_group='Ages 6-17');")
+
+#alphabetize counties
+moe_output2 <- dbGetQuery(con,moe_sql2) %>%
+  pivot_wider(names_from=dataformat,values_from=c(data,moe)) %>%
+  pivot_wider(names_from=age_group,values_from=c(data_Percent,data_Number,moe_Percent,moe_Number)) %>%
+  select(c(timeframe,location,
+           'data_Number_Under age 6','moe_Number_Under age 6',
+           'data_Percent_Under age 6','moe_Percent_Under age 6',
+           'data_Number_Ages 6-17','moe_Number_Ages 6-17',
+           'data_Percent_Ages 6-17','moe_Percent_Ages 6-17')) %>%
+  arrange(location)
+
+
+
+#combine county and state/state planning region
+moe_output_ordered <- moe_output %>%
+  bind_rows(moe_output2) 
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(moe_output_ordered,file=paste0("../Output/economics/moe/",database_state,"_",year,"_childrenwithparentsinlaborforcebyage_moe.csv"),row.names=FALSE)
+
+```
+
+# STEP 5c: OUTPUT KIDS COUNT DATA CENTER FORMAT (SKIP ADDING TO DATABASE AND MARGINS OF ERROR)
+#This is code that can be used by states that do not have a database to store KIDS COUNT data, but just need a .csv output to upload to the data center.
+**You must add a file path and name the desired csv file to the write.csv code**
+```{r}
+data_kcdatacenter <- data_all %>%
+  select(c(location,dataformat,data,age_group,timeframe,locationid)) %>%
+  rename(Location=location,
+         DataFormat=dataformat,
+         Data=data,
+         'Age group'=age_group,
+         TimeFrame=timeframe,
+         LocationId=locationid)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(data_kcdatacenter,file="your path/goes here/nameyourcsv.csv",row.names=FALSE)
+```
+
+
+
