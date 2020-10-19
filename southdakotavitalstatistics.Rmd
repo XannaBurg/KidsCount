@@ -1,0 +1,1931 @@
+---
+title: "South Dakota Vital Statistics"
+output: html_document
+---
+
+## Indicator 1: Total births (1-year totals)
+## Indicator 2: Low birthweight babies (5-year totals)
+## Indicator 3: Births to single teens (5-year totals)
+## Indicator 4: Births to mother receiving prenatal care during first trimester (5-year totals)
+## Indicator 5: Infant mortality (5-year totals)
+## Indicator 6: Child deaths (5-year totals)
+## Indicator 7: Teen violent deaths (5-year totals)
+
+###### Tribal Data Book Data
+## Indicator 8: Resident  births by county to American Indian mothers
+## Indicator 9: Low birthweight births to American Indian mothers
+## Indicator 10: Resident births by county to single American Indian teens under age 20
+## Indicator 11: Resident births by county to American Indian mothers that initiated prenatal care in the 1st trimester
+## Indicator 12: Resident deaths by county for American Indian population
+## Indicator 13: Resident infant deaths by county for American Indian population
+## Indicator 14: Resident deaths by county for American Indian population ages 1-14
+## Indicator 15: Resident violent deaths by county for American Indian population ages 15-19
+
+
+**Created by:** Xanna Burg
+**Date:** October 2020
+**Updated by:**
+
+**Data Source:** South Dakota Department of Health
+**Purpose:** Clean and process the vital statistics data requested from DOH into correct format for Kids Count Data Center.
+
+**Data format:** Final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Category (for Medicaid groups, and for recipient/household groups; character) Data (numeric: number, percentage), DataFormat (character: "number" or "percent" or "currency"), LocationId (numeric: assigned for KIDS COUNT system)
+
+
+**To use this code for a new year:**
+* Update the year in the second code chunk for variable 'year'
+* Check each dataset visually and through the report logs prior to commiting to the database.
+
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+library(stringr)
+```
+
+
+```{r}
+####UPDATE to reflect the current year data working with
+year <- '2019'
+year_5 <- '2015-2019'
+statename <- 'South Dakota'
+
+
+#run this code to create an object needed for the database (DO NOT EDIT)
+database_state <- 'southdakota'
+
+#input location ID file for SD
+locationids <- read.csv("./Input/SD KC Location IDs.csv")
+locationids$Location <- as.character(locationids$Location)
+
+#input list of all counties
+countylist <- read.csv("./Input/SD County List.csv")
+
+```
+
+
+
+## ############################ ##
+## TOTAL BIRTHS (1-YEAR TOTALS) ##
+## ############################ ##
+
+## Live births in the columns may be different depending on unknowns. Confirm with DOH to know which one doesn't have missing data ##
+```{r}
+#import and clean the data
+births <- read_excel(path=paste0("./Input/health/southdakota_",year,"_vitalstatistics.xlsx"),sheet='Teen Births',skip=1) %>%
+  rename(location=`...2`) %>%
+  select(-c(`...1`,`Single Teen Births`,`% Single Teen Births`)) %>%
+  #remove extra text and Unknown county
+  subset(!is.na(`Live Births`)) %>%
+  mutate(location=replace(location,is.na(location),'South Dakota')) %>%
+  subset(location!='Unknown') %>%
+  
+  rename(data=`Live Births`) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  #change number to <3
+  mutate(data=as.character(paste(data))) %>%
+  mutate(data=replace(data,data=='NA','<3')) %>%
+  
+  #add in KC variables
+  mutate(locationtype=ifelse(location=='South Dakota','State','County')) %>%
+  mutate(timeframe=year,
+         state=statename,
+         varname='totalbirths_1year',
+         dataformat='Number') %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(births$locationid))>=1) {
+  print(births$location[is.na(births$locationid)])
+} else if (sum(is.na(births$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 3
+temp_suppresscheck <- births %>% mutate(data=as.numeric(paste(data))) %>% subset(dataformat=='Number') %>% subset(data<3)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- births %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+}
+
+
+# 4. Visually inspect output data
+View(births)
+
+```
+
+```{r}
+#CHECK DATASET NAMED births TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,births,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='totalbirths_1year';")
+
+
+upload_datacenter <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter,file=paste0("./Output/health/",database_state,"_",year,"_totalbirths_1year.csv"),row.names=FALSE)
+```
+
+
+
+## ###################################### ##
+## LOW BIRTHWEIGHT BABIES (5-YEAR TOTALS) ##
+## ###################################### ##
+
+```{r}
+#import and clean the data
+lbw <- read_excel(path=paste0("./Input/health/southdakota_",year_5,"_vitalstatisticswithconfidenceintervals.xlsx"),sheet='LBW',skip=1) %>%
+  rename(location=`...2`) %>%
+  select(-c(`...1`,`...9`)) %>%
+  #remove extra text and Unknown county
+  subset(!is.na(`Live Births`)) %>%
+  mutate(location=replace(location,is.na(location),'South Dakota')) %>%
+  subset(location!='Unknown') %>%
+  
+  rename(Number=`Low weight births`,
+         Percent=`% Low birth weight`,
+         moe=`95% CI ±`,
+         lci=`Lower Limit`,
+         uci=`Upper Limit`) %>%
+  select(-c(`Live Births`)) %>%
+  mutate(Number=as.numeric(paste(Number)),
+         Percent=as.numeric(paste(Percent)),
+         moe=as.numeric(paste(moe)),
+         lci=as.numeric(paste(moe)),
+         uci=as.numeric(paste(moe))) %>%
+  #change number to <3
+  mutate(Number=as.character(paste(Number))) %>%
+  mutate(Number=replace(Number,Number=='NA','<3')) %>%
+  
+  #add in KC variables
+  mutate(locationtype=ifelse(location=='South Dakota','State','County')) %>%
+  mutate(timeframe=year_5,
+         state=statename,
+         varname='lowbirthweight5yeartotals') %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+#create dataset that only includes number
+lbw_number <- lbw %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Number)) %>%
+  rename(data=Number) %>%
+  mutate(dataformat='Number')
+
+#create dataset that only includes percent
+lbw_percent <- lbw %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Percent,moe,lci,uci)) %>%
+  rename(data=Percent) %>%
+  mutate(dataformat='Percent') %>%
+  
+  mutate(data=as.character(paste(data)))
+  
+
+#create dataset that includes all data
+lbw_all <- lbw_number %>%
+  bind_rows(lbw_percent)
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(lbw_all$locationid))>=1) {
+  print(lbw_all$location[is.na(lbw_all$locationid)])
+} else if (sum(is.na(lbw_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 3
+temp_suppresscheck <- lbw_all %>% mutate(data=as.numeric(paste(data))) %>% subset(dataformat=='Number') %>% subset(data<3)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- lbw_all %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+}
+
+
+# 4. Visually inspect output data
+View(lbw_all)
+
+```
+
+```{r}
+#CHECK DATASET NAMED lbw_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,lbw_all,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year_5,"' AND varname='lowbirthweight5yeartotals' AND dataformat='Percent';")
+
+
+upload_datacenter <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter,file=paste0("./Output/health/",database_state,"_",year_5,"_lowbirthweight5yeartotals.csv"),row.names=FALSE)
+
+
+#also write a query that exports the confidence intervals for copying into template
+moe_sql <- paste0("SELECT locationtype, timeframe, location, data, moe FROM ", database_state," WHERE timeframe='",year_5,"' AND varname='lowbirthweight5yeartotals' AND dataformat='Percent';")
+
+
+upload_moe1 <- dbGetQuery(con,moe_sql) %>%
+  subset(locationtype=='County') %>%
+  arrange(location)
+
+upload_moe2 <- dbGetQuery(con,moe_sql) %>%
+  subset(locationtype=='State') %>%
+  arrange(location)
+
+upload_moe <- upload_moe1 %>%
+  bind_rows(upload_moe2)
+
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_moe,file=paste0("./Output/health/moe/",database_state,"_",year_5,"_lowbirthweight5yeartotals_moe.csv"),row.names=FALSE)
+
+```
+
+
+## ###################################### ##
+## BIRTHS TO SINGLE TEENS (5-YEAR TOTALS) ##
+## ###################################### ##
+
+```{r}
+#import and clean the data
+teens <- read_excel(path=paste0("./Input/health/southdakota_",year_5,"_vitalstatisticswithconfidenceintervals.xlsx"),sheet='Teen births',skip=1) %>%
+  rename(location=`...2`) %>%
+  select(-c(`...1`,`...9`)) %>%
+  #remove extra text and Unknown county
+  subset(!is.na(`Live Births`)) %>%
+  mutate(location=replace(location,is.na(location),'South Dakota')) %>%
+  subset(location!='Unknown') %>%
+  
+  rename(Number=`Single Teen Births`,
+         Percent=`% Single Teen Births`,
+         moe=`95% CI ±`,
+         lci=`Lower Limit`,
+         uci=`Upper Limit`) %>%
+  select(-c(`Live Births`)) %>%
+  mutate(Number=as.numeric(paste(Number)),
+         Percent=as.numeric(paste(Percent)),
+         moe=as.numeric(paste(moe)),
+         lci=as.numeric(paste(moe)),
+         uci=as.numeric(paste(moe))) %>%
+  #change number to <3
+  mutate(Number=as.character(paste(Number))) %>%
+  mutate(Number=replace(Number,Number=='NA','<3')) %>%
+  
+  #add in KC variables
+  mutate(locationtype=ifelse(location=='South Dakota','State','County')) %>%
+  mutate(timeframe=year_5,
+         state=statename,
+         varname='birthstosingleteens5yeartotals') %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+#create dataset that only includes number
+teens_number <- teens %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Number)) %>%
+  rename(data=Number) %>%
+  mutate(dataformat='Number')
+
+#create dataset that only includes percent
+teens_percent <- teens %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Percent,moe,lci,uci)) %>%
+  rename(data=Percent) %>%
+  mutate(dataformat='Percent') %>%
+  
+  mutate(data=as.character(paste(data)))
+  
+
+#create dataset that includes all data
+teens_all <- teens_number %>%
+  bind_rows(teens_percent)
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(teens_all$locationid))>=1) {
+  print(teens_all$location[is.na(teens_all$locationid)])
+} else if (sum(is.na(teens_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 3
+temp_suppresscheck <- teens_all %>% mutate(data=as.numeric(paste(data))) %>% subset(dataformat=='Number') %>% subset(data<3)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- teens_all %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+}
+
+
+# 4. Visually inspect output data
+View(teens_all)
+
+```
+
+```{r}
+#CHECK DATASET NAMED teens_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,teens_all,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year_5,"' AND varname='birthstosingleteens5yeartotals' AND dataformat='Percent';")
+
+
+upload_datacenter <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter,file=paste0("./Output/health/",database_state,"_",year_5,"_birthstosingleteens5yeartotals.csv"),row.names=FALSE)
+
+
+#also write a query that exports the confidence intervals for copying into template
+moe_sql <- paste0("SELECT locationtype, timeframe, location, data, moe FROM ", database_state," WHERE timeframe='",year_5,"' AND varname='birthstosingleteens5yeartotals' AND dataformat='Percent';")
+
+
+upload_moe1 <- dbGetQuery(con,moe_sql) %>%
+  subset(locationtype=='County') %>%
+  arrange(location)
+
+upload_moe2 <- dbGetQuery(con,moe_sql) %>%
+  subset(locationtype=='State') %>%
+  arrange(location)
+
+upload_moe <- upload_moe1 %>%
+  bind_rows(upload_moe2)
+
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_moe,file=paste0("./Output/health/moe/",database_state,"_",year_5,"_birthstosingleteens5yeartotals_moe.csv"),row.names=FALSE)
+
+```
+
+
+
+## ########################################## ##
+## BIRTHS TO MOTHERS RECEIVING PRENATAL CARE  ##
+## DURING THE FIRST TRIMETSER (5-YEAR TOTALS) ##
+## ########################################## ##
+
+```{r}
+#import and clean the data
+pnc <- read_excel(path=paste0("./Input/health/southdakota_",year_5,"_vitalstatisticswithconfidenceintervals.xlsx"),sheet='Prenatal Care',skip=1) %>%
+  rename(location=`...2`) %>%
+  select(-c(`...1`,`...9`)) %>%
+  #remove extra text and Unknown county
+  subset(!is.na(`Live Births`)) %>%
+  mutate(location=replace(location,is.na(location),'South Dakota')) %>%
+  subset(location!='Unknown') %>%
+  
+  rename(Number=`1st Trimester Care`,
+         Percent=`% 1st Trimester Care`,
+         moe=`95% CI ±`,
+         lci=`Lower Limit`,
+         uci=`Upper Limit`) %>%
+  select(-c(`Live Births`)) %>%
+  mutate(Number=as.numeric(paste(Number)),
+         Percent=as.numeric(paste(Percent)),
+         moe=as.numeric(paste(moe)),
+         lci=as.numeric(paste(moe)),
+         uci=as.numeric(paste(moe))) %>%
+  #change number to <3
+  mutate(Number=as.character(paste(Number))) %>%
+  mutate(Number=replace(Number,Number=='NA','<3')) %>%
+  
+  #add in KC variables
+  mutate(locationtype=ifelse(location=='South Dakota','State','County')) %>%
+  mutate(timeframe=year_5,
+         state=statename,
+         varname='firsttrimesterprenatal5yeartotals') %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+#create dataset that only includes number
+pnc_number <- pnc %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Number)) %>%
+  rename(data=Number) %>%
+  mutate(dataformat='Number')
+
+#create dataset that only includes percent
+pnc_percent <- pnc %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Percent,moe,lci,uci)) %>%
+  rename(data=Percent) %>%
+  mutate(dataformat='Percent') %>%
+  
+  mutate(data=as.character(paste(data)))
+  
+
+#create dataset that includes all data
+pnc_all <- pnc_number %>%
+  bind_rows(pnc_percent)
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(pnc_all$locationid))>=1) {
+  print(pnc_all$location[is.na(pnc_all$locationid)])
+} else if (sum(is.na(pnc_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 3
+temp_suppresscheck <- pnc_all %>% mutate(data=as.numeric(paste(data))) %>% subset(dataformat=='Number') %>% subset(data<3)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- pnc_all %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+}
+
+
+# 4. Visually inspect output data
+View(pnc_all)
+
+```
+
+```{r}
+#CHECK DATASET NAMED pnc_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,pnc_all,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year_5,"' AND varname='firsttrimesterprenatal5yeartotals' AND dataformat='Percent';")
+
+
+upload_datacenter <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter,file=paste0("./Output/health/",database_state,"_",year_5,"_firsttrimesterprenatal5yeartotals.csv"),row.names=FALSE)
+
+
+#also write a query that exports the confidence intervals for copying into template
+moe_sql <- paste0("SELECT locationtype, timeframe, location, data, moe FROM ", database_state," WHERE timeframe='",year_5,"' AND varname='firsttrimesterprenatal5yeartotals' AND dataformat='Percent';")
+
+
+upload_moe1 <- dbGetQuery(con,moe_sql) %>%
+  subset(locationtype=='County') %>%
+  arrange(location)
+
+upload_moe2 <- dbGetQuery(con,moe_sql) %>%
+  subset(locationtype=='State') %>%
+  arrange(location)
+
+upload_moe <- upload_moe1 %>%
+  bind_rows(upload_moe2)
+
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_moe,file=paste0("./Output/health/moe/",database_state,"_",year_5,"_firsttrimesterprenatal5yeartotals_moe.csv"),row.names=FALSE)
+
+```
+
+
+
+
+## ################################ ##
+## INFANT MORTALITY (5-YEAR TOTALS) ##
+## ################################ ##
+
+```{r}
+#import and clean the data
+infantdeaths <- read_excel(path=paste0("./Input/health/southdakota_",year_5,"_vitalstatisticswithconfidenceintervals.xlsx"),sheet='Infant Death',skip=1) %>%
+  rename(location=`...2`) %>%
+  select(-c(`...1`,`...9`)) %>%
+  #remove extra text and Unknown county
+  subset(!is.na(`Live Births`)) %>%
+  mutate(location=replace(location,is.na(location),'South Dakota')) %>%
+  subset(location!='Unknown') %>%
+  
+  rename(Number=`Infant Deaths`,
+         Rate=`Infant Mortality Rate`,
+         moe=`95% CI ±`,
+         lci=`Lower Limit`,
+         uci=`Upper Limit`) %>%
+  select(-c(`Live Births`)) %>%
+  mutate(Number=as.numeric(paste(Number)),
+         Rate=as.numeric(paste(Rate)),
+         moe=as.numeric(paste(moe)),
+         lci=as.numeric(paste(moe)),
+         uci=as.numeric(paste(moe))) %>%
+  #change number to <3
+  mutate(Number=as.character(paste(Number))) %>%
+  mutate(Number=replace(Number,Number=='NA','<3')) %>%
+  
+  #add in KC variables
+  mutate(locationtype=ifelse(location=='South Dakota','State','County')) %>%
+  mutate(timeframe=year_5,
+         state=statename,
+         varname='infantmortality5yeartotals') %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+#create dataset that only includes number
+infantdeaths_number <- infantdeaths %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Number)) %>%
+  rename(data=Number) %>%
+  mutate(dataformat='Number')
+
+#create dataset that only includes percent
+infantdeaths_rate <- infantdeaths %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Rate,moe,lci,uci)) %>%
+  rename(data=Rate) %>%
+  mutate(dataformat='Rate') %>%
+  
+  mutate(data=as.character(paste(data)))
+  
+
+#create dataset that includes all data
+infantdeaths_all <- infantdeaths_number %>%
+  bind_rows(infantdeaths_rate)
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(infantdeaths_all$locationid))>=1) {
+  print(infantdeaths_all$location[is.na(infantdeaths_all$locationid)])
+} else if (sum(is.na(infantdeaths_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 3
+temp_suppresscheck <- infantdeaths_all %>% mutate(data=as.numeric(paste(data))) %>% subset(dataformat=='Number') %>% subset(data<3)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- infantdeaths_all %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+}
+
+
+# 4. Visually inspect output data
+View(infantdeaths_all)
+
+```
+
+```{r}
+#CHECK DATASET NAMED infantdeaths_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,infantdeaths_all,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year_5,"' AND varname='infantmortality5yeartotals' AND dataformat='Rate';")
+
+
+upload_datacenter <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter,file=paste0("./Output/health/",database_state,"_",year_5,"_infantmortality5yeartotals.csv"),row.names=FALSE)
+
+
+#also write a query that exports the confidence intervals for copying into template
+moe_sql <- paste0("SELECT locationtype, timeframe, location, data, moe FROM ", database_state," WHERE timeframe='",year_5,"' AND varname='infantmortality5yeartotals' AND dataformat='Rate';")
+
+
+upload_moe1 <- dbGetQuery(con,moe_sql) %>%
+  subset(locationtype=='County') %>%
+  arrange(location)
+
+upload_moe2 <- dbGetQuery(con,moe_sql) %>%
+  subset(locationtype=='State') %>%
+  arrange(location)
+
+upload_moe <- upload_moe1 %>%
+  bind_rows(upload_moe2)
+
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_moe,file=paste0("./Output/health/moe/",database_state,"_",year_5,"_infantmortality5yeartotals_moe.csv"),row.names=FALSE)
+
+```
+
+
+
+## ############################ ##
+## CHILD DEATHS (5-YEAR TOTALS) ##
+## ############################ ##
+
+```{r}
+#import and clean the data
+childdeaths <- read_excel(path=paste0("./Input/health/southdakota_",year_5,"_vitalstatisticswithconfidenceintervals.xlsx"),sheet='Child Death',skip=1) %>%
+  rename(location=`...2`) %>%
+  select(-c(`...1`,`...9`)) %>%
+  #remove extra text and Unknown county
+  subset(!is.na(`POP 1-14`)) %>%
+  mutate(location=replace(location,is.na(location),'South Dakota')) %>%
+  subset(location!='Unknown') %>%
+  
+  rename(Number=`Deaths`,
+         Rate=`Rate`,
+         moe=`95% CI ±`,
+         lci=`Lower Limit`,
+         uci=`Upper Limit`) %>%
+  select(-c(`POP 1-14`)) %>%
+  mutate(Number=as.numeric(paste(Number)),
+         Rate=as.numeric(paste(Rate)),
+         moe=as.numeric(paste(moe)),
+         lci=as.numeric(paste(moe)),
+         uci=as.numeric(paste(moe))) %>%
+  #change number to <3
+  mutate(Number=as.character(paste(Number))) %>%
+  mutate(Number=replace(Number,Number=='NA','<3')) %>%
+  
+  #add in KC variables
+  mutate(locationtype=ifelse(location=='South Dakota','State','County')) %>%
+  mutate(timeframe=year_5,
+         state=statename,
+         varname='childdeaths5yeartotals') %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+#create dataset that only includes number
+childdeaths_number <- childdeaths %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Number)) %>%
+  rename(data=Number) %>%
+  mutate(dataformat='Number')
+
+#create dataset that only includes percent
+childdeaths_rate <- childdeaths %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Rate,moe,lci,uci)) %>%
+  rename(data=Rate) %>%
+  mutate(dataformat='Rate') %>%
+  
+  mutate(data=as.character(paste(data)))
+  
+
+#create dataset that includes all data
+childdeaths_all <- childdeaths_number %>%
+  bind_rows(childdeaths_rate)
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(childdeaths_all$locationid))>=1) {
+  print(childdeaths_all$location[is.na(childdeaths_all$locationid)])
+} else if (sum(is.na(childdeaths_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 3
+temp_suppresscheck <- childdeaths_all %>% mutate(data=as.numeric(paste(data))) %>% subset(dataformat=='Number') %>% subset(data<3)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- childdeaths_all %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+}
+
+
+# 4. Visually inspect output data
+View(childdeaths_all)
+
+```
+
+```{r}
+#CHECK DATASET NAMED childdeaths_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,childdeaths_all,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year_5,"' AND varname='childdeaths5yeartotals' AND dataformat='Rate';")
+
+
+upload_datacenter <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter,file=paste0("./Output/health/",database_state,"_",year_5,"_childdeaths5yeartotals.csv"),row.names=FALSE)
+
+
+#also write a query that exports the confidence intervals for copying into template
+moe_sql <- paste0("SELECT locationtype, timeframe, location, data, moe FROM ", database_state," WHERE timeframe='",year_5,"' AND varname='childdeaths5yeartotals' AND dataformat='Rate';")
+
+
+upload_moe1 <- dbGetQuery(con,moe_sql) %>%
+  subset(locationtype=='County') %>%
+  arrange(location)
+
+upload_moe2 <- dbGetQuery(con,moe_sql) %>%
+  subset(locationtype=='State') %>%
+  arrange(location)
+
+upload_moe <- upload_moe1 %>%
+  bind_rows(upload_moe2)
+
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_moe,file=paste0("./Output/health/moe/",database_state,"_",year_5,"_childdeaths5yeartotals_moe.csv"),row.names=FALSE)
+
+```
+
+
+
+## ################################### ##
+## TEEN VIOLENT DEATHS (5-YEAR TOTALS) ##
+## ################################### ##
+
+```{r}
+#import and clean the data
+teendeaths <- read_excel(path=paste0("./Input/health/southdakota_",year_5,"_vitalstatisticswithconfidenceintervals.xlsx"),sheet='Teen violent death',skip=1) %>%
+  rename(location=`...2`) %>%
+  select(-c(`...1`,`...9`)) %>%
+  #remove extra text and Unknown county
+  subset(!is.na(`Pop 15-19`)) %>%
+  mutate(location=replace(location,is.na(location),'South Dakota')) %>%
+  subset(location!='Unknown') %>%
+  
+  rename(Number=`Deaths`,
+         Rate=`Rate`,
+         moe=`95% CI ±`,
+         lci=`Lower Limit`,
+         uci=`Upper Limit`) %>%
+  select(-c(`Pop 15-19`)) %>%
+  mutate(Number=as.numeric(paste(Number)),
+         Rate=as.numeric(paste(Rate)),
+         moe=as.numeric(paste(moe)),
+         lci=as.numeric(paste(moe)),
+         uci=as.numeric(paste(moe))) %>%
+  #change number to <3
+  mutate(Number=as.character(paste(Number))) %>%
+  mutate(Number=replace(Number,Number=='NA','<3')) %>%
+  
+  #add in KC variables
+  mutate(locationtype=ifelse(location=='South Dakota','State','County')) %>%
+  mutate(timeframe=year_5,
+         state=statename,
+         varname='teenviolentdeaths5yeartotals') %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+#create dataset that only includes number
+teendeaths_number <- teendeaths %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Number)) %>%
+  rename(data=Number) %>%
+  mutate(dataformat='Number')
+
+#create dataset that only includes percent
+teendeaths_rate <- teendeaths %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Rate,moe,lci,uci)) %>%
+  rename(data=Rate) %>%
+  mutate(dataformat='Rate') %>%
+  
+  mutate(data=as.character(paste(data)))
+  
+
+#create dataset that includes all data
+teendeaths_all <- teendeaths_number %>%
+  bind_rows(teendeaths_rate)
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(teendeaths_all$locationid))>=1) {
+  print(teendeaths_all$location[is.na(teendeaths_all$locationid)])
+} else if (sum(is.na(teendeaths_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 3
+temp_suppresscheck <- teendeaths_all %>% mutate(data=as.numeric(paste(data))) %>% subset(dataformat=='Number') %>% subset(data<3)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- teendeaths_all %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+}
+
+
+# 4. Visually inspect output data
+View(teendeaths_all)
+
+```
+
+```{r}
+#CHECK DATASET NAMED teendeaths_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,teendeaths_all,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year_5,"' AND varname='teenviolentdeaths5yeartotals' AND dataformat='Rate';")
+
+
+upload_datacenter <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter,file=paste0("./Output/health/",database_state,"_",year_5,"_teenviolentdeaths5yeartotals.csv"),row.names=FALSE)
+
+
+#also write a query that exports the confidence intervals for copying into template
+moe_sql <- paste0("SELECT locationtype, timeframe, location, data, moe FROM ", database_state," WHERE timeframe='",year_5,"' AND varname='teenviolentdeaths5yeartotals' AND dataformat='Rate';")
+
+
+upload_moe1 <- dbGetQuery(con,moe_sql) %>%
+  subset(locationtype=='County') %>%
+  arrange(location)
+
+upload_moe2 <- dbGetQuery(con,moe_sql) %>%
+  subset(locationtype=='State') %>%
+  arrange(location)
+
+upload_moe <- upload_moe1 %>%
+  bind_rows(upload_moe2)
+
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_moe,file=paste0("./Output/health/moe/",database_state,"_",year_5,"_teenviolentdeaths5yeartotals_moe.csv"),row.names=FALSE)
+
+```
+
+
+
+
+
+
+## DATA FOR SOUTH DAKOTA TRIBAL DATA BOOKS
+
+
+
+## #################################################### ##
+## RESIDENT BIRTHS BY COUNTY TO AMERICAN INDIAN MOTHERS ##
+## #################################################### ##
+
+```{r}
+#---DO NOT EDIT DATES---#
+year_minus1 <- as.character(as.numeric(year)-1)
+year_minus2 <- as.character(as.numeric(year)-2)
+year_minus3 <- as.character(as.numeric(year)-3)
+year_minus4 <- as.character(as.numeric(year)-4)
+
+#first import total births across all races to use for calculating percentages
+totalbirths_sql <- paste0("SELECT location, timeframe, data FROM ", database_state," WHERE varname='totalbirths_1year'")
+
+totalbirths <- dbGetQuery(con,totalbirths_sql) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  #select the most recent five years
+  subset(timeframe==year | timeframe==year_minus1 | timeframe==year_minus2 | 
+           timeframe==year_minus3 | timeframe==year_minus4) %>%
+  group_by(location) %>%
+  summarise(totalbirths=sum(data),.groups='keep') %>%
+  ungroup
+
+#import and clean the data
+na_births <- read_excel(path=paste0("./Input/health/southdakota_",year_5,"_vitalstatisticsamericanindian.xlsx"),sheet='AI births',skip=1) %>%
+  rename(location=`Resident County`,
+         Number=Count) %>%
+  #remove extra text and Unknown county
+  subset(!is.na(Number)) %>%
+  subset(location!='Not Stated') %>%
+  
+  #if there are zero in a county, assign in NA
+  mutate(Number=replace(Number,Number=='0','NA')) %>%
+  
+  #merge in total births to calculate percentage
+  mutate(Number=as.numeric(paste(Number))) %>%
+  left_join(totalbirths, by=c('location'='location')) %>%
+  mutate(Percent=Number/totalbirths) %>%
+  select(-c(totalbirths)) %>%
+
+  #change number to <3
+  mutate(Number=as.character(paste(Number))) %>%
+  mutate(Number=replace(Number,Number=='NA','<3')) %>%
+  
+  #add in KC variables
+  mutate(locationtype=ifelse(location=='South Dakota','State','County')) %>%
+  mutate(timeframe=year_5,
+         state=statename,
+         varname='totalbirths_5year_na') %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  #pivot longer
+  mutate(Percent=as.character(paste(Percent))) %>%
+  pivot_longer(cols=c(Number,Percent),names_to='dataformat',values_to='data')
+
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(na_births$locationid))>=1) {
+  print(na_births$location[is.na(na_births$locationid)])
+} else if (sum(is.na(na_births$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 3
+temp_suppresscheck <- na_births %>%  mutate(data=as.numeric(paste(data))) %>% subset(dataformat=='Number') %>% subset(data<3)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- na_births %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+}
+
+
+# 4. Visually inspect output data
+View(na_births)
+
+```
+
+```{r}
+#CHECK DATASET NAMED na_births TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,na_births,append=TRUE,row.names=FALSE)
+```
+
+
+## ################################################# ##
+## LOW BIRTHWEIGHT BIRTHS TO AMERICAN INDIAN MOTHERS ##
+## ################################################# ##
+
+```{r}
+#import and clean the data
+lbw <- read_excel(path=paste0("./Input/health/southdakota_",year_5,"_vitalstatisticsamericanindian.xlsx"),sheet='AI LBW',skip=1) %>%
+  rename(location=`...2`) %>%
+  select(-c(`...1`)) %>%
+  #remove extra text and Unknown county
+  subset(!is.na(`Live Births`)) %>%
+  mutate(location=replace(location,is.na(location),'South Dakota')) %>%
+  subset(location!='Unknown') %>%
+  
+  rename(Number=`Low weight births`,
+         Percent=`% Low birth weight`) %>%
+  select(-c(`Live Births`)) %>%
+  
+  #merge in county list to include missing counties
+  full_join(countylist,by=c('location'='county')) %>%
+  #assign NA to missing  counties
+  mutate(Number=replace(Number,is.na(Number),NA)) %>%
+  mutate(Percent=replace(Percent,is.na(Percent),NA)) %>%
+  
+  mutate(Number=as.numeric(paste(Number)),
+         Percent=as.numeric(paste(Percent))) %>%
+  #change number to <3
+  mutate(Number=as.character(paste(Number))) %>%
+  mutate(Number=replace(Number,Number=='NA','<3')) %>%
+  
+  #add in KC variables
+  mutate(locationtype=ifelse(location=='South Dakota','State','County')) %>%
+  mutate(timeframe=year_5,
+         state=statename,
+         varname='lowbirthweight5yeartotals_na') %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+#create dataset that only includes number
+lbw_number <- lbw %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Number)) %>%
+  rename(data=Number) %>%
+  mutate(dataformat='Number')
+
+#create dataset that only includes percent
+lbw_percent <- lbw %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Percent)) %>%
+  rename(data=Percent) %>%
+  mutate(dataformat='Percent') %>%
+  
+  mutate(data=as.character(paste(data)))
+  
+
+#create dataset that includes all data
+lbw_all <- lbw_number %>%
+  bind_rows(lbw_percent)
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(lbw_all$locationid))>=1) {
+  print(lbw_all$location[is.na(lbw_all$locationid)])
+} else if (sum(is.na(lbw_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 3
+temp_suppresscheck <- lbw_all %>% mutate(data=as.numeric(paste(data))) %>% subset(dataformat=='Number') %>% subset(data<3)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- lbw_all %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+}
+
+
+# 4. Visually inspect output data
+View(lbw_all)
+
+```
+
+```{r}
+#CHECK DATASET NAMED lbw_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,lbw_all,append=TRUE,row.names=FALSE)
+```
+
+
+
+## ################################### ##
+## RESIDENT BIRTHS BY COUNTY TO SINGLE ## 
+## AMERICAN INDIAN TEENS UNDER AGE 20  ##
+## ################################### ##
+
+```{r}
+#import and clean the data
+teens <- read_excel(path=paste0("./Input/health/southdakota_",year_5,"_vitalstatisticsamericanindian.xlsx"),sheet='AI Teen Births',skip=1) %>%
+  rename(location=`...2`) %>%
+  select(-c(`...1`)) %>%
+  #remove extra text and Unknown county
+  subset(!is.na(`Live Births`)) %>%
+  mutate(location=replace(location,is.na(location),'South Dakota')) %>%
+  subset(location!='Unknown') %>%
+  
+  rename(Number=`Single Teen Births`,
+         Percent=`% Single Teen Births`) %>%
+  select(-c(`Live Births`)) %>%
+  
+  #merge in county list to include missing counties
+  full_join(countylist,by=c('location'='county')) %>%
+  #assign zero to missing  counties
+  mutate(Number=replace(Number,is.na(Number),NA)) %>%
+  mutate(Percent=replace(Percent,is.na(Percent),NA)) %>%
+  
+  mutate(Number=as.numeric(paste(Number)),
+         Percent=as.numeric(paste(Percent))) %>%
+  #change number to <3
+  mutate(Number=as.character(paste(Number))) %>%
+  mutate(Number=replace(Number,Number=='NA','<3')) %>%
+  
+  #add in KC variables
+  mutate(locationtype=ifelse(location=='South Dakota','State','County')) %>%
+  mutate(timeframe=year_5,
+         state=statename,
+         varname='birthstosingleteens5yeartotals_na') %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+#create dataset that only includes number
+teens_number <- teens %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Number)) %>%
+  rename(data=Number) %>%
+  mutate(dataformat='Number')
+
+#create dataset that only includes percent
+teens_percent <- teens %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Percent)) %>%
+  rename(data=Percent) %>%
+  mutate(dataformat='Percent') %>%
+  
+  mutate(data=as.character(paste(data)))
+  
+
+#create dataset that includes all data
+teens_all <- teens_number %>%
+  bind_rows(teens_percent)
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(teens_all$locationid))>=1) {
+  print(teens_all$location[is.na(teens_all$locationid)])
+} else if (sum(is.na(teens_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 3
+temp_suppresscheck <- teens_all %>% mutate(data=as.numeric(paste(data))) %>% subset(dataformat=='Number') %>% subset(data<3)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- teens_all %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+}
+
+
+# 4. Visually inspect output data
+View(teens_all)
+
+```
+
+```{r}
+#CHECK DATASET NAMED teens_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,teens_all,append=TRUE,row.names=FALSE)
+```
+
+
+## ##################################### ##
+## RESIDENT BIRTHS BY COUNTY TO AMERICAN ## 
+## INDIAN MOTHERS THAT INITIATED         ##
+## PRENATAL CARE IN THE FIRST TRIMESTER  ##
+## ##################################### ##
+
+```{r}
+#import and clean the data
+pnc <- read_excel(path=paste0("./Input/health/southdakota_",year_5,"_vitalstatisticsamericanindian.xlsx"),sheet='AI Prenatal Care',skip=1) %>%
+  rename(location=`...2`) %>%
+  select(-c(`...1`)) %>%
+  #remove extra text and Unknown county
+  subset(!is.na(`Live Births`)) %>%
+  mutate(location=replace(location,is.na(location),'South Dakota')) %>%
+  subset(location!='Unknown') %>%
+  
+  rename(Number=`1st Trimester Care`,
+         Percent=`% 1st Trimester Care`) %>%
+  select(-c(`Live Births`)) %>%
+  
+  #merge in county list to include missing counties
+  full_join(countylist,by=c('location'='county')) %>%
+  #assign zero to missing  counties
+  mutate(Number=replace(Number,is.na(Number),NA)) %>%
+  mutate(Percent=replace(Percent,is.na(Percent),NA)) %>%
+  
+  mutate(Number=as.numeric(paste(Number)),
+         Percent=as.numeric(paste(Percent))) %>%
+  #change number to <3
+  mutate(Number=as.character(paste(Number))) %>%
+  mutate(Number=replace(Number,Number=='NA','<3')) %>%
+  
+  #add in KC variables
+  mutate(locationtype=ifelse(location=='South Dakota','State','County')) %>%
+  mutate(timeframe=year_5,
+         state=statename,
+         varname='firsttrimesterprenatal5yeartotals_na') %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+#create dataset that only includes number
+pnc_number <- pnc %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Number)) %>%
+  rename(data=Number) %>%
+  mutate(dataformat='Number')
+
+#create dataset that only includes percent
+pnc_percent <- pnc %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Percent)) %>%
+  rename(data=Percent) %>%
+  mutate(dataformat='Percent') %>%
+  
+  mutate(data=as.character(paste(data)))
+  
+
+#create dataset that includes all data
+pnc_all <- pnc_number %>%
+  bind_rows(pnc_percent)
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(pnc_all$locationid))>=1) {
+  print(pnc_all$location[is.na(pnc_all$locationid)])
+} else if (sum(is.na(pnc_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 3
+temp_suppresscheck <- pnc_all %>% mutate(data=as.numeric(paste(data))) %>% subset(dataformat=='Number') %>% subset(data<3)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- pnc_all %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+}
+
+
+# 4. Visually inspect output data
+View(pnc_all)
+
+```
+
+```{r}
+#CHECK DATASET NAMED pnc_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,pnc_all,append=TRUE,row.names=FALSE)
+```
+
+
+
+## ####################################################### ##
+## RESIDENT DEATH BY COUNTY FOR AMERICAN INDIAN POPULATION ##
+## ####################################################### ##
+
+```{r}
+#import and clean the data
+deaths <- read_excel(path=paste0("./Input/health/southdakota_",year_5,"_vitalstatisticsamericanindian.xlsx"),sheet='AI deaths',skip=1) %>%
+  rename(location=`Resident County`,
+         data=Count) %>%
+  #remove extra text and Unknown county
+  subset(!is.na(data)) %>%
+  
+  #merge in county list to include missing counties
+  full_join(countylist,by=c('location'='county')) %>%
+  #assign zero to missing  counties
+  mutate(data=replace(data,is.na(data),NA)) %>%
+  
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(data=replace(data,data==0,NA)) %>%
+  #change number to <3
+  mutate(data=as.character(paste(data))) %>%
+  mutate(data=replace(data,data=='NA','<3')) %>%
+  
+  #add in KC variables
+  mutate(locationtype=ifelse(location=='South Dakota','State','County')) %>%
+  mutate(timeframe=year_5,
+         state=statename,
+         varname='residentdeaths5yeartotals_na') %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  mutate(dataformat='Number')
+
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(deaths$locationid))>=1) {
+  print(deaths$location[is.na(deaths$locationid)])
+} else if (sum(is.na(deaths$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 3
+temp_suppresscheck <- deaths %>% mutate(data=as.numeric(paste(data))) %>% subset(dataformat=='Number') %>% subset(data<3)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- deaths %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+}
+
+
+# 4. Visually inspect output data
+View(deaths)
+
+```
+
+```{r}
+#CHECK DATASET NAMED deaths TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,deaths,append=TRUE,row.names=FALSE)
+```
+
+
+
+## ################################################################ ##
+## RESIDENT INFANT DEATHS BY COUNTY FOR AMERICAN INDIAN POPULATION  ##
+## ################################################################ ##
+
+```{r}
+#import and clean the data
+infantdeaths <- read_excel(path=paste0("./Input/health/southdakota_",year_5,"_vitalstatisticsamericanindian.xlsx"),sheet='AI Infant Deaths',skip=1) %>%
+  rename(location=`...2`) %>%
+  select(-c(`...1`)) %>%
+  #remove extra text and Unknown county
+  subset(!is.na(`Live Births`)) %>%
+  mutate(location=replace(location,is.na(location),'South Dakota')) %>%
+  subset(location!='Unknown') %>%
+  
+  rename(Number=`Infant Deaths`,
+         Rate=`Infant Mortality Rate`) %>%
+  select(-c(`Live Births`)) %>%
+  
+  #merge in county list to include missing counties
+  full_join(countylist,by=c('location'='county')) %>%
+  #assign zero to missing  counties
+  mutate(Number=replace(Number,is.na(Number),NA)) %>%
+  mutate(Rate=replace(Rate,is.na(Rate),NA)) %>%
+  
+  mutate(Number=as.numeric(paste(Number)),
+         Rate=as.numeric(paste(Rate))) %>%
+  #change number to <3
+  mutate(Number=as.character(paste(Number))) %>%
+  mutate(Number=replace(Number,Number=='NA','<3')) %>%
+  
+  #add in KC variables
+  mutate(locationtype=ifelse(location=='South Dakota','State','County')) %>%
+  mutate(timeframe=year_5,
+         state=statename,
+         varname='infantmortality5yeartotals_na') %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+#create dataset that only includes number
+infantdeaths_number <- infantdeaths %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Number)) %>%
+  rename(data=Number) %>%
+  mutate(dataformat='Number')
+
+#create dataset that only includes percent
+infantdeaths_percent <- infantdeaths %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Rate)) %>%
+  rename(data=Rate) %>%
+  mutate(dataformat='Rate') %>%
+  
+  mutate(data=as.character(paste(data)))
+  
+
+#create dataset that includes all data
+infantdeaths_all <- infantdeaths_number %>%
+  bind_rows(infantdeaths_percent)
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(infantdeaths_all$locationid))>=1) {
+  print(infantdeaths_all$location[is.na(infantdeaths_all$locationid)])
+} else if (sum(is.na(infantdeaths_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 3
+temp_suppresscheck <- infantdeaths_all %>% mutate(data=as.numeric(paste(data))) %>% subset(dataformat=='Number') %>% subset(data<3)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- infantdeaths_all %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+}
+
+
+# 4. Visually inspect output data
+View(infantdeaths_all)
+
+```
+
+```{r}
+#CHECK DATASET NAMED infantdeaths_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,infantdeaths_all,append=TRUE,row.names=FALSE)
+```
+
+
+
+## ################################################################### ##
+## RESIDENT DEATHS BY COUNTY FOR AMERICAN INDIAN POPULATION AGES 1-14  ##
+## ################################################################### ##
+
+```{r}
+#import and clean the data
+childdeaths <- read_excel(path=paste0("./Input/health/southdakota_",year_5,"_vitalstatisticsamericanindian.xlsx"),sheet='AI Child Deaths',skip=1) %>%
+  rename(location=`...2`) %>%
+  select(-c(`...1`)) %>%
+  #remove extra text and Unknown county
+  subset(!is.na(`1-14 AI Population 2015-2019`)) %>%
+  mutate(location=replace(location,is.na(location),'South Dakota')) %>%
+  subset(location!='Unknown') %>%
+  
+  rename(Number=`Deaths`,
+         Rate=`Rate`) %>%
+  select(-c(`1-14 AI Population 2015-2019`)) %>%
+  
+  #merge in county list to include missing counties
+  full_join(countylist,by=c('location'='county')) %>%
+  #assign zero to missing  counties
+  mutate(Number=replace(Number,is.na(Number),NA)) %>%
+  mutate(Rate=replace(Rate,is.na(Rate),NA)) %>%
+  
+  mutate(Number=as.numeric(paste(Number)),
+         Rate=as.numeric(paste(Rate))) %>%
+  #change number to <3
+  mutate(Number=as.character(paste(Number))) %>%
+  mutate(Number=replace(Number,Number=='NA','<3')) %>%
+  
+  #add in KC variables
+  mutate(locationtype=ifelse(location=='South Dakota','State','County')) %>%
+  mutate(timeframe=year_5,
+         state=statename,
+         varname='childdeaths5yeartotals_na') %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+#create dataset that only includes number
+childdeaths_number <- childdeaths %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Number)) %>%
+  rename(data=Number) %>%
+  mutate(dataformat='Number')
+
+#create dataset that only includes percent
+childdeaths_percent <- childdeaths %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Rate)) %>%
+  rename(data=Rate) %>%
+  mutate(dataformat='Rate') %>%
+  
+  mutate(data=as.character(paste(data)))
+  
+
+#create dataset that includes all data
+childdeaths_all <- childdeaths_number %>%
+  bind_rows(childdeaths_percent)
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(childdeaths_all$locationid))>=1) {
+  print(childdeaths_all$location[is.na(childdeaths_all$locationid)])
+} else if (sum(is.na(childdeaths_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 3
+temp_suppresscheck <- childdeaths_all %>% mutate(data=as.numeric(paste(data))) %>% subset(dataformat=='Number') %>% subset(data<3)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- childdeaths_all %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+}
+
+
+# 4. Visually inspect output data
+View(childdeaths_all)
+
+```
+
+```{r}
+#CHECK DATASET NAMED childdeaths_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,childdeaths_all,append=TRUE,row.names=FALSE)
+```
+
+
+
+## ##################################### ##
+## RESIDENT VIOLENT DEATHS BY COUNTY FOR ##
+## AMERICAN INDIAN POPULATION AGES 15-19 ##
+## ##################################### ##
+
+```{r}
+#import and clean the data
+teendeaths <- read_excel(path=paste0("./Input/health/southdakota_",year_5,"_vitalstatisticsamericanindian.xlsx"),sheet='AI Teen Deaths',skip=1) %>%
+  rename(location=`...2`) %>%
+  select(-c(`...1`)) %>%
+  #remove extra text and Unknown county
+  subset(!is.na(`15-19 AI Population 2015-2019`)) %>%
+  mutate(location=replace(location,is.na(location),'South Dakota')) %>%
+  subset(location!='Unknown') %>%
+  
+  rename(Number=`Deaths`,
+         Rate=`Rate`) %>%
+  select(-c(`15-19 AI Population 2015-2019`)) %>%
+  
+  #merge in county list to include missing counties
+  full_join(countylist,by=c('location'='county')) %>%
+  #assign zero to missing  counties
+  mutate(Number=replace(Number,is.na(Number),NA)) %>%
+  mutate(Rate=replace(Rate,is.na(Rate),NA)) %>%
+  
+  mutate(Number=as.numeric(paste(Number)),
+         Rate=as.numeric(paste(Rate))) %>%
+  #change number to <3
+  mutate(Number=as.character(paste(Number))) %>%
+  mutate(Number=replace(Number,Number=='NA','<3')) %>%
+  
+  #add in KC variables
+  mutate(locationtype=ifelse(location=='South Dakota','State','County')) %>%
+  mutate(timeframe=year_5,
+         state=statename,
+         varname='teenviolentdeaths5yeartotals_na') %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+#create dataset that only includes number
+teendeaths_number <- teendeaths %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Number)) %>%
+  rename(data=Number) %>%
+  mutate(dataformat='Number')
+
+#create dataset that only includes percent
+teendeaths_percent <- teendeaths %>%
+  select(c(location,locationtype,locationid,timeframe,state,varname,Rate)) %>%
+  rename(data=Rate) %>%
+  mutate(dataformat='Rate') %>%
+  
+  mutate(data=as.character(paste(data)))
+  
+
+#create dataset that includes all data
+teendeaths_all <- teendeaths_number %>%
+  bind_rows(teendeaths_percent)
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(teendeaths_all$locationid))>=1) {
+  print(teendeaths_all$location[is.na(teendeaths_all$locationid)])
+} else if (sum(is.na(teendeaths_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 3
+temp_suppresscheck <- teendeaths_all %>% mutate(data=as.numeric(paste(data))) %>% subset(dataformat=='Number') %>% subset(data<3)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- teendeaths_all %>%
+  subset(locationtype=='County' & dataformat=='Number') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+}
+
+
+# 4. Visually inspect output data
+View(teendeaths_all)
+
+```
+
+```{r}
+#CHECK DATASET NAMED teendeaths_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,teendeaths_all,append=TRUE,row.names=FALSE)
+```
+
+

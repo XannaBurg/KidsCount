@@ -15,9 +15,10 @@ output: html_document
 ## Home school enrollment
 ## Grades 7 to 12 event drop-out rate
 ## High school completion rate
-##Four-year cohort graduation rate
+## Four-year cohort graduation rate
 ## Average expenditures per student in public schools
 ## Average ACT composite score
+## Eligible recipients of free or reduced-price lunch (state and district only)
 ## Children enrolled in special education in public schools by race/ethnicity
 ## High school completion rate by race/ethnicity
 ## Four-year cohort graduation rate by race/ethnicity

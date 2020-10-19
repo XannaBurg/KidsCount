@@ -1,0 +1,1213 @@
+---
+title: "South Dakota Public Assistance"
+author: "Xanna Burg"
+date: "6/30/2020"
+output: html_document
+---
+
+## Indicator 1: Supplemental Nutrition Assistance Program (SNAP) households
+## Indicator 2: Supplemental Nutrition Assistance Program (SNAP) participants by age group
+## Indicator 3: Families receiving TANF
+## Indicator 4: Children receiving TANF
+## Indicator 5: Medicaid participants by age group
+## Tribal data book indicators: Native American participants in SNAP, TANF, and Medicaid
+
+
+**Created by:** Xanna Burg
+**Date:** October 2020
+**Updated by:**
+
+**Data Source:** South Dakota Department of Social Services
+**Purpose:** Clean and process the public assistance data requested from DSS into correct format for Kids Count Data Center.
+
+**Data format:** Final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Category (for Medicaid groups, and for recipient/household groups; character) Data (numeric: number, percentage), DataFormat (character: "number" or "percent" or "currency"), LocationId (numeric: assigned for KIDS COUNT system)
+
+
+**To use this code for a new year:**
+* Update the year in the second code chunk for variable 'year'
+* Check each dataset visually and through the report logs prior to commiting to the database.
+
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+library(stringr)
+```
+
+
+```{r}
+
+####UPDATE to reflect the current year data working with
+year <- '2020'
+year_short <- '20'
+statename <- 'South Dakota'
+
+
+#run this code to create an object needed for the database (DO NOT EDIT)
+database_state <- 'southdakota'
+
+#input location ID file for SD
+locationids <- read.csv("./Input/SD KC Location IDs.csv")
+locationids$Location <- as.character(locationids$Location)
+
+```
+
+
+
+## ########################################################### ##
+## SUPPLEMENTAL NUTRITION ASSISTANCE PROGRAM (SNAP) HOUSEHOLDS ##
+## ########################################################### ##
+
+```{r}
+#import and clean the data
+snaphouseholds <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_publicassistance.xlsx"),sheet=paste0("SNAP_FY",year_short),skip=1) %>%
+  
+  rename(location=`...1`,
+         data=Households) %>%
+  mutate(location=replace(location,location=='State Totals','South Dakota')) %>%
+  
+  #add in KC variables
+  select(c(location,data)) %>%
+  mutate(locationtype=ifelse(location=='South Dakota','State','County')) %>%
+  mutate(state='South Dakota',
+         timeframe=year,
+         dataformat='Number',
+         varname='snaphouseholds') %>%
+  
+  #add in location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  #suppress if 5 or fewer
+  mutate(data=replace(data,data<=5,NA))
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(snaphouseholds$locationid))>=1) {
+  print(snaphouseholds$location[is.na(snaphouseholds$locationid)])
+} else if (sum(is.na(snaphouseholds$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 6
+temp_suppresscheck <- snaphouseholds %>% subset(data<6)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- snaphouseholds %>%
+  subset(locationtype=='County') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+}
+
+
+# 4. Visually inspect output data
+View(snaphouseholds)
+
+```
+
+```{r}
+#CHECK DATASET NAMED snaphouseholds TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,snaphouseholds,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='snaphouseholds';")
+
+
+upload_datacenter <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter,file=paste0("./Output/economics/",database_state,"_",year,"_snaphouseholds.csv"),row.names=FALSE)
+```
+
+
+
+## ################################################ ##
+## SUPPLEMENTAL NUTRITION ASSISTANCE PROGRAM (SNAP) ##
+##           PARTICIPANTS BY AGE GROUP              ##
+## ################################################ ##
+
+```{r}
+#import and clean the data
+snapparticipants <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_publicassistance.xlsx"),sheet="SNAP_By Age Group",skip=1) %>%
+  
+  rename(location=all_of(paste0("FY",year_short))) %>%
+  mutate(location=replace(location,location=='State','South Dakota')) %>%
+  
+  #lower case county names
+  mutate(location=tolower(location)) %>%
+  mutate(location=str_to_title(location)) %>%
+  
+  #add in KC variables
+  mutate(locationtype=ifelse(location=='South Dakota','State','County')) %>%
+  mutate(state='South Dakota',
+         timeframe=year,
+         dataformat='Number',
+         varname='snaprecipientsbyage') %>%
+  
+  #fix mismatched locations
+  mutate(location=replace(location,location=='Mcpherson',"McPherson")) %>%
+  mutate(location=replace(location,location=='Mccook','McCook')) %>%
+  
+  #add in location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  #pivot longer
+  rename(`Ages 0-4`=`0-4`,
+         `Ages 5-13`=`5-13`,
+         `Ages 14-17`=`14-17`,
+         `Total Under 18`=`Total`) %>%
+  pivot_longer(cols=c('Ages 0-4','Ages 5-13','Ages 14-17',
+                      'Total Under 18'),names_to='age_group',values_to='data') %>%
+  
+  #suppress <6
+  mutate(data=replace(data,data<6,NA)) %>%
+  mutate(data=as.character(paste(data))) %>%
+  mutate(data=replace(data,data=='NA',"<6"))
+  
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(snapparticipants$locationid))>=1) {
+  print(snapparticipants$location[is.na(snapparticipants$locationid)])
+} else if (sum(is.na(snapparticipants$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 6
+temp_suppresscheck <- snapparticipants %>% 
+  mutate(data=as.numeric(paste(data))) %>%
+  subset(data<6)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+
+
+# 3. Visually inspect output data
+View(snapparticipants)
+
+```
+
+```{r}
+#CHECK DATASET NAMED snapparticipants TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,snapparticipants,append=TRUE,row.names=FALSE)
+```
+
+
+## Next calculate the percentage using population estimates
+```{r}
+year_minus1 <- as.character(as.numeric(year)-1)
+snap_0to4sql <- paste0("SELECT locationid, location, locationtype, state, timeframe, dataformat, data, varname, age_group FROM southdakota WHERE timeframe='",year,"' AND varname='snaprecipientsbyage' AND age_group='Ages 0-4' AND dataformat='Number';")
+
+snap_0to4 <- dbGetQuery(con,snap_0to4sql) 
+
+
+snap_5to13sql <- paste0("SELECT locationid, location, locationtype, state, timeframe, dataformat, data, varname, age_group FROM southdakota WHERE timeframe='",year,"' AND varname='snaprecipientsbyage' AND age_group='Ages 5-13' AND dataformat='Number';")
+
+snap_5to13 <- dbGetQuery(con,snap_5to13sql)
+
+
+snap_14to17sql <- paste0("SELECT locationid, location, locationtype, state, timeframe, dataformat, data, varname, age_group FROM southdakota WHERE timeframe='",year,"' AND varname='snaprecipientsbyage' AND age_group='Ages 14-17' AND dataformat='Number';")
+
+snap_14to17 <- dbGetQuery(con,snap_14to17sql)
+
+
+snap_under18sql <- paste0("SELECT locationid, location, locationtype, state, timeframe, dataformat, data, varname, age_group FROM southdakota WHERE timeframe='",year,"' AND varname='snaprecipientsbyage' AND age_group='Total Under 18' AND dataformat='Number';")
+
+snap_under18 <- dbGetQuery(con,snap_under18sql)
+
+
+#population
+population_0to4sql <- paste0("SELECT locationid, location, locationtype, state, timeframe, vintageyear, dataformat, data, varname, age_group FROM southdakota WHERE varname='childpopulationbysingleyearofage' AND timeframe='",year_minus1,"' AND vintageyear='",year_minus1,"';")
+
+population_0to4 <- dbGetQuery(con,population_0to4sql) %>%
+  mutate(age_group=as.numeric(paste(age_group))) %>%
+  subset(age_group<=4) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  group_by(locationid,location,locationtype,state,timeframe) %>%
+  summarise(pop=sum(data),.groups='keep') %>%
+  ungroup %>%
+  mutate(timeframe=as.numeric(paste(timeframe))) %>%
+  mutate(timeframe=timeframe+1) %>%
+  mutate(timeframe=as.character(paste(timeframe))) %>%
+  arrange(location,timeframe)
+
+
+population_5to13sql <- paste0("SELECT locationid, location, locationtype, state, timeframe, vintageyear, dataformat, data, varname, age_group FROM southdakota WHERE varname='childpopulationbysingleyearofage' AND timeframe='",year_minus1,"' AND vintageyear='",year_minus1,"';")
+
+population_5to13 <- dbGetQuery(con,population_5to13sql) %>%
+  mutate(age_group=as.numeric(paste(age_group))) %>%
+  subset(age_group<=13 & age_group>=5) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  group_by(locationid,location,locationtype,state,timeframe) %>%
+  summarise(pop=sum(data),.groups='keep') %>%
+  ungroup %>%
+  mutate(timeframe=as.numeric(paste(timeframe))) %>%
+  mutate(timeframe=timeframe+1) %>%
+  mutate(timeframe=as.character(paste(timeframe)))
+
+
+
+population_14to17sql <- paste0("SELECT locationid, location, locationtype, state, timeframe, vintageyear, dataformat, data, varname, age_group FROM southdakota WHERE varname='childpopulationbysingleyearofage' AND timeframe='",year_minus1,"' AND vintageyear='",year_minus1,"';")
+
+population_14to17 <- dbGetQuery(con,population_14to17sql) %>%
+  mutate(age_group=as.numeric(paste(age_group))) %>%
+  subset(age_group<=17 & age_group>=14) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  group_by(locationid,location,locationtype,state,timeframe) %>%
+  summarise(pop=sum(data),.groups='keep') %>%
+  ungroup %>%
+  mutate(timeframe=as.numeric(paste(timeframe))) %>%
+  mutate(timeframe=timeframe+1) %>%
+  mutate(timeframe=as.character(paste(timeframe)))
+
+
+
+
+population_under18sql <- paste0("SELECT locationid, location, locationtype, state, timeframe, vintageyear, dataformat, data, varname, age_group FROM southdakota WHERE varname='childpopulationbysingleyearofage' AND timeframe='",year_minus1,"' AND vintageyear='",year_minus1,"';")
+
+population_under18 <- dbGetQuery(con,population_under18sql) %>%
+  mutate(age_group=as.numeric(paste(age_group))) %>%
+  subset(age_group<18) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  group_by(locationid,location,locationtype,state,timeframe) %>%
+  summarise(pop=sum(data),.groups='keep') %>%
+  ungroup %>%
+  mutate(timeframe=as.numeric(paste(timeframe))) %>%
+  mutate(timeframe=timeframe+1) %>%
+  mutate(timeframe=as.character(paste(timeframe)))
+
+
+
+snap_percents_0to4 <- snap_0to4 %>%
+  left_join(population_0to4,by = c("locationid", "location", "locationtype", "state", "timeframe")) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(percent=data/pop) %>%
+  select(-c(data,pop)) %>%
+  rename(data=percent) %>%
+  mutate(dataformat='Percent') %>%
+  arrange(location,timeframe)
+
+
+snap_percents_5to13 <- snap_5to13 %>%
+  left_join(population_5to13,by = c("locationid", "location", "locationtype", "state", "timeframe")) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(percent=data/pop) %>%
+  select(-c(data,pop)) %>%
+  rename(data=percent) %>%
+  mutate(dataformat='Percent') %>% 
+  arrange(location,timeframe)
+
+
+snap_percents_14to17 <- snap_14to17 %>%
+  left_join(population_14to17,by = c("locationid", "location", "locationtype", "state", "timeframe")) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(percent=data/pop) %>%
+  select(-c(data,pop)) %>%
+  rename(data=percent) %>%
+  mutate(dataformat='Percent') %>%
+  arrange(location,timeframe)
+
+
+
+snap_percents_under18 <- snap_under18 %>%
+  left_join(population_under18,by = c("locationid", "location", "locationtype", "state", "timeframe")) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(percent=data/pop) %>%
+  select(-c(data,pop)) %>%
+  rename(data=percent) %>%
+  mutate(dataformat='Percent') %>%
+  arrange(location,timeframe) %>%
+  arrange(location,timeframe)
+
+
+
+snapparticipants_percent <- snap_percents_0to4 %>%
+  bind_rows(snap_percents_5to13) %>%
+  bind_rows(snap_percents_14to17) %>%
+  bind_rows(snap_percents_under18)
+```
+
+```{r}
+#CHECK DATASET NAMED snapparticipants_percent TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,snapparticipants_percent,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, age_group, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='snaprecipientsbyage';")
+
+
+upload_datacenter <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         `Age group`=age_group)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter,file=paste0("./Output/economics/",database_state,"_",year,"_snaprecipientsbyage.csv"),row.names=FALSE)
+```
+
+
+
+
+
+## ####################### ##
+## FAMILIES RECEIVING TANF ##
+## ####################### ##
+
+```{r}
+#import and clean the data
+tanfhouseholds <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_publicassistance.xlsx"),sheet=paste0("TANF_FY",year_short),skip=4) %>%
+  
+  rename(location=`...1`,
+         data=Families) %>%
+  mutate(location=replace(location,location=='State Totals','South Dakota')) %>%
+  
+  #add in KC variables
+  select(c(location,data)) %>%
+  mutate(locationtype=ifelse(location=='South Dakota','State','County')) %>%
+  mutate(state='South Dakota',
+         timeframe=year,
+         dataformat='Number',
+         varname='tanfhouseholds') %>%
+  
+  #add in location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  #suppress if 5 or fewer
+  mutate(data=replace(data,data<=5,NA)) %>%
+  mutate(data=as.character(paste(data))) %>%
+  mutate(data=replace(data,data=='NA','<6'))
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(tanfhouseholds$locationid))>=1) {
+  print(tanfhouseholds$location[is.na(tanfhouseholds$locationid)])
+} else if (sum(is.na(tanfhouseholds$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 6
+temp_suppresscheck <- tanfhouseholds %>% 
+  mutate(data=as.numeric(paste(data))) %>%
+  subset(data<6)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- tanfhouseholds %>%
+  subset(locationtype=='County') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+}
+
+
+# 4. Visually inspect output data
+View(tanfhouseholds)
+
+```
+
+```{r}
+#CHECK DATASET NAMED tanfhouseholds TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,tanfhouseholds,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='tanfhouseholds';")
+
+
+upload_datacenter <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter,file=paste0("./Output/economics/",database_state,"_",year,"_tanfhouseholds.csv"),row.names=FALSE)
+```
+
+
+## ####################### ##
+## CHILDREN RECEIVING TANF ##
+## ####################### ##
+
+```{r}
+#import and clean the data
+tanfparticipants <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_publicassistance.xlsx"),sheet=paste0("TANF_FY",year_short),skip=4) %>%
+  
+  rename(location=`...1`,
+         data=Children) %>%
+  mutate(location=replace(location,location=='State Totals','South Dakota')) %>%
+  
+  #add in KC variables
+  select(c(location,data)) %>%
+  mutate(locationtype=ifelse(location=='South Dakota','State','County')) %>%
+  mutate(state='South Dakota',
+         timeframe=year,
+         dataformat='Number',
+         varname='tanfrecipientsages0to17') %>%
+  
+  #add in location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  #suppress if 5 or fewer
+  mutate(data=replace(data,data<=5,NA)) %>%
+  mutate(data=as.character(paste(data))) %>%
+  mutate(data=replace(data,data=='NA','<6'))
+  
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(tanfparticipants$locationid))>=1) {
+  print(snapparticipants$location[is.na(tanfparticipants$locationid)])
+} else if (sum(is.na(tanfparticipants$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 6
+temp_suppresscheck <- tanfparticipants %>% 
+  mutate(data=as.numeric(paste(data))) %>%
+  subset(data<6)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+
+
+# 3. Visually inspect output data
+View(tanfparticipants)
+
+```
+
+```{r}
+#CHECK DATASET NAMED tanfparticipants TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,tanfparticipants,append=TRUE,row.names=FALSE)
+```
+
+
+## Next calculate the percentage using population estimates
+```{r}
+year_minus1 <- as.character(as.numeric(year)-1)
+tanf_0to17sql <- paste0("SELECT locationid, location, locationtype, state, timeframe, dataformat, data, varname FROM southdakota WHERE timeframe='",year,"' AND varname='tanfrecipientsages0to17' AND dataformat='Number';")
+
+tanf_0to17 <- dbGetQuery(con,tanf_0to17sql) 
+
+
+
+#population
+population_0to17sql <- paste0("SELECT locationid, location, locationtype, state, timeframe, vintageyear, dataformat, data, varname, age_group FROM southdakota WHERE varname='childpopulationbysingleyearofage' AND timeframe='",year_minus1,"' AND vintageyear='",year_minus1,"';")
+
+population_0to17 <- dbGetQuery(con,population_0to17sql) %>%
+  mutate(age_group=as.numeric(paste(age_group))) %>%
+  subset(age_group<=17) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  group_by(locationid,location,locationtype,state,timeframe) %>%
+  summarise(pop=sum(data),.groups='keep') %>%
+  ungroup %>%
+  mutate(timeframe=as.numeric(paste(timeframe))) %>%
+  mutate(timeframe=timeframe+1) %>%
+  mutate(timeframe=as.character(paste(timeframe))) %>%
+  arrange(location,timeframe)
+
+
+tanf_percents_0to17 <- tanf_0to17 %>%
+  left_join(population_0to17,by = c("locationid", "location", "locationtype", "state", "timeframe")) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(percent=data/pop) %>%
+  select(-c(data,pop)) %>%
+  rename(data=percent) %>%
+  mutate(dataformat='Percent') %>%
+  arrange(location,timeframe)
+
+```
+
+```{r}
+#CHECK DATASET NAMED tanf_percents_0to17 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,tanf_percents_0to17,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='tanfrecipientsages0to17';")
+
+
+upload_datacenter <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter,file=paste0("./Output/economics/",database_state,"_",year,"_tanfrecipientsages0to17.csv"),row.names=FALSE)
+```
+
+
+
+
+
+
+## ################################## ##
+## MEDICAID PARTICIPANTS BY AGE GROUP ##
+## ################################## ##
+
+```{r}
+#import and clean the data
+medicaidparticipants <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_publicassistance.xlsx"),sheet=paste0("Medicaid&CHIP Kids FY",year_short),skip=2) %>%
+  
+  select(-c(`...6`,`Title XXI Children`)) %>%
+  
+  rename(location=`...1`) %>%
+  mutate(location=replace(location,location=='State Totals','South Dakota')) %>%
+  
+  subset(location!='County Not Available') %>%
+
+  
+  #add in KC variables
+  mutate(locationtype=ifelse(location=='South Dakota','State','County')) %>%
+  mutate(state='South Dakota',
+         timeframe=year,
+         dataformat='Number',
+         varname='medicaidparticipantsbyage') %>%
+
+  #add in location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  #pivot longer
+  rename(`Ages 0-5`=`0 to 5`,
+         `Ages 6-13`=`6 to 13`,
+         `Ages 14-18`=`14 to 18`,
+         `Total Under 19`=`Total`) %>%
+  pivot_longer(cols=c('Ages 0-5','Ages 6-13','Ages 14-18',
+                      'Total Under 19'),names_to='age_group',values_to='data') %>%
+  
+  #suppress <6
+  mutate(data=replace(data,data<6,NA)) %>%
+  mutate(data=as.character(paste(data))) %>%
+  mutate(data=replace(data,data=='NA',"<6"))
+  
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(medicaidparticipants$locationid))>=1) {
+  print(medicaidparticipants$location[is.na(medicaidparticipants$locationid)])
+} else if (sum(is.na(medicaidparticipants$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 6
+temp_suppresscheck <- medicaidparticipants %>% 
+  mutate(data=as.numeric(paste(data))) %>%
+  subset(data<6)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+
+
+# 3. Visually inspect output data
+View(medicaidparticipants)
+
+```
+
+```{r}
+#CHECK DATASET NAMED medicaidparticipants TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,medicaidparticipants,append=TRUE,row.names=FALSE)
+```
+
+
+## Next calculate the percentage using population estimates
+```{r}
+year_minus1 <- as.character(as.numeric(year)-1)
+medicaid_0to5sql <- paste0("SELECT locationid, location, locationtype, state, timeframe, dataformat, data, varname, age_group FROM southdakota WHERE timeframe='",year,"' AND varname='medicaidparticipantsbyage' AND age_group='Ages 0-5' AND dataformat='Number';")
+
+medicaid_0to5 <- dbGetQuery(con,medicaid_0to5sql) 
+
+
+medicaid_6to13sql <- paste0("SELECT locationid, location, locationtype, state, timeframe, dataformat, data, varname, age_group FROM southdakota WHERE timeframe='",year,"' AND varname='medicaidparticipantsbyage' AND age_group='Ages 6-13' AND dataformat='Number';")
+
+medicaid_6to13 <- dbGetQuery(con,medicaid_6to13sql)
+
+
+medicaid_14to18sql <- paste0("SELECT locationid, location, locationtype, state, timeframe, dataformat, data, varname, age_group FROM southdakota WHERE timeframe='",year,"' AND varname='medicaidparticipantsbyage' AND age_group='Ages 14-18' AND dataformat='Number';")
+
+medicaid_14to18 <- dbGetQuery(con,medicaid_14to18sql)
+
+
+medicaid_under19sql <- paste0("SELECT locationid, location, locationtype, state, timeframe, dataformat, data, varname, age_group FROM southdakota WHERE timeframe='",year,"' AND varname='medicaidparticipantsbyage' AND age_group='Total Under 19' AND dataformat='Number';")
+
+medicaid_under19 <- dbGetQuery(con,medicaid_under19sql)
+
+
+#population
+population_0to5sql <- paste0("SELECT locationid, location, locationtype, state, timeframe, vintageyear, dataformat, data, varname, age_group FROM southdakota WHERE varname='childpopulationbysingleyearofage' AND timeframe='",year_minus1,"' AND vintageyear='",year_minus1,"';")
+
+population_0to5 <- dbGetQuery(con,population_0to5sql) %>%
+  mutate(age_group=as.numeric(paste(age_group))) %>%
+  subset(age_group<=5) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  group_by(locationid,location,locationtype,state,timeframe) %>%
+  summarise(pop=sum(data),.groups='keep') %>%
+  ungroup %>%
+  mutate(timeframe=as.numeric(paste(timeframe))) %>%
+  mutate(timeframe=timeframe+1) %>%
+  mutate(timeframe=as.character(paste(timeframe))) %>%
+  arrange(location,timeframe)
+
+
+population_6to13sql <- paste0("SELECT locationid, location, locationtype, state, timeframe, vintageyear, dataformat, data, varname, age_group FROM southdakota WHERE varname='childpopulationbysingleyearofage' AND timeframe='",year_minus1,"' AND vintageyear='",year_minus1,"';")
+
+population_6to13 <- dbGetQuery(con,population_6to13sql) %>%
+  mutate(age_group=as.numeric(paste(age_group))) %>%
+  subset(age_group<=13 & age_group>=6) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  group_by(locationid,location,locationtype,state,timeframe) %>%
+  summarise(pop=sum(data),.groups='keep') %>%
+  ungroup %>%
+  mutate(timeframe=as.numeric(paste(timeframe))) %>%
+  mutate(timeframe=timeframe+1) %>%
+  mutate(timeframe=as.character(paste(timeframe)))
+
+
+
+population_14to18sql <- paste0("SELECT locationid, location, locationtype, state, timeframe, vintageyear, dataformat, data, varname, age_group FROM southdakota WHERE varname='childpopulationbysingleyearofage' AND timeframe='",year_minus1,"' AND vintageyear='",year_minus1,"';")
+
+population_14to18 <- dbGetQuery(con,population_14to18sql) %>%
+  mutate(age_group=as.numeric(paste(age_group))) %>%
+  subset(age_group<=18 & age_group>=14) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  group_by(locationid,location,locationtype,state,timeframe) %>%
+  summarise(pop=sum(data),.groups='keep') %>%
+  ungroup %>%
+  mutate(timeframe=as.numeric(paste(timeframe))) %>%
+  mutate(timeframe=timeframe+1) %>%
+  mutate(timeframe=as.character(paste(timeframe)))
+
+
+
+
+population_under19sql <- paste0("SELECT locationid, location, locationtype, state, timeframe, vintageyear, dataformat, data, varname, age_group FROM southdakota WHERE varname='childpopulationbysingleyearofage' AND timeframe='",year_minus1,"' AND vintageyear='",year_minus1,"';")
+
+population_under19 <- dbGetQuery(con,population_under19sql) %>%
+  mutate(age_group=as.numeric(paste(age_group))) %>%
+  subset(age_group<19) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  group_by(locationid,location,locationtype,state,timeframe) %>%
+  summarise(pop=sum(data),.groups='keep') %>%
+  ungroup %>%
+  mutate(timeframe=as.numeric(paste(timeframe))) %>%
+  mutate(timeframe=timeframe+1) %>%
+  mutate(timeframe=as.character(paste(timeframe)))
+
+
+
+medicaid_percents_0to5 <- medicaid_0to5 %>%
+  left_join(population_0to5,by = c("locationid", "location", "locationtype", "state", "timeframe")) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(percent=data/pop) %>%
+  select(-c(data,pop)) %>%
+  rename(data=percent) %>%
+  mutate(dataformat='Percent') %>%
+  arrange(location,timeframe)
+
+
+medicaid_percents_6to13 <- medicaid_6to13 %>%
+  left_join(population_6to13,by = c("locationid", "location", "locationtype", "state", "timeframe")) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(percent=data/pop) %>%
+  select(-c(data,pop)) %>%
+  rename(data=percent) %>%
+  mutate(dataformat='Percent') %>% 
+  arrange(location,timeframe)
+
+
+medicaid_percents_14to18 <- medicaid_14to18 %>%
+  left_join(population_14to18,by = c("locationid", "location", "locationtype", "state", "timeframe")) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(percent=data/pop) %>%
+  select(-c(data,pop)) %>%
+  rename(data=percent) %>%
+  mutate(dataformat='Percent') %>%
+  arrange(location,timeframe)
+
+
+
+medicaid_percents_under19 <- medicaid_under19 %>%
+  left_join(population_under19,by = c("locationid", "location", "locationtype", "state", "timeframe")) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(percent=data/pop) %>%
+  select(-c(data,pop)) %>%
+  rename(data=percent) %>%
+  mutate(dataformat='Percent') %>%
+  arrange(location,timeframe) %>%
+  arrange(location,timeframe)
+
+
+
+medicaidparticipants_percent <- medicaid_percents_0to5 %>%
+  bind_rows(medicaid_percents_6to13) %>%
+  bind_rows(medicaid_percents_14to18) %>%
+  bind_rows(medicaid_percents_under19)
+```
+
+```{r}
+#CHECK DATASET NAMED medicaidparticipants_percent TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,medicaidparticipants_percent,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, age_group, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='medicaidparticipantsbyage';")
+
+
+upload_datacenter <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         `Age group`=age_group)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter,file=paste0("./Output/economics/",database_state,"_",year,"_medicaidparticipantsbyage.csv"),row.names=FALSE)
+```
+
+
+
+
+
+
+
+## DATA FOR TRIBAL DATA BOOKS
+
+## ################# ##
+## TANF PARTICIPANTS ##
+## ################# ##
+
+```{r}
+#import and clean the data
+tanfna <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_publicassistance.xlsx"),sheet="TANF_Nat Amer ",skip=1) %>%
+  
+  rename(location=`...1`) %>%
+  mutate(location=replace(location,location=='State Totals','South Dakota')) %>%
+  
+  #lower case county names
+  mutate(location=tolower(location)) %>%
+  mutate(location=str_to_title(location)) %>%
+  
+  #fix mismatched locations
+  mutate(location=replace(location,location=='Mcpherson',"McPherson")) %>%
+  mutate(location=replace(location,location=='Mccook','McCook')) %>%
+  
+  #add in KC variables
+  mutate(locationtype=ifelse(location=='South Dakota','State','County')) %>%
+  mutate(state='South Dakota',
+         timeframe=year,
+         dataformat='Number',
+         race='Native American') %>%
+  
+  #add in location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>% 
+  
+  #pivot longer for multiple variables
+  rename(tanfparticipants_na_families=Families,
+         tanfparticipants_na_adults=Adults,
+         tanfparticipants_na_children=Children) %>%
+  pivot_longer(cols=c(tanfparticipants_na_families,tanfparticipants_na_adults,tanfparticipants_na_children),names_to='varname',values_to='data') %>%
+  
+  #suppress if 5 or fewer
+  mutate(data=replace(data,data<=5,NA)) %>%
+  mutate(data=as.character(paste(data))) %>%
+  mutate(data=replace(data,data=='NA','<6'))
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(tanfna$locationid))>=1) {
+  print(tanfna$location[is.na(tanfna$locationid)])
+} else if (sum(is.na(tanfna$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 6
+temp_suppresscheck <- tanfna %>% 
+  mutate(data=as.numeric(paste(data))) %>%
+  subset(data<6)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- tanfna %>%
+  subset(locationtype=='County') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+}
+
+
+# 4. Visually inspect output data
+View(tanfna)
+
+```
+
+```{r}
+#CHECK DATASET NAMED tanfna TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,tanfna,append=TRUE,row.names=FALSE)
+```
+
+
+
+## ################# ##
+## SNAP PARTICIPANTS ##
+## ################# ##
+
+```{r}
+#import and clean the data
+snapna <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_publicassistance.xlsx"),sheet="SNAP_Nat Amer  ",skip=1) %>%
+  
+  rename(location=`...1`) %>%
+  mutate(location=replace(location,location=='State Totals','South Dakota')) %>%
+  
+  #lower case county names
+  mutate(location=tolower(location)) %>%
+  mutate(location=str_to_title(location)) %>%
+  
+  #fix mismatched locations
+  mutate(location=replace(location,location=='Mcpherson',"McPherson")) %>%
+  mutate(location=replace(location,location=='Mccook','McCook')) %>%
+  
+  #add in KC variables
+  mutate(locationtype=ifelse(location=='South Dakota','State','County')) %>%
+  mutate(state='South Dakota',
+         timeframe=year,
+         dataformat='Number',
+         race='Native American') %>%
+  
+  #add in location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>% 
+  
+  #pivot longer for multiple variables
+  rename(snapparticipants_na_households=Households,
+         snapparticipants_na_participants=Persons) %>%
+  pivot_longer(cols=c(snapparticipants_na_households,snapparticipants_na_participants),names_to='varname',values_to='data') %>%
+  
+  #suppress if 5 or fewer
+  mutate(data=replace(data,data<=5,NA)) %>%
+  mutate(data=as.character(paste(data))) %>%
+  mutate(data=replace(data,data=='NA','<6'))
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(snapna$locationid))>=1) {
+  print(snapna$location[is.na(snapna$locationid)])
+} else if (sum(is.na(snapna$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 6
+temp_suppresscheck <- snapna %>% 
+  mutate(data=as.numeric(paste(data))) %>%
+  subset(data<6)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- snapna %>%
+  subset(locationtype=='County') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+}
+
+
+# 4. Visually inspect output data
+View(snapna)
+
+```
+
+```{r}
+#CHECK DATASET NAMED snapna TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,snapna,append=TRUE,row.names=FALSE)
+```
+
+
+
+
+## ##################### ##
+## MEDICAID PARTICIPANTS ##
+## ##################### ##
+
+```{r}
+#import and clean the data
+medicaidna <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_publicassistance.xlsx"),sheet="Medicaid_NatAmer ",skip=2) %>%
+  
+  rename(location=`...1`) %>%
+  mutate(location=replace(location,location=='State Totals','South Dakota')) %>%
+  
+  subset(location != 'County Not Available') %>%
+  
+  #lower case county names
+  mutate(location=tolower(location)) %>%
+  mutate(location=str_to_title(location)) %>%
+  
+  #fix mismatched locations
+  mutate(location=replace(location,location=='Mcpherson',"McPherson")) %>%
+  mutate(location=replace(location,location=='Mccook','McCook')) %>%
+  
+  #add in KC variables
+  mutate(locationtype=ifelse(location=='South Dakota','State','County')) %>%
+  mutate(state='South Dakota',
+         timeframe=year,
+         dataformat='Number',
+         race='Native American') %>%
+  
+  #add in location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+###create adult data set
+medicaidna_adults <- medicaidna %>%
+  select(c(location,locationtype,state,timeframe,dataformat,race,locationid,Adults)) %>%
+  rename(data=Adults) %>%
+  mutate(age_group='Adults',
+         varname='medicaidparticipants_na_adults') %>%
+  #suppress if 5 or fewer
+  mutate(data=replace(data,data<=5,NA)) %>%
+  mutate(data=as.character(paste(data))) %>%
+  mutate(data=replace(data,data=='NA','<6'))
+
+###create child dataset
+medicaidna_children <- medicaidna %>%
+  select(c(location,locationtype,state,timeframe,dataformat,race,locationid,`0 to 5`,`6 to 13`,`14 to 18`)) %>%
+  rename(`Ages 0-5`=`0 to 5`,
+         `Ages 6-13`=`6 to 13`,
+         `Ages 14-18`=`14 to 18`) %>%
+  mutate(varname='medicaidparticipants_na_children') %>%
+  
+  #pivot age groups longer
+  pivot_longer(cols=c(`Ages 0-5`,`Ages 6-13`,`Ages 14-18`),names_to='age_group',values_to='data') %>%
+    
+  #suppress if 5 or fewer
+  mutate(data=replace(data,data<=5,NA)) %>%
+  mutate(data=as.character(paste(data))) %>%
+  mutate(data=replace(data,data=='NA','<6'))
+  
+###create child total dataset
+medicaidna_children_total <- medicaidna %>%
+  select(c(location,locationtype,state,timeframe,dataformat,race,locationid,`0 to 5`,`6 to 13`,`14 to 18`)) %>%
+  rename(`Ages 0-5`=`0 to 5`,
+         `Ages 6-13`=`6 to 13`,
+         `Ages 14-18`=`14 to 18`) %>%
+  mutate(varname='medicaidparticipants_na_children') %>%
+  
+  #pivot age groups longer
+  pivot_longer(cols=c(`Ages 0-5`,`Ages 6-13`,`Ages 14-18`),names_to='age_group',values_to='data') %>%
+  
+  group_by(location,locationtype,state,timeframe,dataformat,race,locationid,varname) %>%
+  summarise(data=sum(data),.groups='keep') %>%
+  ungroup %>%
+  mutate(age_group='Total Under 19') %>%
+    
+  #suppress if 5 or fewer
+  mutate(data=replace(data,data<=5,NA)) %>%
+  mutate(data=as.character(paste(data))) %>%
+  mutate(data=replace(data,data=='NA','<6'))
+
+medicaid_all <- medicaidna_adults %>%
+  bind_rows(medicaidna_children) %>%
+  bind_rows(medicaidna_children_total)
+
+  
+  
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(medicaid_all$locationid))>=1) {
+  print(medicaid_all$location[is.na(medicaid_all$locationid)])
+} else if (sum(is.na(medicaid_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 6
+temp_suppresscheck <- medicaid_all %>% 
+  mutate(data=as.numeric(paste(data))) %>%
+  subset(data<6)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- medicaid_all %>%
+  subset(locationtype=='County') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+}
+
+
+# 4. Visually inspect output data
+View(medicaid_all)
+
+```
+
+```{r}
+#CHECK DATASET NAMED medicaid_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,medicaid_all,append=TRUE,row.names=FALSE)
+```
+
+

@@ -4,6 +4,7 @@ output: html_document
 ---
 
 ## Indicator 1: Juvenile Commitments by Race and Tribe
+## Indicator 2: Commitments to SD Department of Corrections by Race
 
 **Created by:** Xanna Burg
 **Date:** September 2020
@@ -118,7 +119,6 @@ if (sum(is.na(docdata_cleaned$locationid))>=1) {
 View(docdata_cleaned)
 ```
 
-
 ## STEP 2: ADD TO DATABASE
 ```{r}
 #CHECK DATASET NAMED docdata_cleaned TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
@@ -129,3 +129,101 @@ dbWriteTable(con,database_state,docdata_cleaned,append=TRUE,row.names=FALSE)
 
 
 
+
+## ################################################### ##
+## COMMITMENTS TO SD DEPARTMENT OF CORRECTIONS BY RACE ##
+## ################################################### ##
+
+## STEP 1: IMPORT AND CLEAN DATA
+```{r}
+docdata_cleaned <- docdata %>%
+  
+  #pivot longer
+  pivot_longer(cols=c(Asian,Black,Hispanic,`Native American`,White),names_to='race',values_to='data') %>%
+  
+  #change Native American to American Indian
+  mutate(race=replace(race,race=='Native American','American Indian')) %>%
+  
+  #change NAs to zero
+  mutate(data=replace(data,is.na(data),0)) %>%
+  
+  #group across all tribes
+  group_by(race) %>%
+  summarise(data=sum(data),.groups='keep') %>%
+  ungroup %>%
+  
+  #add in KC variables
+  mutate(location='South Dakota',
+         timeframe=year,
+         state='South Dakota',
+         locationtype='State',
+         dataformat='Number',
+         varname='commitmentstosddepartmentofcorrectionsbyrace') %>%
+  
+  #merge in location ids for completeness, although not needed unless adding to KC
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+#create total dataset
+totalcommitments <- docdata_cleaned %>%
+  group_by(location,timeframe,state,locationtype,dataformat,varname,locationid) %>%
+  summarise(total=sum(data),.groups='keep') %>%
+  ungroup 
+
+
+commitments_percent <- docdata_cleaned %>%
+  left_join(totalcommitments,by=c('location'='location','timeframe'='timeframe','state'='state','locationtype'='locationtype','dataformat'='dataformat','varname'='varname','locationid'='locationid')) %>%
+  
+  mutate(percent=data/total) %>%
+  
+  mutate(percent=replace(percent,data<4,NA)) %>%
+  select(-c(total,data)) %>%
+  rename(data=percent) %>%
+  mutate(dataformat='Percent')
+
+
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(commitments_percent$locationid))>=1) {
+  print(commitments_percent$location[is.na(commitments_percent$locationid)])
+} else if (sum(is.na(commitments_percent$locationid))==0) {
+  'all locations match'
+}
+
+
+# 2. Visually inspect output data
+View(commitments_percent)
+```
+
+## STEP 2: ADD TO DATABASE
+```{r}
+#CHECK DATASET NAMED commitments_percent TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,commitments_percent,append=TRUE,row.names=FALSE)
+```
+
+## STEP 3: OUTPUT FILE FOR KC
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, race, data FROM southdakota WHERE timeframe='",year,"' AND varname='commitmentstosddepartmentofcorrectionsbyrace';")
+
+upload_data <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         Race=race)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("./Output/safety/southdakota_",year,"_commitmentstosddepartmentofcorrectionsbyrace.csv"),row.names=FALSE)
+```
