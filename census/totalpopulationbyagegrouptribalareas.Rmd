@@ -1,0 +1,642 @@
+---
+title: "Total Population by Age Group for Tribal Areas"
+author: "Xanna Burg"
+---
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(tidycensus)
+library(censusapi)
+library(stringr)
+```
+
+
+```{r}
+#metadata for available variables
+#acs_vars <- listCensusMetadata(name="2018/acs/acs5/subject",
+                               #type="variables")
+
+
+#metadata for available geographies
+#acs_geos <- listCensusMetadata(name="2018/acs/acs5/subject",
+                             #  type="geography")
+
+#county and state names that match fips codes (from tidycensus package)
+fips <- fips_codes
+
+#import tribal fips code (from file on local drive)
+fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
+
+```
+
+
+```{r}
+#CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
+#state should match exactly as is in FIPS code in order for code to correctly run
+statename <- "South Dakota"
+year <- "2017"
+year_5 <- "2013-2017"
+
+
+#run this code to create an object needed for the database (DO NOT EDIT)
+if (statename=='Montana') {
+  database_state <- 'montana'
+} else if (statename=='North Dakota') {
+  database_state <- 'northdakota'
+} else if (statename=='South Dakota') {
+  database_state <- 'southdakota'
+}
+
+#import the location ids matching the correct state (for MT, ND, and SD; DO NOT EDIT)
+locationids <- if (statename=='Montana') {
+  read.csv("../Input/MT KC Location IDs.csv")
+} else if (statename=='North Dakota') {
+  read.csv("../Input/ND KC Location IDs.csv")
+} else if (statename=='South Dakota') {
+  read.csv("../Input/SD KC Location IDs.csv")
+}
+locationids$Location <- as.character(locationids$Location) #assign as character instead of factor for merging
+
+#import the region match file matching the correct state (for MT, ND, and SD; DO NOT EDIT)
+regionids <- if (statename=='Montana') {
+  read.csv("../Input/MT KC Region List.csv")
+} else if (statename=='North Dakota') {
+  read.csv("../Input/ND KC Region List.csv") 
+} else if (statename=='South Dakota') {
+  read.csv("../Input/SD KC Region List.csv")
+}
+regionids$county <- as.character(regionids$county)
+regionids$region <- as.character(regionids$region)
+
+
+#UPDATE THE BELOW FILE PATH IF USING THIS CODE OUTSIDE OF MT, ND, OR SD
+#the csv file should have 2 columns: "LocationId" and "Location"
+#locationids <- read.csv("your_file_path_here.csv")
+
+
+#RUN THIS CODE, BUT NOT REQUIRED TO CHANGE ANYTHING
+#the api will subset data to each state based on the state FIPS code: MT=30, North Dakota=38, South Dakota=46
+statecode <- as.numeric(unique(fips$state_code[fips$state_name==statename]))
+
+
+```
+
+
+#total population by age
+```{r}
+#[year]/acs/acs5/subject table is: ACS 5-year estimates for subject tables (those beginning with S) for the year specified
+#see lookup table for categorical vars: https://api.census.gov/data/2018/acs/acs5/subject/variables.html
+
+#interested in Table DP05
+
+#this table does not have geography 280 for american indian &in state, so must supply exactly which codes are of interest within each state
+
+tribalcodes <- if (statename=='Montana') {
+  c('0305','0845','1110','1150','1250','2490','3205')
+} else if (statename=='North Dakota') {
+  c('1160','3935','3970','4345')
+} else if (statename=='South Dakota') {
+  c('2490','3970','4345','4700','1860','2810','3235','1100','0855','2030','0605')
+}
+
+
+tribalcodes1 <- data.frame(tribalcodes)
+
+acs_tribal <- NULL
+acs_tribal2 <- NULL
+for (i in 1:nrow(tribalcodes1)) {
+  
+  codenumber <- tribalcodes1$tribalcodes[i]
+  
+  acs_tribal[[i]] <- getCensus(name="acs/acs5/subject",
+          vintage=year,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("S0101_C01_001E","S0101_C01_002E","S0101_C01_003E","S0101_C01_004E","S0101_C01_005E","S0101_C01_006E","S0101_C01_007E","S0101_C01_008E","S0101_C01_009E","S0101_C01_010E","S0101_C01_011E","S0101_C01_012E","S0101_C01_013E","S0101_C01_014E","S0101_C01_015E","S0101_C01_016E","S0101_C01_017E","S0101_C01_018E","S0101_C01_019E",
+                 "S0101_C01_001M","S0101_C01_002M","S0101_C01_003M","S0101_C01_004M","S0101_C01_005M","S0101_C01_006M","S0101_C01_007M","S0101_C01_008M","S0101_C01_009M","S0101_C01_010M","S0101_C01_011M","S0101_C01_012M","S0101_C01_013M","S0101_C01_014M","S0101_C01_015M","S0101_C01_016M","S0101_C01_017M","S0101_C01_018M","S0101_C01_019M"),
+          region=paste0("state (or part):",statecode),
+          regionin=paste0("american indian area/alaska native area/hawaiian home land:",codenumber))
+  
+}
+
+if (statename=='Montana') {
+  acs_tribal2 <- acs_tribal[[1]] %>%
+    bind_rows(acs_tribal[[2]]) %>%
+    bind_rows(acs_tribal[[3]]) %>%
+    bind_rows(acs_tribal[[4]]) %>%
+    bind_rows(acs_tribal[[5]]) %>%
+    bind_rows(acs_tribal[[6]]) %>%
+    bind_rows(acs_tribal[[7]]) 
+} else if (statename=='North Dakota') {
+  acs_tribal2 <- acs_tribal[[1]] %>%
+    bind_rows(acs_tribal[[2]]) %>%
+    bind_rows(acs_tribal[[3]]) %>%
+    bind_rows(acs_tribal[[4]])
+} else if (statename=='South Dakota') {
+   acs_tribal2 <- acs_tribal[[1]] %>%
+     bind_rows(acs_tribal[[2]]) %>%
+     bind_rows(acs_tribal[[3]]) %>%
+     bind_rows(acs_tribal[[4]]) %>%
+     bind_rows(acs_tribal[[5]]) %>%
+     bind_rows(acs_tribal[[6]]) %>%
+     bind_rows(acs_tribal[[7]]) %>%
+     bind_rows(acs_tribal[[8]]) %>%
+     bind_rows(acs_tribal[[9]]) %>%
+     bind_rows(acs_tribal[[10]]) %>%
+     bind_rows(acs_tribal[[11]]) 
+}
+
+
+acs_tribal3 <- acs_tribal2 %>%
+  #clean the imported data
+  
+  #assign location type
+  mutate(locationtype='Tribal Area') %>%
+  
+  #add in location name from fips codes
+  mutate(american_indian_area_alaska_native_area_hawaiian_home_land=as.numeric(american_indian_area_alaska_native_area_hawaiian_home_land)) %>%
+  left_join(fips_tribal,by=c('american_indian_area_alaska_native_area_hawaiian_home_land'='AIANNHCE')) %>% 
+  
+  
+  #select only needed variables and name to kids count database
+  select(-c(american_indian_area_alaska_native_area_hawaiian_home_land,state_or_part)) %>%
+  rename(location=AIANNHNAME,
+         'E Total'=S0101_C01_001E,'M Total'=S0101_C01_001M,
+         'E 0 to 4'=S0101_C01_002E,'M 0 to 4'=S0101_C01_002M,
+         'E 5 to 9'=S0101_C01_003E,'M 5 to 9'=S0101_C01_003M,
+         'E 10 to 14'=S0101_C01_004E,'M 10 to 14'=S0101_C01_004M,
+         'E 15 to 19'=S0101_C01_005E,'M 15 to 19'=S0101_C01_005M,
+         'E 20 to 24'=S0101_C01_006E,'M 20 to 24'=S0101_C01_006M,
+         'E 25 to 29'=S0101_C01_007E,'M 25 to 29'=S0101_C01_007M,
+         'E 30 to 34'=S0101_C01_008E,'M 30 to 34'=S0101_C01_008M,
+         'E 35 to 39'=S0101_C01_009E,'M 35 to 39'=S0101_C01_009M,
+         'E 40 to 44'=S0101_C01_010E,'M 40 to 44'=S0101_C01_010M,
+         'E 45 to 49'=S0101_C01_011E,'M 45 to 49'=S0101_C01_011M,
+         'E 50 to 54'=S0101_C01_012E,'M 50 to 54'=S0101_C01_012M,
+         'E 55 to 59'=S0101_C01_013E,'M 55 to 59'=S0101_C01_013M,
+         'E 60 to 64'=S0101_C01_014E,'M 60 to 64'=S0101_C01_014M,
+         'E 65 to 69'=S0101_C01_015E,'M 65 to 69'=S0101_C01_015M,
+         'E 70 to 74'=S0101_C01_016E,'M 70 to 74'=S0101_C01_016M,
+         'E 75 to 79'=S0101_C01_017E,'M 75 to 79'=S0101_C01_017M,
+         'E 80 to 84'=S0101_C01_018E,'M 80 to 84'=S0101_C01_018M,
+         'E 85+'=S0101_C01_019E,'M 85+'=S0101_C01_019M) %>%
+  
+  #change from wide to long format
+  pivot_longer(cols=c('E Total','E 0 to 4','E 5 to 9','E 10 to 14', 'E 15 to 19','E 20 to 24', 'E 25 to 29','E 30 to 34','E 35 to 39','E 40 to 44','E 45 to 49','E 50 to 54','E 55 to 59','E 60 to 64','E 65 to 69','E 70 to 74','E 75 to 79','E 80 to 84','E 85+',
+                      'M Total','M 0 to 4','M 5 to 9','M 10 to 14', 'M 15 to 19','M 20 to 24', 'M 25 to 29','M 30 to 34','M 35 to 39','M 40 to 44','M 45 to 49','M 50 to 54','M 55 to 59','M 60 to 64','M 65 to 69','M 70 to 74','M 75 to 79','M 80 to 84','M 85+'),names_to='age_group',values_to='data') %>%
+  
+  #separate estimate/moe indicator from age group
+  separate(col=age_group,into=c('datatype','age_groupnew'),sep=2) %>%
+  #pivot moe back wider
+  pivot_wider(id_cols=c('locationtype','location','age_groupnew'),names_from='datatype',values_from='data') %>%
+  rename(data='E ',
+         moe='M ',
+         age_group=age_groupnew) %>%
+  
+  mutate(timeframe=year_5) %>%
+  mutate(state=statename) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='totalpopulationbyagegrouptribalarea') %>%
+  
+  #change from factor to character for correctly updating below
+  mutate(location=as.character(location)) %>%
+  
+  #rename the location to match kids count location - for locations that cross state lines, to clarify which portion is included
+  #includes locations for all three states
+  mutate(location=replace(location, 
+                          state=='North Dakota' & location=='Standing Rock Reservation', 
+                          'Standing Rock Reservation (North Dakota portion)')) %>%
+  
+    mutate(location=replace(location, 
+                          state=='South Dakota' & location=='Standing Rock Reservation', 
+                          'Standing Rock Reservation (South Dakota portion)')) %>%
+   
+  mutate(location=replace(location, 
+                          state=='North Dakota' & 
+                            location=='Turtle Mountain Reservation and Off-Reservation Trust Land', 
+                          'Turtle Mountain Reservation and Off-Reservation Trust Land (North Dakota portion)')) %>%
+  
+  mutate(location=replace(location, 
+                          state=='North Dakota' & 
+                            location=='Lake Traverse Reservation and Off-Reservation Trust Land', 
+                          'Lake Traverse Reservation and Off-Reservation Trust Land (North Dakota portion)')) %>%
+  
+   mutate(location=replace(location, 
+                          state=='South Dakota' & location=='Lake Traverse Reservation and Off-Reservation Trust Land', 
+                          'Lake Traverse Reservation and Off-Reservation Trust Land (South Dakota portion)')) %>%
+  
+  
+  #for North Dakota Lake Traverse data is too small to be meaningful, remove
+  filter(state!='North Dakota' | location!='Lake Traverse Reservation and Off-Reservation Trust Land (North Dakota portion)') %>%
+  
+  #for Montana Turtle Mountain is too small to have data, remove
+  filter(state!='Montana' | location !='Turtle Mountain Reservation and Off-Reservation Trust Land') %>%
+  
+  #for South Dakota Turtle Mountain is too small to have data, remove
+  filter(state!='South Dakota' | location !='Turtle Mountain Reservation and Off-Reservation Trust Land') %>%
+  
+  #for South Dakota Northern Cheyenne is too small to have data, remove
+  filter(state!='South Dakota' | location !='Northern Cheyenne Indian Reservation and Off-Reservation Trust Land') %>%
+  
+  #merge kids count location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
+
+
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(acs_tribal3$locationid))>=1) {
+  print(acs_tribal3$location[is.na(acs_tribal3$locationid)])
+} else if (sum(is.na(acs_tribal3$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Visually inspect output data
+View(acs_tribal3)
+
+```
+
+```{r}
+#CHECK DATASET NAMED acs_tribal3 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,acs_tribal3,append=TRUE,row.names=FALSE)
+```
+
+
+
+
+#total population by age and sex
+
+#MALE
+```{r}
+#[year]/acs/acs5/subject table is: ACS 5-year estimates for subject tables (those beginning with S) for the year specified
+#see lookup table for categorical vars: https://api.census.gov/data/2018/acs/acs5/subject/variables.html
+
+#interested in Table S1010
+
+#this table does not have geography 280 for american indian &in state, so must supply exactly which codes are of interest within each state
+
+tribalcodes <- if (statename=='Montana') {
+  c('0305','0845','1110','1150','1250','2490','3205')
+} else if (statename=='North Dakota') {
+  c('1160','3935','3970','4345')
+} else if (statename=='South Dakota') {
+  c('2490','3970','4345','4700','1860','2810','3235','1100','0855','2030','0605')
+}
+
+
+tribalcodes1 <- data.frame(tribalcodes)
+
+acs_tribal <- NULL
+acs_tribal2 <- NULL
+for (i in 1:nrow(tribalcodes1)) {
+  
+  codenumber <- tribalcodes1$tribalcodes[i]
+  
+  acs_tribal[[i]] <- getCensus(name="acs/acs5/subject",
+          vintage=year,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("S0101_C03_001E","S0101_C03_002E","S0101_C03_003E","S0101_C03_004E","S0101_C03_005E","S0101_C03_006E","S0101_C03_007E","S0101_C03_008E","S0101_C03_009E","S0101_C03_010E","S0101_C03_011E","S0101_C03_012E","S0101_C03_013E","S0101_C03_014E","S0101_C03_015E","S0101_C03_016E","S0101_C03_017E","S0101_C03_018E","S0101_C03_019E",
+                 "S0101_C03_001M","S0101_C03_002M","S0101_C03_003M","S0101_C03_004M","S0101_C03_005M","S0101_C03_006M","S0101_C03_007M","S0101_C03_008M","S0101_C03_009M","S0101_C03_010M","S0101_C03_011M","S0101_C03_012M","S0101_C03_013M","S0101_C03_014M","S0101_C03_015M","S0101_C03_016M","S0101_C03_017M","S0101_C03_018M","S0101_C03_019M"),
+          region=paste0("state (or part):",statecode),
+          regionin=paste0("american indian area/alaska native area/hawaiian home land:",codenumber))
+  
+}
+
+if (statename=='Montana') {
+  acs_tribal2 <- acs_tribal[[1]] %>%
+    bind_rows(acs_tribal[[2]]) %>%
+    bind_rows(acs_tribal[[3]]) %>%
+    bind_rows(acs_tribal[[4]]) %>%
+    bind_rows(acs_tribal[[5]]) %>%
+    bind_rows(acs_tribal[[6]]) %>%
+    bind_rows(acs_tribal[[7]]) 
+} else if (statename=='North Dakota') {
+  acs_tribal2 <- acs_tribal[[1]] %>%
+    bind_rows(acs_tribal[[2]]) %>%
+    bind_rows(acs_tribal[[3]]) %>%
+    bind_rows(acs_tribal[[4]])
+} else if (statename=='South Dakota') {
+   acs_tribal2 <- acs_tribal[[1]] %>%
+     bind_rows(acs_tribal[[2]]) %>%
+     bind_rows(acs_tribal[[3]]) %>%
+     bind_rows(acs_tribal[[4]]) %>%
+     bind_rows(acs_tribal[[5]]) %>%
+     bind_rows(acs_tribal[[6]]) %>%
+     bind_rows(acs_tribal[[7]]) %>%
+     bind_rows(acs_tribal[[8]]) %>%
+     bind_rows(acs_tribal[[9]]) %>%
+     bind_rows(acs_tribal[[10]]) %>%
+     bind_rows(acs_tribal[[11]]) 
+}
+
+
+acs_tribal3 <- acs_tribal2 %>%
+  #clean the imported data
+  
+  #assign location type
+  mutate(locationtype='Tribal Area') %>%
+  
+  #add in location name from fips codes
+  mutate(american_indian_area_alaska_native_area_hawaiian_home_land=as.numeric(american_indian_area_alaska_native_area_hawaiian_home_land)) %>%
+  left_join(fips_tribal,by=c('american_indian_area_alaska_native_area_hawaiian_home_land'='AIANNHCE')) %>% 
+  
+  
+  #select only needed variables and name to kids count database
+  select(-c(american_indian_area_alaska_native_area_hawaiian_home_land,state_or_part)) %>%
+  rename(location=AIANNHNAME,
+         'E Total'=S0101_C03_001E,'M Total'=S0101_C03_001M,
+         'E 0 to 4'=S0101_C03_002E,'M 0 to 4'=S0101_C03_002M,
+         'E 5 to 9'=S0101_C03_003E,'M 5 to 9'=S0101_C03_003M,
+         'E 10 to 14'=S0101_C03_004E,'M 10 to 14'=S0101_C03_004M,
+         'E 15 to 19'=S0101_C03_005E,'M 15 to 19'=S0101_C03_005M,
+         'E 20 to 24'=S0101_C03_006E,'M 20 to 24'=S0101_C03_006M,
+         'E 25 to 29'=S0101_C03_007E,'M 25 to 29'=S0101_C03_007M,
+         'E 30 to 34'=S0101_C03_008E,'M 30 to 34'=S0101_C03_008M,
+         'E 35 to 39'=S0101_C03_009E,'M 35 to 39'=S0101_C03_009M,
+         'E 40 to 44'=S0101_C03_010E,'M 40 to 44'=S0101_C03_010M,
+         'E 45 to 49'=S0101_C03_011E,'M 45 to 49'=S0101_C03_011M,
+         'E 50 to 54'=S0101_C03_012E,'M 50 to 54'=S0101_C03_012M,
+         'E 55 to 59'=S0101_C03_013E,'M 55 to 59'=S0101_C03_013M,
+         'E 60 to 64'=S0101_C03_014E,'M 60 to 64'=S0101_C03_014M,
+         'E 65 to 69'=S0101_C03_015E,'M 65 to 69'=S0101_C03_015M,
+         'E 70 to 74'=S0101_C03_016E,'M 70 to 74'=S0101_C03_016M,
+         'E 75 to 79'=S0101_C03_017E,'M 75 to 79'=S0101_C03_017M,
+         'E 80 to 84'=S0101_C03_018E,'M 80 to 84'=S0101_C03_018M,
+         'E 85+'=S0101_C03_019E,'M 85+'=S0101_C03_019M) %>%
+  
+  #change from wide to long format
+  pivot_longer(cols=c('E Total','E 0 to 4','E 5 to 9','E 10 to 14', 'E 15 to 19','E 20 to 24', 'E 25 to 29','E 30 to 34','E 35 to 39','E 40 to 44','E 45 to 49','E 50 to 54','E 55 to 59','E 60 to 64','E 65 to 69','E 70 to 74','E 75 to 79','E 80 to 84','E 85+',
+                      'M Total','M 0 to 4','M 5 to 9','M 10 to 14', 'M 15 to 19','M 20 to 24', 'M 25 to 29','M 30 to 34','M 35 to 39','M 40 to 44','M 45 to 49','M 50 to 54','M 55 to 59','M 60 to 64','M 65 to 69','M 70 to 74','M 75 to 79','M 80 to 84','M 85+'),names_to='age_group',values_to='data') %>%
+  
+  #separate estimate/moe indicator from age group
+  separate(col=age_group,into=c('datatype','age_groupnew'),sep=2) %>%
+  #pivot moe back wider
+  pivot_wider(id_cols=c('locationtype','location','age_groupnew'),names_from='datatype',values_from='data') %>%
+  rename(data='E ',
+         moe='M ',
+         age_group=age_groupnew) %>%
+  
+  mutate(timeframe=year_5) %>%
+  mutate(state=statename) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='totalpopulationbyagegroupandsextribalarea') %>%
+  mutate(gender='Male') %>%
+  
+  #change from factor to character for correctly updating below
+  mutate(location=as.character(location)) %>%
+  
+  #rename the location to match kids count location - for locations that cross state lines, to clarify which portion is included
+  #includes locations for all three states
+  mutate(location=replace(location, 
+                          state=='North Dakota' & location=='Standing Rock Reservation', 
+                          'Standing Rock Reservation (North Dakota portion)')) %>%
+  
+    mutate(location=replace(location, 
+                          state=='South Dakota' & location=='Standing Rock Reservation', 
+                          'Standing Rock Reservation (South Dakota portion)')) %>%
+   
+  mutate(location=replace(location, 
+                          state=='North Dakota' & 
+                            location=='Turtle Mountain Reservation and Off-Reservation Trust Land', 
+                          'Turtle Mountain Reservation and Off-Reservation Trust Land (North Dakota portion)')) %>%
+  
+  mutate(location=replace(location, 
+                          state=='North Dakota' & 
+                            location=='Lake Traverse Reservation and Off-Reservation Trust Land', 
+                          'Lake Traverse Reservation and Off-Reservation Trust Land (North Dakota portion)')) %>%
+  
+   mutate(location=replace(location, 
+                          state=='South Dakota' & location=='Lake Traverse Reservation and Off-Reservation Trust Land', 
+                          'Lake Traverse Reservation and Off-Reservation Trust Land (South Dakota portion)')) %>%
+  
+  
+  #for North Dakota Lake Traverse data is too small to be meaningful, remove
+  filter(state!='North Dakota' | location!='Lake Traverse Reservation and Off-Reservation Trust Land (North Dakota portion)') %>%
+  
+  #for Montana Turtle Mountain is too small to have data, remove
+  filter(state!='Montana' | location !='Turtle Mountain Reservation and Off-Reservation Trust Land') %>%
+  
+  #for South Dakota Turtle Mountain is too small to have data, remove
+  filter(state!='South Dakota' | location !='Turtle Mountain Reservation and Off-Reservation Trust Land') %>%
+  
+  #for South Dakota Northern Cheyenne is too small to have data, remove
+  filter(state!='South Dakota' | location !='Northern Cheyenne Indian Reservation and Off-Reservation Trust Land') %>%
+  
+  #merge kids count location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
+
+
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(acs_tribal3$locationid))>=1) {
+  print(acs_tribal3$location[is.na(acs_tribal3$locationid)])
+} else if (sum(is.na(acs_tribal3$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Visually inspect output data
+View(acs_tribal3)
+
+```
+
+```{r}
+#CHECK DATASET NAMED acs_tribal3 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,acs_tribal3,append=TRUE,row.names=FALSE)
+```
+
+
+#FEMALE
+```{r}
+#[year]/acs/acs5/subject table is: ACS 5-year estimates for subject tables (those beginning with S) for the year specified
+#see lookup table for categorical vars: https://api.census.gov/data/2018/acs/acs5/subject/variables.html
+
+#interested in Table S1010
+
+#this table does not have geography 280 for american indian &in state, so must supply exactly which codes are of interest within each state
+
+tribalcodes <- if (statename=='Montana') {
+  c('0305','0845','1110','1150','1250','2490','3205')
+} else if (statename=='North Dakota') {
+  c('1160','3935','3970','4345')
+} else if (statename=='South Dakota') {
+  c('2490','3970','4345','4700','1860','2810','3235','1100','0855','2030','0605')
+}
+
+
+tribalcodes1 <- data.frame(tribalcodes)
+
+acs_tribal <- NULL
+acs_tribal2 <- NULL
+for (i in 1:nrow(tribalcodes1)) {
+  
+  codenumber <- tribalcodes1$tribalcodes[i]
+  
+  acs_tribal[[i]] <- getCensus(name="acs/acs5/subject",
+          vintage=year,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("S0101_C05_001E","S0101_C05_002E","S0101_C05_003E","S0101_C05_004E","S0101_C05_005E","S0101_C05_006E","S0101_C05_007E","S0101_C05_008E","S0101_C05_009E","S0101_C05_010E","S0101_C05_011E","S0101_C05_012E","S0101_C05_013E","S0101_C05_014E","S0101_C05_015E","S0101_C05_016E","S0101_C05_017E","S0101_C05_018E","S0101_C05_019E",
+                 "S0101_C05_001M","S0101_C05_002M","S0101_C05_003M","S0101_C05_004M","S0101_C05_005M","S0101_C05_006M","S0101_C05_007M","S0101_C05_008M","S0101_C05_009M","S0101_C05_010M","S0101_C05_011M","S0101_C05_012M","S0101_C05_013M","S0101_C05_014M","S0101_C05_015M","S0101_C05_016M","S0101_C05_017M","S0101_C05_018M","S0101_C05_019M"),
+          region=paste0("state (or part):",statecode),
+          regionin=paste0("american indian area/alaska native area/hawaiian home land:",codenumber))
+  
+}
+
+if (statename=='Montana') {
+  acs_tribal2 <- acs_tribal[[1]] %>%
+    bind_rows(acs_tribal[[2]]) %>%
+    bind_rows(acs_tribal[[3]]) %>%
+    bind_rows(acs_tribal[[4]]) %>%
+    bind_rows(acs_tribal[[5]]) %>%
+    bind_rows(acs_tribal[[6]]) %>%
+    bind_rows(acs_tribal[[7]]) 
+} else if (statename=='North Dakota') {
+  acs_tribal2 <- acs_tribal[[1]] %>%
+    bind_rows(acs_tribal[[2]]) %>%
+    bind_rows(acs_tribal[[3]]) %>%
+    bind_rows(acs_tribal[[4]])
+} else if (statename=='South Dakota') {
+   acs_tribal2 <- acs_tribal[[1]] %>%
+     bind_rows(acs_tribal[[2]]) %>%
+     bind_rows(acs_tribal[[3]]) %>%
+     bind_rows(acs_tribal[[4]]) %>%
+     bind_rows(acs_tribal[[5]]) %>%
+     bind_rows(acs_tribal[[6]]) %>%
+     bind_rows(acs_tribal[[7]]) %>%
+     bind_rows(acs_tribal[[8]]) %>%
+     bind_rows(acs_tribal[[9]]) %>%
+     bind_rows(acs_tribal[[10]]) %>%
+     bind_rows(acs_tribal[[11]]) 
+}
+
+
+acs_tribal3 <- acs_tribal2 %>%
+  #clean the imported data
+  
+  #assign location type
+  mutate(locationtype='Tribal Area') %>%
+  
+  #add in location name from fips codes
+  mutate(american_indian_area_alaska_native_area_hawaiian_home_land=as.numeric(american_indian_area_alaska_native_area_hawaiian_home_land)) %>%
+  left_join(fips_tribal,by=c('american_indian_area_alaska_native_area_hawaiian_home_land'='AIANNHCE')) %>% 
+  
+  
+  #select only needed variables and name to kids count database
+  select(-c(american_indian_area_alaska_native_area_hawaiian_home_land,state_or_part)) %>%
+  rename(location=AIANNHNAME,
+         'E Total'=S0101_C05_001E,'M Total'=S0101_C05_001M,
+         'E 0 to 4'=S0101_C05_002E,'M 0 to 4'=S0101_C05_002M,
+         'E 5 to 9'=S0101_C05_003E,'M 5 to 9'=S0101_C05_003M,
+         'E 10 to 14'=S0101_C05_004E,'M 10 to 14'=S0101_C05_004M,
+         'E 15 to 19'=S0101_C05_005E,'M 15 to 19'=S0101_C05_005M,
+         'E 20 to 24'=S0101_C05_006E,'M 20 to 24'=S0101_C05_006M,
+         'E 25 to 29'=S0101_C05_007E,'M 25 to 29'=S0101_C05_007M,
+         'E 30 to 34'=S0101_C05_008E,'M 30 to 34'=S0101_C05_008M,
+         'E 35 to 39'=S0101_C05_009E,'M 35 to 39'=S0101_C05_009M,
+         'E 40 to 44'=S0101_C05_010E,'M 40 to 44'=S0101_C05_010M,
+         'E 45 to 49'=S0101_C05_011E,'M 45 to 49'=S0101_C05_011M,
+         'E 50 to 54'=S0101_C05_012E,'M 50 to 54'=S0101_C05_012M,
+         'E 55 to 59'=S0101_C05_013E,'M 55 to 59'=S0101_C05_013M,
+         'E 60 to 64'=S0101_C05_014E,'M 60 to 64'=S0101_C05_014M,
+         'E 65 to 69'=S0101_C05_015E,'M 65 to 69'=S0101_C05_015M,
+         'E 70 to 74'=S0101_C05_016E,'M 70 to 74'=S0101_C05_016M,
+         'E 75 to 79'=S0101_C05_017E,'M 75 to 79'=S0101_C05_017M,
+         'E 80 to 84'=S0101_C05_018E,'M 80 to 84'=S0101_C05_018M,
+         'E 85+'=S0101_C05_019E,'M 85+'=S0101_C05_019M) %>%
+  
+  #change from wide to long format
+  pivot_longer(cols=c('E Total','E 0 to 4','E 5 to 9','E 10 to 14', 'E 15 to 19','E 20 to 24', 'E 25 to 29','E 30 to 34','E 35 to 39','E 40 to 44','E 45 to 49','E 50 to 54','E 55 to 59','E 60 to 64','E 65 to 69','E 70 to 74','E 75 to 79','E 80 to 84','E 85+',
+                      'M Total','M 0 to 4','M 5 to 9','M 10 to 14', 'M 15 to 19','M 20 to 24', 'M 25 to 29','M 30 to 34','M 35 to 39','M 40 to 44','M 45 to 49','M 50 to 54','M 55 to 59','M 60 to 64','M 65 to 69','M 70 to 74','M 75 to 79','M 80 to 84','M 85+'),names_to='age_group',values_to='data') %>%
+  
+  #separate estimate/moe indicator from age group
+  separate(col=age_group,into=c('datatype','age_groupnew'),sep=2) %>%
+  #pivot moe back wider
+  pivot_wider(id_cols=c('locationtype','location','age_groupnew'),names_from='datatype',values_from='data') %>%
+  rename(data='E ',
+         moe='M ',
+         age_group=age_groupnew) %>%
+  
+  mutate(timeframe=year_5) %>%
+  mutate(state=statename) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='totalpopulationbyagegroupandsextribalarea') %>%
+  mutate(gender='Female') %>%
+  
+  #change from factor to character for correctly updating below
+  mutate(location=as.character(location)) %>%
+  
+  #rename the location to match kids count location - for locations that cross state lines, to clarify which portion is included
+  #includes locations for all three states
+  mutate(location=replace(location, 
+                          state=='North Dakota' & location=='Standing Rock Reservation', 
+                          'Standing Rock Reservation (North Dakota portion)')) %>%
+  
+    mutate(location=replace(location, 
+                          state=='South Dakota' & location=='Standing Rock Reservation', 
+                          'Standing Rock Reservation (South Dakota portion)')) %>%
+   
+  mutate(location=replace(location, 
+                          state=='North Dakota' & 
+                            location=='Turtle Mountain Reservation and Off-Reservation Trust Land', 
+                          'Turtle Mountain Reservation and Off-Reservation Trust Land (North Dakota portion)')) %>%
+  
+  mutate(location=replace(location, 
+                          state=='North Dakota' & 
+                            location=='Lake Traverse Reservation and Off-Reservation Trust Land', 
+                          'Lake Traverse Reservation and Off-Reservation Trust Land (North Dakota portion)')) %>%
+  
+   mutate(location=replace(location, 
+                          state=='South Dakota' & location=='Lake Traverse Reservation and Off-Reservation Trust Land', 
+                          'Lake Traverse Reservation and Off-Reservation Trust Land (South Dakota portion)')) %>%
+  
+  
+  #for North Dakota Lake Traverse data is too small to be meaningful, remove
+  filter(state!='North Dakota' | location!='Lake Traverse Reservation and Off-Reservation Trust Land (North Dakota portion)') %>%
+  
+  #for Montana Turtle Mountain is too small to have data, remove
+  filter(state!='Montana' | location !='Turtle Mountain Reservation and Off-Reservation Trust Land') %>%
+  
+  #for South Dakota Turtle Mountain is too small to have data, remove
+  filter(state!='South Dakota' | location !='Turtle Mountain Reservation and Off-Reservation Trust Land') %>%
+  
+  #for South Dakota Northern Cheyenne is too small to have data, remove
+  filter(state!='South Dakota' | location !='Northern Cheyenne Indian Reservation and Off-Reservation Trust Land') %>%
+  
+  #merge kids count location ids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
+
+
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(acs_tribal3$locationid))>=1) {
+  print(acs_tribal3$location[is.na(acs_tribal3$locationid)])
+} else if (sum(is.na(acs_tribal3$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Visually inspect output data
+View(acs_tribal3)
+
+```
+
+```{r}
+#CHECK DATASET NAMED acs_tribal3 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,acs_tribal3,append=TRUE,row.names=FALSE)
+```
+
