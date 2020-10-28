@@ -7,15 +7,16 @@ output: html_document
 
 ## Indicator 1: Public school enrollment grades K through 12 by county
 ## Indicator 2: Total school enrollment grades K through 12 by type (public, private, and home school) and county
-## Indicator 3: Children ages 3 to 21 enrolled in special education in public schools
-## Indicator 4: Eligible recipients of free or reduced price lunch by county
-## Indicator 5: High school event drop-out rate
-## Indicator 6: High school event drop-our rate by race and ethnicity
-## Indicator 7: Four-year cohort graduation rate
-## Indicator 8: Four-year cohort graduation rate by race and ethnicity
-## Indicator 9: Average expendigures per student in public schools
-## Indicator 10: Third graders who scored at or above proficient on statewide English Language Arts assessment (1-year totals)
-## Indicator 11: Third graders who scored at or above proficient on statewide English Language Arts asssesment (3-year totals)
+## Indicator 3: Public school enrollment for pre-K
+## Indicator 4: Children ages 3 to 21 enrolled in special education in public schools
+## Indicator 5: Eligible recipients of free or reduced price lunch by county
+## Indicator 6: High school event drop-out rate
+## Indicator 7: High school event drop-our rate by race and ethnicity
+## Indicator 8: Four-year cohort graduation rate
+## Indicator 9: Four-year cohort graduation rate by race and ethnicity
+## Indicator 10: Average expendigures per student in public schools
+## Indicator 11: Third graders who scored at or above proficient on statewide English Language Arts assessment (1-year totals)
+## Indicator 12: Third graders who scored at or above proficient on statewide English Language Arts asssesment (3-year totals)
 
 **Created by:** Xanna Burg
 **Date:** March 2020
@@ -398,6 +399,100 @@ upload_data_enrollmentbytype2 <- upload_data_enrollmentbytype %>%
 
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
 write.csv(upload_data_enrollmentbytype2,file=paste0("./Output/education/",statefile,"_",year,"totalschoolenrollmentk12bytype.csv"),row.names=FALSE)
+```
+
+
+
+
+**PUBLIC SCHOOL ENROLLMENT PRE-K BY COUNTY**
+```{r}
+#read in the data
+df_enrollment <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='Enrollment Counts')
+
+###################
+#CREATE COUNTY DATA
+county_enrollment <- df_enrollment %>%
+  rename(location=CountyName,
+         data=`PreK Enrollment Count`) %>%
+  select(c(location,data)) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  #merge in county list for missing data
+  full_join(countylist,by=c('location'='Location')) %>%
+  mutate(data=replace(data,is.na(data),0)) %>%
+  #format to database
+  mutate(timeframe=fullyear) %>%
+  mutate(state=statename) %>%
+  mutate(dataformat='Number') %>%
+  mutate(locationtype='County') %>%
+  mutate(varname='prekenrollment')
+  
+
+
+##################
+#CREATE STATE DATA
+state_enrollment <- county_enrollment %>%
+  mutate(location='Montana') %>%
+  group_by(location) %>%
+  summarise(data=sum(data)) %>%
+  ungroup %>%
+  mutate(state=statename) %>%
+  mutate(locationtype='State') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='prekenrollment')
+
+
+
+#combine state and county data
+enrollmentdata <- county_enrollment %>%
+  bind_rows(state_enrollment) %>%
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  mutate(location=replace(location,statename=='Montana' & location=='Sweetgrass','Sweet Grass')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(enrollmentdata$locationid))>=1) {
+  print(enrollmentdata$location[is.na(enrollmentdata$locationid)])
+} else if (sum(is.na(enrollmentdata$locationid))==0) {
+  'all locations match'
+}
+
+
+# 2. Visually inspect output data
+View(enrollmentdata)
+```
+
+```{r}
+#CHECK DATASET NAMED enrollmentdata TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',enrollmentdata,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+enrollment_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",fullyear,"' AND varname='prekenrollment';")
+
+upload_data_enrollment <- dbGetQuery(con,enrollment_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_enrollment,file=paste0("./Output/education/",statefile,"_",year,"_prekenrollment.csv"),row.names=FALSE)
 ```
 
 
