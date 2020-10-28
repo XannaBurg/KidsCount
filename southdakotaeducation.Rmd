@@ -11,6 +11,7 @@ output: html_document
 ## Indicator 4: Children enrolled in special education by grade
 ## Indicator 5: Public school enrollment grades Pre-K through 12
 ## Indicator 6: Public school enrollment grades K through 12
+## Indicator 7: Public school enrollment for pre-K
 ## Non-public school enrollment grades pre-K through 12
 ## Home school enrollment
 ## Grades 7 to 12 event drop-out rate
@@ -44,8 +45,8 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '18_19'
-fullyear <- '2018/19' 
+year <- '19_20'
+fullyear <- '2019/20' 
 statefile <- 'southdakota'
 statename <- 'South Dakota'
 
@@ -57,6 +58,7 @@ locationids <- read.csv("./Input/SD KC Location IDs.csv")
 
 **PUBLIC SCHOOL ENROLLMENT GRADES PRE-K THROUGH 12**
 **PUBLIC SCHOOL ENROLLMENT GRADES K THROUGH 12**
+**PUBLIC SCHOOL ENROLLMENT FOR PRE-K**
 #The same code can be used to run both enrollment indicators by changing the objects at the beginning of the first chunk
 ```{r}
 #requested dataset for enrollment and dropouts
