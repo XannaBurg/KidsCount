@@ -1,10 +1,29 @@
 ---
 title: "Child Population by Age Group for Tribal Areas"
 author: "Xanna Burg"
-date: "4/22/2020"
+date: "April 2020"
 output: html_document
 ---
 
+## Indicator 1: Child population by age group
+
+**Created by:** Xanna Burg
+**Date:** April 2020
+**Updated by:**
+
+**Data Source:** U.S. Census Bureau, American Community Survey 5-year Estimates, Table DP05
+
+**Purpose:** Connect to Census ACS data, clean data, and add to database.
+
+**Data format:** Data is only added to database, to be queried in separate code.
+
+
+**To use this code for a new year:**
+* Update the year and acsyear (5 year interval) in the third code chunk for variables 'year' and 'acsyear'
+* Update the state name (exactly as appears in FIPS) of interest
+* Check each dataset visually and through the report logs prior to commiting to the database.
+
+## LOAD NEEDED PACKAGES
 ```{r,message=FALSE}
 #load required packages
 library(tidyverse)
@@ -13,7 +32,7 @@ library(censusapi)
 library(stringr)
 ```
 
-
+## INFORMATION ON API VARIABLES AND GEOGRAPHIES
 ```{r}
 #metadata for available variables
 #acs_vars <- listCensusMetadata(name="2018/acs/acs5/profile",
@@ -32,12 +51,12 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 
 ```
 
-
+## UPDATE THIS CODE CHUNK
 ```{r}
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
-statename <- "North Dakota"
-year <- "2012"
+statename <- "South Dakota"
+year <- "2018"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -79,11 +98,10 @@ regionids$region <- as.character(regionids$region)
 #RUN THIS CODE, BUT NOT REQUIRED TO CHANGE ANYTHING
 #the api will subset data to each state based on the state FIPS code: MT=30, North Dakota=38, South Dakota=46
 statecode <- as.numeric(unique(fips$state_code[fips$state_name==statename]))
-
-
 ```
 
 
+## COMPILE AND CLEAN THE DATA
 ```{r}
 #[year]/acs/acs5/profile table is: ACS 5-year estimates for profile tables (those beginning with DP) for the year specified
 #see lookup table for categorical vars: https://api.census.gov/data/2018/acs/acs5/profile/variables.html
@@ -236,7 +254,7 @@ view(acs_tribal3)
 
 ```
 
-
+## ADD TO SQL DATABASE
 ```{r}
 #CHECK DATASET NAMED acs_tribal3 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
 #this code adds kids count data to MBPC postgres database
