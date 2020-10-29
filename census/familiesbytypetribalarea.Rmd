@@ -62,8 +62,8 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 statename <- "South Dakota"
-year <- "2017"
-acsyear <- "2013-2017"
+year <- "2018"
+acsyear <- "2014-2018"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -234,6 +234,11 @@ acs_tribal <- getCensus(name="acs/acs5",
   mutate(timeframe=acsyear) %>%
   mutate(dataformat='Number') %>%
   mutate(varname='childrenbyfamilytypeandage') %>%
+  
+  #calculate the relative standard error
+  mutate(relativese=((moe/1.645)/data)*100) %>%
+  mutate(keep=if_else(relativese>30 | relativese>30,0,1)) %>%
+  select(-c(relativese)) %>%
   
   #change from factor to character for correctly updating below
   mutate(location=as.character(location)) %>%
