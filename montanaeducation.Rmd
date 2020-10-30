@@ -641,33 +641,13 @@ state_lunch <- frl %>%
   pivot_longer(cols=c(Number,Percent),values_to='data',names_to='dataformat')
 
 
-##################
-#CREATE REGION DATA
-region_lunch <- frl %>%
-  rename(k12enrollment='K-12 Enrollment Count',
-         frl='K-12 FRL Enrollment Count',
-         location=CountyName) %>% 
-  #add in regions
-  left_join(regionids,by=c('location'='county')) %>%
-  group_by(region) %>%
-  summarise(Number=sum(frl),
-            Percent=sum(frl)/sum(k12enrollment)) %>%
-  #add in database variables
-  rename(location=region) %>%
-  mutate(state=statename) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(varname='freereducedlunch') %>%
-  #wide to long format
-  pivot_longer(cols=c(Number,Percent),values_to='data',names_to='dataformat')
 
 
-#################################################
-#COMBINE COUNTY, STATE, AND STATE PLANNING REGION
+#######################
+#COMBINE COUNTY, STATE
 #combine state and county data
 lunchdata <- county_lunch %>%
   bind_rows(state_lunch) %>%
-  bind_rows(region_lunch) %>%
   mutate(location=replace(location, 
                           statename=='Montana' & location=='Lewis and Clark', 
                           'Lewis & Clark')) %>%
