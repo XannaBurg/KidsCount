@@ -4,6 +4,7 @@ output: html_document
 ---
 
 ## Indicator 1: Participants in the supplemental nutrition program for women, infants, and children (WIC)
+## Indicator 2: Infants and children participating in the supplemental nutrition program for women, infants, and children (WIC)
 
 
 **Created by:** Xanna Burg
@@ -17,7 +18,7 @@ output: html_document
 
 **To use this code for a new year:**
 * Update the year in the second code chunk for variable 'year' and 'fullyear'
-* Check each dataset visually and through the report logs prior to commiting to the database.
+* Check each dataset visually and through the report logs prior to committing to the database.
 
 
 ```{r,message=FALSE}
@@ -30,7 +31,7 @@ library(naniar)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2019'
+year <- '2020'
 
 statefile <- 'montana'
 statename <- 'Montana'
@@ -47,11 +48,20 @@ regionids$county <- as.character(regionids$county)
 
 ## IMPORT THE DATA FILES THAT WILL BE USED
 ```{r}
-wic_countydata <- read_excel(path=paste0("./Input/economics/montana_",year,"_wicparticipants.xlsx"),sheet='By County') 
+wic_countydata <- read_excel(path=paste0("./Input/economics/montana_",year,"_wicparticipants.xlsx"),sheet='All Participants - by County') 
 
-wic_statedata <- read_excel(path=paste0("./Input/economics/montana_",year,"_wicparticipants.xlsx"),sheet='Statewide') 
+wic_statedata <- read_excel(path=paste0("./Input/economics/montana_",year,"_wicparticipants.xlsx"),sheet='All Participants - statewide') 
+
+wic_countydata_children <- read_excel(path=paste0("./Input/economics/montana_",year,"_wicparticipants.xlsx"),sheet='Child and Infant - by County') 
+
+wic_statedata_children <- read_excel(path=paste0("./Input/economics/montana_",year,"_wicparticipants.xlsx"),sheet='Child and Infant - statewide') 
 ```
 
+
+
+### ######################## ###
+### FOR ALL WIC PARTICIPANTS ###
+### ######################## ###
 
 ## CLEAN THE IMPORTED DATA
 ```{r}
@@ -67,8 +77,8 @@ wic_county <- wic_countydata %>%
   mutate(location=str_to_title(County)) %>%
   select(-c(County)) %>%
   
+  #remove NULL locations
   subset(location != 'Null') %>%
-
   mutate(locationtype='County') %>%
   
   #fix the name on some counties
@@ -98,7 +108,12 @@ wic_all <- wic_county %>%
          varname='wicparticipants') %>%
   
   left_join(locationids,by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
+  rename(locationid=LocationId) %>%
+  
+  #suppress values less than 5
+  mutate(data=replace(data,data<5,NA)) %>%
+  mutate(data=as.character(paste(data))) %>%
+  mutate(data=replace(data,data=='NA','<5'))
 
 
 
@@ -114,7 +129,16 @@ if (sum(is.na(wic_all$locationid))>=1) {
   'all locations match'
 }
 
-# 4. Visually inspect output data
+#2. Check that no values are less than 5
+temp_suppresscheck <- wic_all %>% mutate(data=as.numeric(paste(data))) %>%subset(data<5)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+# 3. Visually inspect output data
 View(wic_all)
 ```
 
@@ -123,7 +147,6 @@ View(wic_all)
 #CHECK DATASET NAMED wic_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
 #add to database
 dbWriteTable(con,'montana',wic_all,append=TRUE,row.names=FALSE)
-
 ```
 
 ## STEP 3: OUTPUT FILE FOR KC
@@ -142,5 +165,115 @@ upload_data <- dbGetQuery(con,upload_sql) %>%
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
 write.csv(upload_data,file=paste0("./Output/economics/",statefile,"_",year,"_wicparticipants.csv"),row.names=FALSE)
 ```
+
+
+
+### ######################### ###
+### FOR INFANTS/CHILDREN ONLY ###
+### ######################### ###
+
+## CLEAN THE IMPORTED DATA
+```{r}
+#COUNTY DATA
+wic_county <- wic_countydata_children %>% 
+  
+  rename(timeframe=FFY,
+         data=`Total Participants`) %>%
+  
+  #fix the formatting of the county names
+  #lowercase county names
+  mutate(County=tolower(County)) %>%
+  mutate(location=str_to_title(County)) %>%
+  select(-c(County)) %>%
+  
+  #remove NULL locations
+  subset(location != 'Null') %>%
+  mutate(locationtype='County') %>%
+  
+  #fix the name on some counties
+  mutate(location=replace(location,location=='Lewis And Clark','Lewis & Clark')) %>%
+  mutate(location=replace(location,location=='Mccone','McCone')) %>%
+  
+  #subset if it is not a Montana county
+  subset(location!='Mckenzie')
+  
+
+#STATE DATA
+wic_state <- wic_statedata_children %>% 
+  
+  rename(timeframe=FFY,
+         data=`Total Participants`) %>%
+  
+  mutate(location='Montana') %>%
+  mutate(locationtype='State') 
+  
+
+#COMBINE GEOGRAPHIES
+wic_all <- wic_county %>%
+  bind_rows(wic_state) %>%
+  
+  mutate(state='Montana',
+         dataformat='Number',
+         varname='wicparticipants_infantsandchildren') %>%
+  
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  #suppress values less than 5
+  mutate(data=replace(data,data<5,NA)) %>%
+  mutate(data=as.character(paste(data))) %>%
+  mutate(data=replace(data,data=='NA','<5'))
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(wic_all$locationid))>=1) {
+  print(wic_all$location[is.na(wic_all$locationid)])
+} else if (sum(is.na(wic_all$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 5
+temp_suppresscheck <- wic_all %>% mutate(data=as.numeric(paste(data))) %>%subset(data<5)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+# 3. Visually inspect output data
+View(wic_all)
+```
+
+## STEP 2: ADD TO DATABASE
+```{r}
+#CHECK DATASET NAMED wic_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',wic_all,append=TRUE,row.names=FALSE)
+```
+
+## STEP 3: OUTPUT FILE FOR KC
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",year,"' AND varname='wicparticipants_infantsandchildren';")
+
+upload_data <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("./Output/economics/",statefile,"_",year,"_wicparticipants_infantsandchildren.csv"),row.names=FALSE)
+```
+
 
 
