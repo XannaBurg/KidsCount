@@ -1,7 +1,6 @@
 ---
 title: "Small Area Health Insurance Estimates"
 author: "Xanna Burg"
-date: "3/27/2020"
 output: html_document
 ---
 
@@ -59,12 +58,12 @@ fips <- fips_codes
 
 ```
 
-
+## UPDATE THIS CODE CHUNK
 ```{r}
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
-statename <- "North Dakota"
-year <- "2017"
+statename <- "Montana"
+year <- "2018"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -317,7 +316,16 @@ if (temp_rows==0) {
 view(sahie)
 ```
 
-                  
+## COMMIT TO DATABASE (FOR MONTANA AND SOUTH DAKOTA WITHOUT PLANNING REGIONS)                  
+```{r}
+#CHECK DATASET NAMED sahie TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+sahie2 <- sahie %>% subset(locationtype=='Planning Region')
+dbWriteTable(con,database_state,sahie2,append=TRUE,row.names=FALSE)
+```
+
+## COMMIT TO DATABASE (FOR NORTH DAKOTA WITH PLANNING REGIONS)             
 ```{r}
 #CHECK DATASET NAMED sahie TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
 #this code adds kids count data to MBPC postgres database
@@ -325,6 +333,7 @@ view(sahie)
 dbWriteTable(con,database_state,sahie,append=TRUE,row.names=FALSE)
 ```
 
+## OUTPUT FILE FOR DATA CENTER
 ```{r}
 #write query from database to get needed format for KC data center
 
@@ -434,64 +443,12 @@ sahie_state_moe <- getCensus(name="timeseries/healthins/sahie",
   rename(timeframe=YEAR) 
 ```
 
-```{r}
-#state planning region estimates are derived estimates
-
-#STATE PLANNING REGION
-#MATCHING AGE CATEGORY 4 FOR 19 YEARS AND YOUNGER
-sahie_region_moe <- getCensus(name="timeseries/healthins/sahie",
-          key=Sys.getenv("CENSUS_API_KEY"),
-          vars=c("PCTUI_PT","NUI_PT","NIC_PT","NUI_MOE","PCTUI_MOE","NIC_MOE"),
-          region="county:*",
-          regionin=paste0("state:",statecode),
-          AGECAT="4",
-          YEAR=year) %>% # remove YEAR=year to include all available years
- 
-   #clean the dataset that's been imported
-  
-  mutate_at(vars(contains("NIC")), as.numeric) %>%
-  mutate_at(vars(contains("NUI")), as.numeric) %>%
-  mutate_at(vars(contains("PCTUI")), as.numeric) %>%
-  
-  #add in county name from fips codes, remove word 'county', add in state name
-  left_join(fips,by=c('county'='county_code','state'='state_code')) %>% 
-  mutate(county=gsub("\\s*\\w*$", "", county.y)) %>%
-  
-  #create state planning region column
-  mutate(county=replace(county, 
-                          statename=='Montana' & county=='Lewis and Clark', 
-                          'Lewis & Clark')) %>%
-  mutate(county=replace(county, 
-                          statename=='South Dakota' & county=='Shannon', 
-                          'Oglala Lakota')) %>%
-  
-  left_join(regionids,by=c('county'='county'))  %>%
-  group_by(.,region,YEAR) %>%
-  summarise(numberuninsured_under18=sum(NUI_PT),
-            percentuninsured_under18=(sum(NUI_PT))/((sum(NUI_PT)+sum(NIC_PT))),
-            numberuninsured_under18_moe=sqrt(sum((NUI_MOE^2))),
-            calculationa=(1/sum(sum(NUI_PT)+sum(NIC_PT))),
-            moe_x=sqrt((sum(NUI_MOE^2)))^2,
-            calculationb=((sum(NUI_PT))/((sum(NUI_PT)+sum(NIC_PT))))^2,
-            moe_y=(sqrt(sum(NUI_MOE^2)+sum(NIC_MOE^2)))^2,
-            percentuninsured_under18_moe=
-              calculationa*sqrt(moe_x-(calculationb*moe_y))) %>%
-  subset(region!="") %>%
-
-
-  #select only needed variables and rename to KIDS COUNT requirements
-  select(c(YEAR,region,numberuninsured_under18,numberuninsured_under18_moe,
-           percentuninsured_under18,percentuninsured_under18_moe)) %>%
-  rename(timeframe=YEAR,
-         location=region)
-```
 
 ```{r}
-#COMBINE COUNTY, STATE, AND STATE PLANNING REGION INTO OUTPUT DATA FILE
+#COMBINE COUNTY, STATE INTO OUTPUT DATA FILE
 sahie_moe <- sahie_county_moe %>%
   arrange(location) %>%
   bind_rows(sahie_state_moe) %>%
-  bind_rows(sahie_region_moe) %>%
   rename(Location=location,
          Year=timeframe,
          '# Estimate'=numberuninsured_under18,
@@ -518,20 +475,7 @@ sahie_moe <- sahie_county_moe %>%
 
 #output to csv
 write.csv(sahie_moe,paste0("../Output/health/moe/",database_state,"_uninsuredchildrenages0to18sahie_moe_",year,".csv"),row.names=FALSE)
-
-
 ```
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -641,75 +585,11 @@ sahie_state_income <- getCensus(name="timeseries/healthins/sahie",
     dataformat=='percentuninsured_under18' ~ 'Percent')) 
 ```
 
-```{r}
-#STATE PLANNING REGION
-#MATCHING AGE CATEGORY 4 FOR 19 YEARS AND YOUNGER
-#MATCHING ALL AVAILABLE INCOME CATEGORIES
-sahie_region_income <- getCensus(name="timeseries/healthins/sahie",
-          key=Sys.getenv("CENSUS_API_KEY"),
-          vars=c("PCTUI_PT","NUI_PT","NIC_PT","IPRCAT","IPR_DESC"),
-          region="county:*",
-          regionin=paste0("state:",statecode),
-          AGECAT="4",
-          YEAR=year) %>% # remove YEAR=year to include all available years
- 
-   #clean the dataset that's been imported
-  
-  mutate_at(vars(contains("NIC")), as.numeric) %>%
-  mutate_at(vars(contains("NUI")), as.numeric) %>%
-  mutate_at(vars(contains("PCTUI")), as.numeric) %>%
-  
-  #add in county name from fips codes, remove word 'county', add in state name
-  left_join(fips,by=c('county'='county_code','state'='state_code')) %>% 
-  mutate(county=gsub("\\s*\\w*$", "", county.y)) %>%
-  
-  #create state planning region column
-  mutate(county=replace(county, 
-                          statename=='Montana' & county=='Lewis and Clark', 
-                          'Lewis & Clark')) %>%
-  mutate(county=replace(county, 
-                          statename=='South Dakota' & county=='Shannon', 
-                          'Oglala Lakota')) %>%
-  
-  left_join(regionids,by=c('county'='county'))  %>%
-  group_by(.,region,YEAR,IPR_DESC) %>%
-  summarise(numberuninsured_under18=sum(NUI_PT),
-                        percentuninsured_under18=
-                  (sum(NUI_PT))/((sum(NUI_PT)+sum(NIC_PT)))) %>%
-  subset(region!="") %>%
-  mutate(locationtype='State Planning Region') %>%
-
-  #assign location type to region
-  mutate(locationtype='Planning Region') %>%
-  mutate(state_name=statename) %>%
-  
-  #remove unneeded columns
-  select(-c(starts_with("NUI")),starts_with(("NIC"))) %>%
-  
-
-  #select only needed variables and rename to KIDS COUNT requirements
-  select(c(YEAR,IPR_DESC,percentuninsured_under18,numberuninsured_under18,region,state_name,locationtype)) %>%
-  rename(timeframe=YEAR,
-         location=region,
-         state=state_name,
-         category=IPR_DESC) %>%
-  
-  #assign variable name needed for database
-  mutate(varname='uninsuredchildrenages0to18byincomesahie') %>%
-  
-  #stack number and percent - wide data to long data
-  pivot_longer(cols=c('numberuninsured_under18','percentuninsured_under18'),names_to='dataformat',values_to='data') %>%
-  mutate(dataformat=case_when(
-    dataformat=='numberuninsured_under18' ~ 'Number',
-    dataformat=='percentuninsured_under18' ~ 'Percent')) 
-
-```
 
 ```{r}
-#UNION COUNTY, STATE, AND STATE PLANNING REGION
+#UNION COUNTY, STATE
 sahie_income <- sahie_county_income %>%
   bind_rows(sahie_state_income) %>%
-  bind_rows(sahie_region_income) %>%
 
   #merge in location ids
   mutate(location=replace(location, 
@@ -857,66 +737,13 @@ sahie_state_income_moe <- getCensus(name="timeseries/healthins/sahie",
          category=IPR_DESC) 
 ```
 
-```{r}
-#state planning region estimates are derived estimates
 
-#STATE PLANNING REGION
-#MATCHING AGE CATEGORY 4 FOR 19 YEARS AND YOUNGER
-sahie_region_income_moe <- getCensus(name="timeseries/healthins/sahie",
-          key=Sys.getenv("CENSUS_API_KEY"),
-          vars=c("PCTUI_PT","NUI_PT","NIC_PT","NUI_MOE","PCTUI_MOE","NIC_MOE",
-                 "IPRCAT","IPR_DESC"),
-          region="county:*",
-          regionin=paste0("state:",statecode),
-          AGECAT="4",
-          YEAR=year) %>% # remove YEAR=year to include all available years
- 
-   #clean the dataset that's been imported
-  
-  mutate_at(vars(contains("NIC")), as.numeric) %>%
-  mutate_at(vars(contains("NUI")), as.numeric) %>%
-  mutate_at(vars(contains("PCTUI")), as.numeric) %>%
-  
-  #add in county name from fips codes, remove word 'county', add in state name
-  left_join(fips,by=c('county'='county_code','state'='state_code')) %>% 
-  mutate(county=gsub("\\s*\\w*$", "", county.y)) %>%
-  
-  #create state planning region column
-  mutate(county=replace(county, 
-                          statename=='Montana' & county=='Lewis and Clark', 
-                          'Lewis & Clark')) %>%
-  mutate(county=replace(county, 
-                          statename=='South Dakota' & county=='Shannon', 
-                          'Oglala Lakota')) %>%
-  
-  left_join(regionids,by=c('county'='county'))  %>%
-  group_by(.,region,YEAR,IPR_DESC) %>%
-  summarise(numberuninsured_under18=sum(NUI_PT),
-            percentuninsured_under18=(sum(NUI_PT))/((sum(NUI_PT)+sum(NIC_PT))),
-            numberuninsured_under18_moe=sqrt(sum((NUI_MOE^2))),
-            calculationa=(1/sum(sum(NUI_PT)+sum(NIC_PT))),
-            moe_x=sqrt((sum(NUI_MOE^2)))^2,
-            calculationb=((sum(NUI_PT))/((sum(NUI_PT)+sum(NIC_PT))))^2,
-            moe_y=(sqrt(sum(NUI_MOE^2)+sum(NIC_MOE^2)))^2,
-            percentuninsured_under18_moe=
-              calculationa*sqrt(moe_x-(calculationb*moe_y))) %>%
-  subset(region!="") %>%
-
-
-  #select only needed variables and rename to KIDS COUNT requirements
-  select(c(YEAR,IPR_DESC,region,numberuninsured_under18,numberuninsured_under18_moe,
-           percentuninsured_under18,percentuninsured_under18_moe)) %>%
-  rename(timeframe=YEAR,
-         location=region,
-         category=IPR_DESC)
-```
 
 ```{r}
-#COMBINE COUNTY, STATE, AND STATE PLANNING REGION INTO OUTPUT DATA FILE
+#COMBINE COUNTY, STATE INTO OUTPUT DATA FILE
 sahie_income_moe <- sahie_county_income_moe %>%
   arrange(location) %>%
   bind_rows(sahie_state_income_moe) %>%
-  bind_rows(sahie_region_income_moe) %>%
   rename(Location=location,
          Year=timeframe,
          '# Estimate'=numberuninsured_under18,
@@ -937,8 +764,6 @@ sahie_income_moe_ordered <- sahie_income_moe[c("Year","Location","# Estimate_All
 
 #output to csv
 write.csv(sahie_income_moe_ordered,paste0("../Output/health/moe/",database_state,"_uninsuredchildrenages0to18sahiebyincome_moe_",year,".csv"),row.names=FALSE)
-
-
 ```
 
 
