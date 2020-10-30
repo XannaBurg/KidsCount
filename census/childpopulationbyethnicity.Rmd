@@ -414,7 +414,7 @@ view(pop)
 #this code adds kids count data to MBPC postgres database
 #run postgres code (separate file) first
 pop2 <- pop %>% subset(locationtype != 'Planning Region')
-dbWriteTable(con,database_state,pop,append=TRUE,row.names=FALSE)
+dbWriteTable(con,database_state,pop2,append=TRUE,row.names=FALSE)
 ```
 
 ## COMMIT TO DATABASE (NORTH DAKOTA WITH PLANNING REGIONS)

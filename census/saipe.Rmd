@@ -1,7 +1,6 @@
 ---
 title: "SAIPE"
 author: "Xanna Burg"
-date: "5/12/2020"
 output: html_document
 ---
 
@@ -56,11 +55,11 @@ fips <- fips_codes
 
 ```
 
-
+## UPDATE THIS CODE CHUNK
 ```{r}
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
-statename <- "North Dakota"
+statename <- "Montana"
 year <- "2018"
 
 
@@ -708,7 +707,16 @@ saipe <- saipe_ages0to17 %>%
   bind_rows(saipe_ages0to4)
 ```
 
-# STEP 5: COMMIT TO DATABASE AND CREATE FILES FOR OUTPUT
+# STEP 5a: COMMIT TO DATABASE (MONTANA & SOUTH DAKOTA WITHOUT PLANNING REGIONS)
+```{r}
+#CHECK DATASET NAMED saipe TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+saipe2 <- saipe %>% subset(locationtype != 'Planning Region')
+dbWriteTable(con,database_state,saipe2,append=TRUE,row.names=FALSE)
+```
+
+# STEP 5b: COMMIT TO DATABASE (NORTH DAKOTA WITH PLANNING REGIONS)
 ```{r}
 #CHECK DATASET NAMED saipe TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
 #this code adds kids count data to MBPC postgres database
@@ -716,6 +724,8 @@ saipe <- saipe_ages0to17 %>%
 dbWriteTable(con,database_state,saipe,append=TRUE,row.names=FALSE)
 ```
 
+
+# STEP 6: OUTPUT FILE TO UPLOAD TO DATA CENTER
 ```{r}
 #########################
 ##OUTPUT DATA CENTER FILE
