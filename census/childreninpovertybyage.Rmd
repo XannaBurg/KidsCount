@@ -1,7 +1,6 @@
 ---
 title: "Children in poverty by age"
 author: "Xanna Burg"
-date: "May 2020"
 output: html_document
 ---
 
@@ -58,10 +57,12 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 
 ```
 
+
+## UPDATE THIS CODE CHUNK
 ```{r}
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
-statename <- "South Dakota"
+statename <- "Montana"
 year <- "2018"
 acsyear <- "2014-2018"
 
@@ -745,7 +746,16 @@ if (temp_rows==0) {
 View(poverty)
 ```
 
-## STEP 4: COMMIT TO DATABASE 
+## STEP 4a: COMMIT TO DATABASE (MONTANA & SOUTH DAKOTA WITHOUT PLANNING REGIONS)
+```{r}
+#CHECK DATASET NAMED poverty TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+poverty2 <- poverty %>% subset(locationtype != 'Planning Region')
+dbWriteTable(con,database_state,poverty2,append=TRUE,row.names=FALSE)
+```
+
+## STEP 4b: COMMIT TO DATABASE (NORTH DAKOTA WITH PLANNING REGIONS)
 ```{r}
 #CHECK DATASET NAMED poverty TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
 #this code adds kids count data to MBPC postgres database
