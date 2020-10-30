@@ -36,7 +36,7 @@ library(zoo)
 ## STEP 1: IMPORT DATA FROM SQL DATABASE AND CLEAN
 ```{r}
 year <- '2019'
-statename <- 'South Dakota'
+statename <- 'Montana'
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -175,12 +175,19 @@ view(popdata_final)
 
 ```
 
-## STEP 2: COMMITT TO DATABASE
+## STEP 2a: COMMITT TO DATABASE (MONTANA & SOUTH DAKOTA WITHOUT PLANNING REGIONS)
+```{r}
+#add to database
+popdata_final2 <- popdata_final %>% subset(locationtype != 'Planning Region')
+dbWriteTable(con,database_state,popdata_final,append=TRUE,row.names=FALSE)
+```
+
+## STEP 2b: COMMITT TO DATABASE (NORTH DAKOTA WITH PLANNING REGIONS)
 ```{r}
 #add to database
 dbWriteTable(con,database_state,popdata_final,append=TRUE,row.names=FALSE)
-
 ```
+
 
 ## STEP 3a: EXPORT DATA FOR UPLOAD - WITH TRIBAL AREAS (ND)
 ```{r}
