@@ -97,24 +97,10 @@ ccap_state <- ccapdata %>%
   mutate(locationtype='State')
 
 
-#REGION DATA
-ccap_region <- ccap_county %>%
-  
-  left_join(regionids,by=c('location'='county')) %>%
-  subset(region != '') %>%
-  
-  group_by(region,category) %>%
-  summarise(data=sum(data),.groups='keep') %>%
-  ungroup %>%
-  
-  rename(location=region) %>%
-  mutate(locationtype='Planning Region')
-  
 
 #COMBINE ALL GEOGRAPHIES
 ccap_all <- ccap_county %>%
   bind_rows(ccap_state) %>%
-  bind_rows(ccap_region) %>%
   
   #add in KC variables
   mutate(timeframe=year) %>%
