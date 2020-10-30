@@ -154,47 +154,12 @@ medicaid_state_number <- medicaid_state %>%
     category=='totalchildren' ~ 'Total Medicaid or Healthy Montana Kids'))
 
 
-#####################
-#CLEAN UP REGION DATA
-medicaid_region_number <- medicaid_county %>%
-  
-  #add in regions
-  left_join(regionids,by=c('COUNTY'='county')) %>%
-  
-  group_by(region) %>%
-  summarise(chip=sum(chip),
-            medicaid_group=sum(medicaidchildren)+sum(medicaidandchip),
-            totalchildren=sum(medicaid_group)+sum(chip)) %>%
-
-  ungroup %>%
-  
-  select(c(region,medicaid_group,chip,totalchildren)) %>%
-  
-  #add in KC variables
-  rename(location=region) %>%
-  mutate(location=as.character(location)) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(state=statename) %>%
-  mutate(timeframe=year) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='medicaidages0to18') %>%
-  
-  #wide to long format
-  pivot_longer(cols=c(medicaid_group,chip,totalchildren),names_to='category',values_to='data') %>%
-  
-  #rename category variable
-  mutate(category=case_when(
-    category=='medicaid_group' ~ 'Medicaid',
-    category=='chip' ~ 'Healthy Montana Kids (CHIP)',
-    category=='totalchildren' ~ 'Total Medicaid or Healthy Montana Kids'))
-
 
 ###############################################################
 ###############################################################
-#UNION COUNTY, STATE, AND STATE PLANNING REGION for number only
+#UNION COUNTY, STATE for number only
 upload_medicaid_number <- medicaid_county_number %>%
   bind_rows(medicaid_state_number) %>%
-  bind_rows(medicaid_region_number) %>%
 
   #merge in location ids
   mutate(location=replace(location, 
@@ -275,7 +240,7 @@ medicaid_pop <- dbGetQuery(con,medicaid_sql)
 
 
 ##############################
-#CALCULATE PERCENTS FOR COUNTY, STATE, and STATE PLANNING REGION
+#CALCULATE PERCENTS FOR COUNTY, STATE
 medicaid_percent <- medicaid_pop %>%
   left_join(childpop,by=c('location'='location','timeframe'='timeframe')) %>%
   rename(childonmedicaid=data) %>%
@@ -400,35 +365,12 @@ snap_state_rechouse <- snap_state %>%
   pivot_longer(cols=c(Households,Recipients),names_to='category',values_to='data')
 
 
-#####################
-#CLEAN UP REGION DATA
-snap_region_rechouse <- snap_county_rechouse %>%
-  
-  #add in regions
-  left_join(regionids,by=c('location'='county')) %>%
-  
-  group_by(region,category) %>%
-  summarise(data=sum(data)) %>%
 
-  ungroup %>%
-  
-  select(c(region,category,data)) %>%
-  
-  #add in KC variables
-  rename(location=region) %>%
-  mutate(location=as.character(location)) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(state=statename) %>%
-  mutate(timeframe=year) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='snaprecipientshouseholdsallages') 
-
-###############################################
-###############################################
-#UNION COUNTY, STATE, AND STATE PLANNING REGION
+####################
+####################
+#UNION COUNTY, STATE
 upload_snap_rechouse <- snap_county_rechouse %>%
   bind_rows(snap_state_rechouse) %>%
-  bind_rows(snap_region_rechouse) %>%
 
   #merge in location ids
   mutate(location=replace(location, 
@@ -542,36 +484,13 @@ snap_state_number <- snap_state %>%
   mutate(varname='snapages0to18') 
 
 
-#####################
-#CLEAN UP REGION DATA
-snap_region_number <- snap_county_number %>%
-  
-  #add in regions
-  left_join(regionids,by=c('location'='county')) %>%
-  
-  group_by(region) %>%
-  summarise(data=sum(data)) %>%
-
-  ungroup %>%
-  
-  select(c(region,data)) %>%
-  
-  #add in KC variables
-  rename(location=region) %>%
-  mutate(location=as.character(location)) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(state=statename) %>%
-  mutate(timeframe=year) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='snapages0to18') 
 
 
-###############################################################
-###############################################################
-#UNION COUNTY, STATE, AND STATE PLANNING REGION for number only
+####################################
+####################################
+#UNION COUNTY, STATE for number only
 upload_snap_number <- snap_county_number %>%
   bind_rows(snap_state_number) %>%
-  bind_rows(snap_region_number) %>%
 
   #merge in location ids
   mutate(location=replace(location, 
@@ -651,7 +570,7 @@ snap_pop <- dbGetQuery(con,snap_sql)
 
 
 ##############################
-#CALCULATE PERCENTS FOR COUNTY, STATE, and STATE PLANNING REGION
+#CALCULATE PERCENTS FOR COUNTY, STATE
 snap_percent <- snap_pop %>%
   left_join(childpop,by=c('location'='location','timeframe'='timeframe')) %>%
   rename(childonsnap=data) %>%
@@ -775,9 +694,9 @@ snap_state_benefit <- snap_state %>%
 
 
 
-###############################################
-###############################################
-#UNION COUNTY, STATE, AND STATE PLANNING REGION
+####################
+####################
+#UNION COUNTY, STATE
 upload_snap_benefit <- snap_county_benefit %>%
   bind_rows(snap_state_benefit) %>%
 
@@ -895,9 +814,9 @@ snap_state_indbenefit <- snap_state %>%
 
 
 
-###############################################
-###############################################
-#UNION COUNTY, STATE, AND STATE PLANNING REGION
+####################
+####################
+#UNION COUNTY, STATE
 upload_snap_indbenefit <- snap_county_indbenefit %>%
   bind_rows(snap_state_indbenefit) %>%
 
@@ -1011,36 +930,14 @@ tanf_state_rechouse <- tanf_state %>%
   pivot_longer(cols=c(Households,Recipients),names_to='category',values_to='data')
 
 
-#####################
-#CLEAN UP REGION DATA
-tanf_region_rechouse <- tanf_county_rechouse %>%
-  
-  #add in regions
-  left_join(regionids,by=c('location'='county')) %>%
-  
-  group_by(region,category) %>%
-  summarise(data=sum(data)) %>%
-
-  ungroup %>%
-  
-  select(c(region,category,data)) %>%
-  
-  #add in KC variables
-  rename(location=region) %>%
-  mutate(location=as.character(location)) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(state=statename) %>%
-  mutate(timeframe=year) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='tanfrecipientshouseholdsallages') 
 
 
-###############################################
-###############################################
-#UNION COUNTY, STATE, AND STATE PLANNING REGION
+
+####################
+####################
+#UNION COUNTY, STATE
 upload_tanf_rechouse <- tanf_county_rechouse %>%
   bind_rows(tanf_state_rechouse) %>%
-  bind_rows(tanf_region_rechouse) %>%
 
   #merge in location ids
   mutate(location=replace(location, 
@@ -1154,35 +1051,12 @@ tanf_state_number <- tanf_state %>%
   mutate(varname='tanfages0to18') 
 
 
-#####################
-#CLEAN UP REGION DATA
-tanf_region_number <- tanf_county_number %>%
-  
-  #add in regions
-  left_join(regionids,by=c('location'='county')) %>%
-  
-  group_by(region) %>%
-  summarise(data=sum(data)) %>%
 
-  ungroup %>%
-  
-  select(c(region,data)) %>%
-  
-  #add in KC variables
-  rename(location=region) %>%
-  mutate(location=as.character(location)) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(state=statename) %>%
-  mutate(timeframe=year) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='tanfages0to18') 
-
-###############################################################
-###############################################################
-#UNION COUNTY, STATE, AND STATE PLANNING REGION for number only
+####################
+####################
+#UNION COUNTY, STATE
 upload_tanf_number <- tanf_county_number %>%
   bind_rows(tanf_state_number) %>%
-  bind_rows(tanf_region_number) %>%
 
   #merge in location ids
   mutate(location=replace(location, 
@@ -1220,7 +1094,6 @@ dbWriteTable(con,database_state,upload_tanf_number,append=TRUE,row.names=FALSE)
 #write query from database to get needed format for KC data center
 
 uploadnumber_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='tanfages0to18' AND dataformat='Number';")
-
 
 upload_datacenter_tanf_number <- dbGetQuery(con,uploadnumber_sql) %>%
   rename(LocationId=locationid,
@@ -1262,7 +1135,7 @@ tanf_pop <- dbGetQuery(con,tanf_sql)
 
 
 ##############################
-#CALCULATE PERCENTS FOR COUNTY, STATE, and STATE PLANNING REGION
+#CALCULATE PERCENTS FOR COUNTY
 tanf_percent <- tanf_pop %>%
   left_join(childpop,by=c('location'='location','timeframe'='timeframe')) %>%
   rename(childontanf=data) %>%
