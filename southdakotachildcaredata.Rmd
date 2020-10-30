@@ -226,34 +226,10 @@ childcare_state <- childcaredata %>%
   mutate(locationtype='State')
 
 
-#REGION DATA
-childcare_region <- childcare_county %>%
-  
-  left_join(regionids,by=c('location'='county')) %>%
-  subset(region != '') %>%
-  
-  group_by(region,category) %>%
-  summarise(data=sum(data),.groups='keep') %>%
-  ungroup %>%
-  
-  rename(location=region) %>%
-  mutate(locationtype='Planning Region')
-
-#CREATE TOTAL CATEGORY FOR ALL GEOGRAPHIES
-childcare_totals <- childcare_county %>%
-  bind_rows(childcare_state) %>%
-  bind_rows(childcare_region) %>%
-  
-  group_by(location,locationtype) %>%
-  summarise(data=sum(data),.groups='keep') %>%
-  ungroup %>%
-  mutate(category='Total')
-  
 
 #COMBINE ALL GEOGRAPHIES
 childcare_all <- childcare_county %>%
   bind_rows(childcare_state) %>%
-  bind_rows(childcare_region) %>%
   bind_rows(childcare_totals) %>%
   
   #add in KC variables
@@ -364,24 +340,10 @@ childcare_state <- childcaredata %>%
   mutate(locationtype='State')
 
 
-#REGION DATA
-childcare_region <- childcare_county %>%
-  
-  left_join(regionids,by=c('location'='county')) %>%
-  subset(region != '') %>%
-  
-  group_by(region) %>%
-  summarise(data=sum(data),.groups='keep') %>%
-  ungroup %>%
-  
-  rename(location=region) %>%
-  mutate(locationtype='Planning Region')
-
 
 #COMBINE ALL GEOGRAPHIES
 childcare_all <- childcare_county %>%
   bind_rows(childcare_state) %>%
-  bind_rows(childcare_region) %>%
   
   #add in KC variables
   mutate(timeframe=year) %>%
