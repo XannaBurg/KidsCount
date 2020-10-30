@@ -1,7 +1,6 @@
 ---
 title: "Child Population by Single Year of Age - Using NCHS SAS File"
 author: "Xanna Burg"
-date: "July 2020"
 output: html_document
 ---
 
@@ -39,7 +38,7 @@ library(sas7bdat)
 ```{r}
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
-statename <- "North Dakota"
+statename <- "Montana"
 year <- "2019"
 
 
@@ -199,7 +198,14 @@ if (sum(is.na(populationdata$locationid))>=1) {
 View(populationdata)
 ```
 
-## STEP 3: ADD TO DATABASE
+## STEP 3a: ADD TO DATABASE (MONTANA & SOUTH DAKOTA WITHOUT PLANNING REGIONS)
+```{r}
+#add to database
+populationdata2 <- populationdata %>% subset(locationtype != 'Planning Region')
+dbWriteTable(con,database_state,populationdata2,append=TRUE,row.names=FALSE)
+```
+
+## STEP 3B: ADD TO DATABASE (NORTH DAKOTA WITH PLANNING REGIONS)
 ```{r}
 #add to database
 dbWriteTable(con,database_state,populationdata,append=TRUE,row.names=FALSE)
