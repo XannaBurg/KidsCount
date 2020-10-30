@@ -96,26 +96,10 @@ state_enrollment <- county_enrollment %>%
   mutate(dataformat='Number') %>%
   mutate(varname='publicschoolk12enrollment')
 
-###################
-#CREATE REGION DATA
-region_enrollment <- county_enrollment %>%
-  left_join(regionids,by=c('location'='county')) %>%
-
-  group_by(region) %>%
-  summarise(data=sum(data)) %>%
-  ungroup %>%
-  rename(location=region) %>%
-  mutate(state=statename) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='publicschoolk12enrollment')
-  
 
 #combine state and county data
 enrollmentdata <- county_enrollment %>%
   bind_rows(state_enrollment) %>%
-  bind_rows(region_enrollment) %>%
   mutate(location=replace(location, 
                           statename=='Montana' & location=='Lewis and Clark', 
                           'Lewis & Clark')) %>%
@@ -211,30 +195,12 @@ state_homeschool <- df_homeschool %>%
   mutate(dataformat='Number') %>%
   mutate(varname='totalschoolenrollmentk12bytype')
 
-########################
-#REGION HOME SCHOOL DATA
-region_homeschool <- df_homeschool %>%
-  rename(location=County,
-         primaryschool='K-8',
-         highschool='9-12') %>%
-  subset(!is.na(location)) %>%
-  left_join(regionids,by=c('location'='county')) %>%
-  group_by(region) %>%
-  summarise(data=sum(primaryschool)+sum(highschool)) %>%
-  ungroup %>%
-  rename(location=region) %>%  
-  select(c(location,data)) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='totalschoolenrollmentk12bytype')
 
 
-#UNION COUNTY, STATE, AND STATE PLANNING REGION
+
+#UNION COUNTY, STATE
 homeschool <- county_homeschool %>%
   bind_rows(state_homeschool) %>%
-  bind_rows(region_homeschool) %>%
   mutate(category='Home School') %>%
   mutate(location=replace(location, 
                           statename=='Montana' & location=='Lewis and Clark', 
@@ -287,30 +253,11 @@ state_nonpublic <- df_privateschool %>%
   mutate(varname='totalschoolenrollmentk12bytype')
 
 
-########################
-#REGION NON PUBLIC SCHOOL DATA
-region_nonpublic <- df_privateschool %>%
-  rename(location=County,
-         primaryschool='K-8',
-         highschool='9-12') %>%
-  subset(!is.na(location)) %>%
-  left_join(regionids,by=c('location'='county')) %>%
-  group_by(region) %>%
-  summarise(data=sum(primaryschool)+sum(highschool)) %>%
-  ungroup %>%
-  rename(location=region) %>%  
-  select(c(location,data)) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(state='Montana') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='totalschoolenrollmentk12bytype')
 
 
-#UNION COUNTY, STATE, AND STATE PLANNING REGION
+#UNION COUNTY, STATE
 nonpublic <- county_nonpublic %>%
   bind_rows(state_nonpublic) %>%
-  bind_rows(region_nonpublic) %>%
   mutate(category='Private School') %>%
   mutate(location=replace(location, 
                           statename=='Montana' & location=='Lewis and Clark', 
@@ -586,55 +533,12 @@ state_specialed <- specialed %>%
 
 
 
-##########################
-#CREATE THE REGION DATASET
-region_specialed <- specialed %>%
-  
-  #remove state totals
-  subset(County != 'State') %>%
-  
-  #rename special ed count variable
-  rename(specialedcount=paste0("SFY20",year," Child Count")) %>%
-  
-  #join enrollment data
-  left_join(enrollment,by=c('County'='CountyName')) %>%
-  
-  #join regions
-  left_join(regionids,by=c('County'='county')) %>%
-  
-  #calculate new columns and percent
-  rename(kthrough12='K-12 Enrollment Count',
-         prek='PreK Enrollment Count') %>%
-  mutate(prek=as.numeric(prek)) %>%
-  mutate(prek=replace(prek,is.na(prek),0)) %>%
-  mutate(enrollmentprek12=kthrough12+prek) %>%
-  
-  group_by(region) %>%
-  summarise(Number=sum(specialedcount),
-            Percent=sum(specialedcount)/sum(enrollmentprek12)) %>%
-  ungroup %>%
-  
-
-  #rename to database
-  select(c(region,Number,Percent)) %>%
-  rename(location=region) %>%
-  mutate(location=as.character(location)) %>%
-  mutate(state=statename) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(timeframe=fullyear) %>%
-  mutate(varname='totalspecialeducation') %>%
-  
-  #pivot wide to long
-  pivot_longer(cols=c(Number,Percent),names_to='dataformat',values_to='data')
-
-
 
 ###############################################
-#UNION COUNTY, STATE, AND STATE PLANNING REGION
+#UNION COUNTY, STATE
 #combine state and county data
 upload_specialed <- county_specialed %>%
   bind_rows(state_specialed) %>%
-  bind_rows(region_specialed) %>%
   mutate(location=replace(location, 
                           statename=='Montana' & location=='Lewis and Clark', 
                           'Lewis & Clark')) %>%
