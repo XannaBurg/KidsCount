@@ -1,7 +1,6 @@
 ---
 title: "Total population"
 author: "Xanna Burg"
-date: "4/20/2020"
 output: html_document
 ---
 
@@ -56,7 +55,7 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 ```{r}
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
-statename <- "North Dakota"
+statename <- "Montana"
 year <- "2019"
 
 
@@ -290,13 +289,23 @@ View(pop)
 
 ```
 
-## STEP 2: COMMIT TO SQL DATABASE
+## STEP 2a: COMMIT TO SQL DATABASE (MONTANA & SOUTH DAKOTA WITHOUT PLANNING REGIONS)
+```{r}
+#CHECK DATASET NAMED pop TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+pop2 <- pop %>% subset(locationtype != 'Planning Region')
+dbWriteTable(con,database_state,pop2,append=TRUE,row.names=FALSE)
+```
+
+## STEP 2b: COMMIT TO SQL DATABASE (NORTH DAKOTA WITH PLANNING REGIONS)
 ```{r}
 #CHECK DATASET NAMED pop TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
 #this code adds kids count data to MBPC postgres database
 #run postgres code (separate file) first
 dbWriteTable(con,database_state,pop,append=TRUE,row.names=FALSE)
 ```
+
 
 ## STEP 3a: OUTPUT TO DATA CENTER WITHOUT TRIBAL AREAS (MONTANA & SOUTH DAKOTA)
 ```{r}
