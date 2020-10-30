@@ -1,7 +1,6 @@
 ---
 title: "Child population by race"
 author: "Xanna Burg"
-date: "4/20/2020"
 output: html_document
 ---
 
@@ -55,11 +54,11 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 
 ```
 
-
+## UPDATE THIS CODE CHUNK
 ```{r}
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
-statename <- "South Dakota"
+statename <- "Montana"
 year <- "2019"
 
 
@@ -99,6 +98,7 @@ regionids$region <- as.character(regionids$region)
 statecode <- as.numeric(unique(fips$state_code[fips$state_name==statename]))
 ```
 
+## IMPORT AND CLEAN THE DATA
 ```{r}
 #pep/charagegroups is: Population Estimates Program
 #see lookup table for categorical vars: 
@@ -422,6 +422,17 @@ View(pop)
 
 ```
 
+
+## ADD TO DATABASE (MONTANA & SOUTH DAKOTA WITHOUT REGION DATA)
+```{r}
+#CHECK DATASET NAMED pop TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+pop2 <- pop %>% subset(locationtype != 'Planning Region')
+dbWriteTable(con,database_state,pop2,append=TRUE,row.names=FALSE)
+```
+
+## ADD TO DATABASE (NORTH DAKOTA WITH REGION DATA)
 ```{r}
 #CHECK DATASET NAMED pop TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
 #this code adds kids count data to MBPC postgres database
@@ -429,7 +440,7 @@ View(pop)
 dbWriteTable(con,database_state,pop,append=TRUE,row.names=FALSE)
 ```
 
-
+## OUTPUT DATA FILE FOR UPLOAD TO DATA CENTER
 ```{r}
 #write query from database to get needed format for KC data center
 
