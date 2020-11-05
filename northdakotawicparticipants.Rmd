@@ -62,13 +62,15 @@ wicdata <- read.csv(paste0("./Input/Health/northdakota_",year,"_wicparticipants.
 #county data
 wicdata_county <- wicdata %>%
   subset(Location != 'Statewide') %>%
-  mutate(locationtype='County')
+  mutate(locationtype='County') %>%
+  mutate(Total=as.numeric(paste(Total)))
 
 #state data
 wicdata_state <- wicdata %>%
   subset(Location=='Statewide') %>%
   mutate(Location='North Dakota') %>%
-  mutate(locationtype='State')
+  mutate(locationtype='State') %>%
+  mutate(Total=as.numeric(paste(Total)))
 
 #region data
 wicdata_region <- wicdata_county %>%
