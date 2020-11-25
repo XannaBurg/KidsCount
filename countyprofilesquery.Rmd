@@ -516,7 +516,7 @@ countydata6 <- dbGetQuery(con,countydata6_sql) %>%
   mutate(dataformat='Number')
 
   
-#####LICENSED CHILD CARE CAPACITY
+#####CHILD CARE CAPACITY
 countydata7_sql <- paste0("SELECT location, timeframe, data FROM northdakota WHERE (locationtype='County' OR locationtype='State') AND varname='childcarecapacitybytype' AND dataformat='Number' AND (timeframe='",year_current,"' OR timeframe='",year_minus1,"');")
 
 countydata7 <- dbGetQuery(con,countydata7_sql) %>%
@@ -529,14 +529,14 @@ countydata7 <- dbGetQuery(con,countydata7_sql) %>%
   mutate(age_group='Ages 0 to 13') %>%
   mutate(date_description='Snapshot from February') %>%
     mutate(data_source='North Dakota Department of Human Services') %>%
-  mutate(data_notes='') %>%
+  mutate(data_notes='Child care facilities included in capacity are both those that are licensed and those that completed a voluntary registration (standard compliance certification, in-home, registered tribal, and approved relative).') %>%
   mutate(date_mostrecent=case_when(
     timeframe==all_of(year_current) ~ 1,
     timeframe==all_of(year_minus1) ~0)) %>%
   mutate(dataformat='Number')
 
 
-#####CHILDREN NEEDING CARE SERVED BY LICENSED CAPACITY
+#####CHILDREN NEEDING CARE SERVED BY CAPACITY
 countydata8_sql <- paste0("SELECT location, timeframe, data FROM northdakota WHERE (locationtype='County' OR locationtype='State') AND varname='childcarecapacitybytype' AND dataformat='Percent' AND (timeframe='",year_current,"' OR timeframe='",year_minus1,"');")
 
 countydata8 <- dbGetQuery(con,countydata8_sql) %>%
@@ -550,7 +550,7 @@ countydata8 <- dbGetQuery(con,countydata8_sql) %>%
   mutate(age_group='Ages 0 to 13') %>%
   mutate(date_description='Snapshot from February') %>%
   mutate(data_source='North Dakota Department of Human Services and U.S. Census Bureau, American Community Survey 5-Year Estimates, Table B23008') %>%
-  mutate(data_notes='') %>%
+  mutate(data_notes='Child care facilities included in capacity are both those that are licensed and those that completed a voluntary registration (standard compliance certification, in-home, registered tribal, and approved relative). It is not expected this percentage will be 100% as not all working families need child care.') %>%
   mutate(date_mostrecent=case_when(
     timeframe==all_of(year_current) ~ 1,
     timeframe==all_of(year_minus1) ~0)) %>%
@@ -946,14 +946,14 @@ countydata9 <- dbGetQuery(con,countydata9_sql) %>%
   mutate(age_group='Ages 0 to 13') %>%
   mutate(date_description='State Fiscal Year') %>%
     mutate(data_source='South Dakota Department of Social Services, Child Care Services Assistance Program') %>%
-  mutate(data_notes='') %>%
+  mutate(data_notes='Licensed or registered programs are regulated by the state to ensure providers meet basic health and safety requirements. It is not an indicator of program quality.') %>%
   mutate(date_mostrecent=case_when(
     timeframe==all_of(year_current) ~ 1,
     timeframe==all_of(year_minus1) ~0)) %>%
   mutate(dataformat='Number')
 
 
-#####LICENSED OR REGISTERED CHILD CARE
+#####LICENSED BEFORE AND AFTER SCHOOL CARE
 countydata10_sql <- paste0("SELECT location, timeframe, data FROM southdakota WHERE (locationtype='County' OR locationtype='State') AND varname='licensedbeforeandafterschoolprograms' AND dataformat='Number' AND (timeframe='",year_current,"' OR timeframe='",year_minus1,"');")
 
 countydata10 <- dbGetQuery(con,countydata10_sql) %>%
@@ -961,7 +961,7 @@ countydata10 <- dbGetQuery(con,countydata10_sql) %>%
   mutate(age_group='Ages 5 to 13') %>%
   mutate(date_description='State Fiscal Year') %>%
     mutate(data_source='South Dakota Department of Social Services, Child Care Services Assistance Program') %>%
-  mutate(data_notes='') %>%
+  mutate(data_notes='Licensed programs are regulated by the state to ensure providers meet basic health and safety requirements. It is not an indicator of program quality.') %>%
   mutate(date_mostrecent=case_when(
     timeframe==all_of(year_current) ~ 1,
     timeframe==all_of(year_minus1) ~0)) %>%
