@@ -47,6 +47,7 @@ library(stringr)
 ####UPDATE to reflect the current year data working with
 year <- '19_20'
 fullyear <- '2019/20' 
+year_prior <- '2018/19' #for dropout data
 statefile <- 'southdakota'
 statename <- 'South Dakota'
 
@@ -75,7 +76,7 @@ variablename <- 'publicschoolk12enrollment'
 
 enrollment_district <- df_enrollment %>%
   rename(location='District Name',
-         data=columnname) %>%
+         data=all_of(columnname)) %>%
   select(c(location,data)) %>%
   mutate(locationtype='School District') %>%
   mutate(state='South Dakota') %>%
@@ -90,37 +91,51 @@ enrollment_district <- df_enrollment %>%
                          'Deubrook School District 05-6',location)) %>%
     mutate(location=ifelse(location=='Wagner Community School District 11-4',
                          'Wagner School District 11-4',location)) %>%
-    mutate(location=ifelse(location=='Webster Area School District 18-5',
+    mutate(location=ifelse(location=='Webster Area',
                          'Webster School District 18-5',location)) %>%
     mutate(location=ifelse(location=='Ipswich Public School District 22-6',
                          'Ipswich School District 22-6',location)) %>%
-    mutate(location=ifelse(location=='Faulkton Area School District 24-4',
+    mutate(location=ifelse(location=='Faulkton Area',
                          'Faulkton School District 24-4',location)) %>%
-    mutate(location=ifelse(location=='Miller School District 29-4',
+    mutate(location=ifelse(location=='Miller',
                          'Miller Area School District 29-4',location)) %>%
     mutate(location=ifelse(location=='Kadoka Area School District 35-2',
                          'Kadoka School District 35-2',location)) %>%
     mutate(location=ifelse(location=='Chester Area School District 39-1',
                          'Chester Area District 39-1',location)) %>%
-    mutate(location=ifelse(location=='Langford Area School District 45-5',
+    mutate(location=ifelse(location=='Langford Area',
                          'Langford School District 45-5',location)) %>%
-    mutate(location=ifelse(location=='Rapid City Area School District 51-4',
+    mutate(location=ifelse(location=='Rapid City  Area School District 51-4',
                          'Rapid City School District 51-4',location)) %>%
     mutate(location=ifelse(location=='Viborg-Hurley School District 60-6',
                          'Viborg Hurley 60-6',location)) %>%
-    mutate(location=ifelse(location=='Selby Area School District 62-5',
+    mutate(location=ifelse(location=='Selby  Area School District 62-5',
                          'Selby School District 62-5',location)) %>%
-  mutate(location=ifelse(location=='Shannon County School District 65-1',
+    mutate(location=ifelse(location=='Shannon County School District 65-1',
                          'Oglala Lakota County School District 65-1',location)) %>%
+    mutate(location=ifelse(location=='Oglala Lakota School District 65-1',
+                         'Oglala Lakota County School District 65-1',location)) %>%
+    mutate(location=ifelse(location=='Colome Consolidated',
+                         'Colome Consolidated School District 59-3',location)) %>%
+    mutate(location=ifelse(location=='Groton Area',
+                         'Groton Area School District 06-6',location)) %>%
+    mutate(location=ifelse(location=='Highmore-Harrold',
+                         'Highmore-Harrold School District 34-2',location)) %>%
+    mutate(location=ifelse(location=='Hitchcock-Tulare',
+                         'Hitchcock-Tulare School District 56-6',location)) %>%
+  
+  
   left_join(locationids,by=c('location'='Location')) %>%
   rename(locationid=LocationId) %>%
-  subset(!is.na(locationid))
+  subset(!is.na(data)) %>%
+  subset(location!='State Totals')
+
 
 
 #calculate the state data from the district data
 enrollment_state <- enrollment_district %>%
   group_by(state) %>%
-  summarise(data=sum(data)) %>%
+  summarise(data=sum(data),.groups='keep') %>%
   mutate(location='South Dakota') %>%
   mutate(locationtype='State') %>%
   mutate(varname=variablename) %>%
@@ -138,6 +153,7 @@ enrollment <- enrollment_district %>%
 #add to database
 dbWriteTable(con,'southdakota',enrollment,append=TRUE,row.names=FALSE)
 ```
+
 ```{r}
 #write query from database to get needed format for KC data center
 
@@ -159,9 +175,82 @@ write.csv(upload_data_enroll,file=paste0("./Output/education/southdakota_",year,
 ```
 
 
+
+**PUBLIC SCHOOL ENROLLMENT GRADES PREK THROUGH 12 FOR TRIBAL AREAS**
+**NON PUBLIC SCHOOL ENROLLMENT GRADES PREK THROUGH 12 FOR TRIBAL AREAS**
+```{r}
+#import the tribal schools crosswalk
+tribalschools <- read.csv("./Documentation/Indicator Documentation/South Dakota Data Requests/southdakota_education_tribalschoolcrosswalk.csv") %>%
+  subset(!is.na(school_specialednumber))
+
+
+#requested dataset for enrollment and dropouts
+xl_data_enroll <- paste0("./Input/education/southdakota_",year,"_enrollmentdropout.xlsx")
+df_enrollment <- read_excel(path=xl_data_enroll, sheet='Pubdisgr',skip=3)
+df_enrollment_nonpublic <- read_excel(path=xl_data_enroll, sheet='NPdisgr',skip=3)
+
+
+#UPDATE THESE TWO VARIABLES PRIOR TO RUNNING THE CODE
+#RUN THE CODE IN THESE CHUNKS THROUGH FOR EACH OF THE INDICATORS
+columnname <- 'TOTAL PK-12'
+input_dataformat <- 'Number'
+variablename <- 'prek12enrollment'
+
+#for public schools
+enrollment_district <- df_enrollment %>%
+  rename(fulllocation_name='District Name',
+         districtid='District No.',
+         data=all_of(columnname)) %>%
+  select(c(fulllocation_name,data,districtid)) %>%
+  
+  #join with crosswalk to only include public schools matched to a tribal area
+  inner_join(tribalschools,by=c('districtid'='school_specialednumber')) %>%
+  select(-c(school,fulllocation_name,districtid,category)) %>%
+  
+  
+  mutate(locationtype='Tribal Area') %>%
+  mutate(state='South Dakota') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(dataformat=input_dataformat) %>%
+  mutate(varname=variablename) 
+
+#for non public schools
+enrollment_district_nonpublic <- df_enrollment_nonpublic %>%
+  rename(fulllocation_name='District Name',
+         districtid='District No.',
+         data=all_of(columnname)) %>%
+  select(c(fulllocation_name,data,districtid)) %>%
+  
+  #join with crosswalk to only include public schools matched to a tribal area
+  inner_join(tribalschools,by=c('districtid'='school_specialednumber')) %>%
+  select(-c(school,fulllocation_name,districtid,category)) %>%
+  
+  
+  mutate(locationtype='Tribal Area') %>%
+  mutate(state='South Dakota') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(dataformat=input_dataformat) %>%
+  mutate(varname=variablename) 
+
+  
+
+#combine public and nonpublic dataframes
+enrollment <- enrollment_district %>%
+  bind_rows(enrollment_district_nonpublic)
+
+```
+
+```{r}
+#CHECK DATASET NAMED enrollment TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'southdakota',enrollment,append=TRUE,row.names=FALSE)
+```
+
+
+
 **NON-PUBLIC SCHOOL ENROLLMENT GRADES PRE-K THROUGH 12**
 ```{r}
-state_data <- 16365
+state_data <- 15276
 #######
 
 #CALCULATE THE STATEWIDE DATA
@@ -204,6 +293,81 @@ write.csv(upload_data_nonpublic,file=paste0("./Output/education/southdakota_",ye
 ```
 
 
+**DROP OUT RATES FOR PUBLIC AND NON PUBLIC SCHOOLS FOR TRIBAL AREAS**
+*NOTE: drop out for public KIDS COUNT data is from statistical digest, data used in tribal data books comes from Excel file for both*
+```{r}
+#import the tribal schools crosswalk
+tribalschools <- read.csv("./Documentation/Indicator Documentation/South Dakota Data Requests/southdakota_education_tribalschoolcrosswalk.csv") %>%
+  subset(!is.na(school_specialednumber))
+
+
+#requested dataset for enrollment and dropouts
+xl_data_enroll <- paste0("./Input/education/southdakota_",year,"_enrollmentdropout.xlsx")
+df_enrollment <- read_excel(path=xl_data_enroll, sheet='Drop1920SDPubRate',skip=4)
+df_enrollment_nonpublic <- read_excel(path=xl_data_enroll, sheet='Drop1920SDNPRate',skip=4)
+
+
+#UPDATE THESE TWO VARIABLES PRIOR TO RUNNING THE CODE
+#RUN THE CODE IN THESE CHUNKS THROUGH FOR EACH OF THE INDICATORS
+columnname <- 'Dropout Rate'
+input_dataformat <- 'Percent'
+variablename <- 'grades7to12eventdropoutrate'
+
+#for public schools
+enrollment_district <- df_enrollment %>%
+  rename(fulllocation_name='District Name',
+         districtid='District No',
+         data=all_of(columnname)) %>%
+  select(c(fulllocation_name,data,districtid)) %>%
+  
+  #join with crosswalk to only include public schools matched to a tribal area
+  inner_join(tribalschools,by=c('districtid'='school_specialednumber')) %>%
+  select(-c(school,fulllocation_name,districtid,category)) %>%
+  
+  #change percent into decimal
+  mutate(data=data/100) %>%
+  
+  
+  mutate(locationtype='Tribal Area') %>%
+  mutate(state='South Dakota') %>%
+  mutate(timeframe=year_prior) %>%
+  mutate(dataformat=input_dataformat) %>%
+  mutate(varname=variablename) 
+
+#for non public schools
+enrollment_district_nonpublic <- df_enrollment_nonpublic %>%
+  rename(fulllocation_name='District Name',
+         districtid='District No',
+         data=all_of(columnname)) %>%
+  select(c(fulllocation_name,data,districtid)) %>%
+  
+  #join with crosswalk to only include public schools matched to a tribal area
+  inner_join(tribalschools,by=c('districtid'='school_specialednumber')) %>%
+  select(-c(school,fulllocation_name,districtid,category)) %>%
+  
+  #change percent into decimal
+  mutate(data=data/100) %>%
+  
+  
+  mutate(locationtype='Tribal Area') %>%
+  mutate(state='South Dakota') %>%
+  mutate(timeframe=year_prior) %>%
+  mutate(dataformat=input_dataformat) %>%
+  mutate(varname=variablename) 
+
+  
+
+#combine public and nonpublic dataframes
+enrollment <- enrollment_district %>%
+  bind_rows(enrollment_district_nonpublic)
+
+```
+
+```{r}
+#CHECK DATASET NAMED enrollment TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'southdakota',enrollment,append=TRUE,row.names=FALSE)
+```
 
 
 
@@ -476,6 +640,66 @@ upload_data_specialed_district2 <- upload_data_specialed_district %>%
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
 write.csv(upload_data_specialed_district2,file=paste0("./Output/education/",statefile,"_",year,"_totalspecialeducation.csv"),row.names=FALSE)
 ```
+
+
+**CHILDREN ENROLLED IN SPECIAL EDUCATION IN PUBLIC SCHOOLS**
+**PUBLIC SCHOOLS MATCHED TO TRIBAL AREA**
+```{r}
+#import the tribal schools crosswalk
+tribalschools <- read.csv("./Documentation/Indicator Documentation/South Dakota Data Requests/southdakota_education_tribalschoolcrosswalk.csv") %>%
+  subset(!is.na(school_specialednumber))
+tribalschools$school_specialednumber <- as.character(tribalschools$school_specialednumber)
+
+
+specialed_count <- df_specialed_district %>%
+  select(c('District Name','2019 TOTAL Child Count (ages 3-21)','District #')) %>%
+  rename(fulllocation_name='District Name',
+         districtid='District #',
+         data='2019 TOTAL Child Count (ages 3-21)') %>%
+  
+  #match to tribal area using crosswalk
+  inner_join(tribalschools,by=c('districtid'='school_specialednumber')) %>%
+  select(-c(fulllocation_name,districtid,school,category)) %>%
+  
+  
+  mutate(locationtype='Tribal Area') %>%
+  mutate(state='South Dakota') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='totalspecialeducation') %>%
+  mutate(data=as.numeric(paste(data))) 
+
+
+
+
+specialed_percent <- df_specialed_district %>%
+  select(c('District Name','Child Count as % of Fall PK-12 Enrollment','District #')) %>%
+  rename(fulllocation_name='District Name',
+         districtid='District #',
+         data='Child Count as % of Fall PK-12 Enrollment') %>%
+  
+  #match to tribal area using crosswalk
+  inner_join(tribalschools,by=c('districtid'='school_specialednumber')) %>%
+  select(-c(fulllocation_name,districtid,school,category)) %>%
+  
+  mutate(locationtype='Tribal Area') %>%
+  mutate(state='South Dakota') %>%
+  mutate(timeframe=fullyear) %>%
+  mutate(dataformat='Percent') %>%
+  mutate(varname='totalspecialeducation') 
+
+
+  
+upload_specialeducation_district <- specialed_count %>%
+  bind_rows(specialed_percent) 
+```
+
+```{r}
+#CHECK DATASET NAMED upload_specialeducation_district TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'southdakota',upload_specialeducation_district,append=TRUE,row.names=FALSE)
+```
+
 
 
 
@@ -891,9 +1115,10 @@ df_hsdata <- read_excel(path=paste0("./Input/education/southdakota_",year,"_educ
 
 #rename columns
 df_hsdata2 <- df_hsdata %>%
-  rename(completion_percentage=Percentage...9,
-         graduation_percentage=Percentage...15) %>%
+  rename(completion_percentage=Percentage...10,
+         graduation_percentage=Percentage...16) %>%
   subset(School=="All Schools") %>%
+  subset(`Academic Year`=='2019-2020') %>%
   select(District, completion_percentage,graduation_percentage)
 
 
@@ -910,6 +1135,7 @@ hsdata <- df_hsdata2 %>%
   mutate(dataformat='Percent') %>%
   select(-c(District)) %>%
   
+
   #add in school district to the locations for matching to KIDS COUNT
   mutate(location=sub("[ ]+(?=[0-9])", 
                       ' School District ', location,perl=TRUE)) %>%
@@ -948,6 +1174,10 @@ hsdata <- df_hsdata2 %>%
 hs_completion <- hsdata %>%
   select(-c(graduation_percentage)) %>%
   rename(data=completion_percentage) %>%
+  
+  #assign asterisk to NA
+  mutate(data=replace(data,data=='*',NA)) %>%
+  
   mutate(varname='highschoolcompletion')
 
 
@@ -955,7 +1185,38 @@ hs_completion <- hsdata %>%
 hs_graduation <- hsdata %>%
   select(-c(completion_percentage)) %>%
   rename(data=graduation_percentage) %>%
+  
+  #assign asterisk to NA
+  mutate(data=replace(data,data=='*',NA)) %>%
+  
   mutate(varname='graduationrate4cohort')
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(hs_completion$locationid))>=1) {
+  print(hs_completion$location[is.na(hs_completion$locationid)])
+} else if (sum(is.na(hs_completion$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Visually inspect output data
+View(hs_completion)
+
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(hs_graduation$locationid))>=1) {
+  print(hs_graduation$location[is.na(hs_graduation$locationid)])
+} else if (sum(is.na(hs_graduation$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Visually inspect output data
+View(hs_graduation)
+
 ```
 
 ```{r}
@@ -1005,8 +1266,8 @@ write.csv(upload_data_graduation,file=paste0("./Output/education/southdakota_",y
 ```{r}
 #MANUALLY INPUT THE RACE DATA USING THE REPORT CARD
 race <- c('American Indian/Alaska Native','Asian','Black or African American','Hispanic or Latino','White','All Races')
-graduation <- c(.5365,.9045,.7867,.7354,.897,.8413)
-completion <- c(.664,.9167,.863,.8296,.9458,.9035)
+graduation <- c()
+completion <- c()
 
 df_graduation_race <- data.frame(race,graduation) %>%
   rename(data=graduation) %>%
