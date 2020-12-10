@@ -59,8 +59,8 @@ fips <- fips_codes
 ```{r}
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
-statename <- "Montana"
-year <- "2018"
+statename <- "North Dakota"
+year <- "2019"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -725,7 +725,67 @@ dbWriteTable(con,database_state,saipe,append=TRUE,row.names=FALSE)
 ```
 
 
-# STEP 6: OUTPUT FILE TO UPLOAD TO DATA CENTER
+# STEP 6A: OUTPUT FILE TO UPLOAD TO DATA CENTER (MONTANA & SOUTH DAKOTA WITHOUT PLANNING REGIONS)
+```{r}
+#########################
+##OUTPUT DATA CENTER FILE
+
+saipe_datacenter_sql <- paste0("SELECT locationid, location, timeframe, age_group, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='saipe_childreninpoverty';")
+
+upload_data_saipe<- dbGetQuery(con,saipe_datacenter_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         'Age group'=age_group)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_saipe,file=paste0("../Output/economics/",database_state,"_",year,"_saipe_childreninpoverty.csv"),row.names=FALSE)
+
+
+#############################
+##OUTPUT MARGIN OF ERROR FILE
+saipe_moe_sql <- paste0("SELECT location, timeframe, age_group, dataformat, data, lci, uci FROM ", database_state," WHERE timeframe='",year,"' AND varname='saipe_childreninpoverty' AND locationtype='County';")
+
+#alphabetize counties
+moe_output_saipe<- dbGetQuery(con,saipe_moe_sql) %>%
+  pivot_wider(names_from=dataformat,values_from=c(data,lci,uci)) %>%
+  pivot_wider(names_from=age_group,values_from=c(data_Number,lci_Number,uci_Number,data_Percent,lci_Percent,uci_Percent)) %>%
+  select(c(timeframe,location,
+           'data_Number_Ages 0-17','lci_Number_Ages 0-17','uci_Number_Ages 0-17',
+           'data_Percent_Ages 0-17','lci_Percent_Ages 0-17','uci_Percent_Ages 0-17',
+           'data_Number_Ages 5-17','lci_Number_Ages 5-17','uci_Number_Ages 5-17',
+           'data_Percent_Ages 5-17','lci_Percent_Ages 5-17','uci_Percent_Ages 5-17')) %>%
+  arrange(location)
+
+#state
+saipe_moe_sql2 <- paste0("SELECT location, timeframe, age_group, dataformat, data, lci, uci FROM ", database_state," WHERE timeframe='",year,"' AND varname='saipe_childreninpoverty' AND locationtype='State';")
+
+moe_output_saipe2 <- dbGetQuery(con,saipe_moe_sql2) %>%
+  pivot_wider(names_from=dataformat,values_from=c(data,lci,uci)) %>%
+  pivot_wider(names_from=age_group,values_from=c(data_Number,lci_Number,uci_Number,data_Percent,lci_Percent,uci_Percent)) %>%
+  select(c(timeframe,location,
+           'data_Number_Ages 0-17','lci_Number_Ages 0-17','uci_Number_Ages 0-17',
+           'data_Percent_Ages 0-17','lci_Percent_Ages 0-17','uci_Percent_Ages 0-17',
+           'data_Number_Ages 5-17','lci_Number_Ages 5-17','uci_Number_Ages 5-17',
+           'data_Percent_Ages 5-17','lci_Percent_Ages 5-17','uci_Percent_Ages 5-17',
+           'data_Number_Ages 0-4','lci_Number_Ages 0-4','uci_Number_Ages 0-4',
+           'data_Percent_Ages 0-4','lci_Percent_Ages 0-4','uci_Percent_Ages 0-4')) 
+
+
+
+#combine county and state/state planning region
+moe_output_saipe_ordered <- moe_output_saipe %>%
+  bind_rows(moe_output_saipe2) 
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(moe_output_saipe_ordered,file=paste0("../Output/economics/moe/",database_state,"_",year,"_saipe_childreninpoverty_moe.csv"),row.names=FALSE)
+```
+
+# STEP 6B: OUTPUT FILE TO UPLOAD TO DATA CENTER (NORTH DAKOTA WITH PLANNING REGIONS)
 ```{r}
 #########################
 ##OUTPUT DATA CENTER FILE
@@ -795,6 +855,7 @@ moe_output_saipe_ordered <- moe_output_saipe %>%
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
 write.csv(moe_output_saipe_ordered,file=paste0("../Output/economics/moe/",database_state,"_",year,"_saipe_childreninpoverty_moe.csv"),row.names=FALSE)
 ```
+
 
 # STEP 5B: OUTPUT KIDS COUNT DATA CENTER FORMAT (SKIP ADDING TO DATABASE AND MARGINS OF ERROR)
 #This is code that can be used by states that do not have a database to store KIDS COUNT data, but just need a .csv output to upload to the data center.
