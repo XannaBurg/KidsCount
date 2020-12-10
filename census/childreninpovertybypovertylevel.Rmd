@@ -61,9 +61,9 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 ```{r}
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
-statename <- "Montana"
-year <- "2018"
-acsyear <- "2014-2018"
+statename <- "North Dakota"
+year <- "2019"
+acsyear <- "2015-2019"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -946,28 +946,11 @@ moe_output2 <- dbGetQuery(con,moe_sql2) %>%
            'data_Percent_Under 200% of poverty','moe_Percent_Under 200% of poverty')) %>%
   arrange(location)
 
-#state planning region
-moe_sql3 <- paste0("SELECT location, timeframe, category, dataformat, data, moe FROM ", database_state," WHERE timeframe='",acsyear,"' AND varname='childreninpovertybypovertylevel_5yearestimates' AND locationtype='Planning Region';")
-
-moe_output3 <- dbGetQuery(con,moe_sql3) %>%
-  pivot_wider(names_from=dataformat,values_from=c(data,moe)) %>%
-  pivot_wider(names_from=category,values_from=c(data_Number,moe_Number,data_Percent,moe_Percent)) %>%
-  select(c(timeframe,location,
-            'data_Number_Under 50% of poverty','moe_Number_Under 50% of poverty',
-           'data_Percent_Under 50% of poverty','moe_Percent_Under 50% of poverty',
-           'data_Number_Under 100% of poverty','moe_Number_Under 100% of poverty',
-           'data_Percent_Under 100% of poverty','moe_Percent_Under 100% of poverty',
-           'data_Number_Under 150% of poverty','moe_Number_Under 150% of poverty',
-           'data_Percent_Under 150% of poverty','moe_Percent_Under 150% of poverty',
-           'data_Number_Under 200% of poverty','moe_Number_Under 200% of poverty',
-           'data_Percent_Under 200% of poverty','moe_Percent_Under 200% of poverty')) %>%
-  arrange(location)
 
 
 #combine county and state/state planning region
 moe_output_ordered <- moe_output %>%
-  bind_rows(moe_output2) %>%
-  bind_rows(moe_output3)
+  bind_rows(moe_output2) 
 
 
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
