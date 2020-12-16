@@ -415,7 +415,7 @@ childcarecapacity <- read.csv(paste0("./Input/education/southdakota_allyears_chi
 #STATE DATA
 childcare_state <- childcarecapacity %>%
   
-  #subset(timeframe==year) %>%
+  subset(timeframe==year) %>%
   
   mutate(location='South Dakota',
          state='South Dakota',
