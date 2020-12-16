@@ -60,9 +60,9 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 ```{r}
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
-statename <- "Montana"
-year <- "2018"
-acsyear <- "2014-2018"
+statename <- "North Dakota"
+year <- "2019"
+acsyear <- "2015-2019"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -457,7 +457,7 @@ if (temp_rows==0) {
 View(data_all)
 ```
 
-## STEP 4: COMMIT TO DATABASE 
+## STEP 4a: COMMIT TO DATABASE (NORTH DAKOTA INCLUDING PLANNING REGIONS)
 ```{r}
 #CHECK DATASET NAMED data_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
 #this code adds kids count data to MBPC postgres database
@@ -465,6 +465,14 @@ View(data_all)
 dbWriteTable(con,database_state,data_all,append=TRUE,row.names=FALSE)
 ```
 
+## STEP 4b: COMMIT TO DATABASE (MONTANA ND SOUTH DAKOTA WITHOUT PLANNING REGIONS)
+```{r}
+#CHECK DATASET NAMED data_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+data_all2 <- data_all %>% subset(locationtype!='Planning Region')
+dbWriteTable(con,database_state,data_all2,append=TRUE,row.names=FALSE)
+```
 
 
 ## STEP 5a: OUTPUT FILES - INCLUDING PLANNING REGIONS & TRIBAL AREAS (NORTH DAKOTA)
