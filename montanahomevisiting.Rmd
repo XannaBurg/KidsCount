@@ -1,0 +1,150 @@
+---
+title: "montanawic"
+output: html_document
+---
+
+## Indicator 1: Children and families receiving evidence-based home visiting services
+
+
+**Created by:** Xanna Burg
+**Date:** October 2020
+**Updated by:**
+
+**Data Source:** Montana Department of Public Health and Human Services, Early Childhood and Family Services Division
+**Purpose:** Input the home visiting data
+
+**Data format:** final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Data (numeric: number, percentage, rate), DataFormat (character: "number" or "percent" or "rate"), LocationId (numeric: assigned for KIDS COUNT system)
+
+**To use this code for a new year:**
+* Update the year in the second code chunk for variable 'year' and 'fullyear'
+* Check each dataset visually and through the report logs prior to commiting to the database.
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+```
+
+```{r}
+####UPDATE to reflect the current year data working with
+year <- '2020'
+
+statefile <- 'montana'
+statename <- 'Montana'
+
+#input location ID file for MT
+locationids <- read.csv("./Input/MT KC Location IDs.csv")
+locationids$Location <- as.character(locationids$Location)
+
+#input region ID file for MT
+regionids <- read.csv("./Input/MT KC Region List.csv")
+regionids$county <- as.character(regionids$county)
+```
+
+
+## IMPORT THE DATA FILES THAT WILL BE USED
+```{r}
+homevisitingdata <- read_excel(path=paste0("./Input/health/montana_",year,"_HMF Families Served by County.xlsx"),skip=2) 
+```
+
+
+## CLEAN THE IMPORTED DATA
+```{r}
+homevisitingdata2 <- homevisitingdata %>% 
+  
+  rename(location=COUNTY,
+         families_2017=`FAMILIES SERVED...2`,
+         children_2017=`CHILDREN SERVED...3`,
+         families_2018=`FAMILIES SERVED...4`,
+         children_2018=`CHILDREN SERVED...5`,
+         families_2019=`FAMILIES SERVED...6`,
+         children_2019=`CHILDREN SERVED...7`,
+         families_2020=`FAMILIES SERVED...8`,
+         children_2020=`CHILDREN SERVED...9`) %>%
+  
+  #remove footnotes
+  subset(location!='Notes:') %>%
+  subset(!is.na(location)) %>%
+  #update locations
+  mutate(location=replace(location,location=='TOTAL','Montana')) %>%
+  mutate(locationtype=ifelse(location=='Montana','State','County')) %>%
+
+  mutate(state='Montana',
+         dataformat='Number',
+         varname='childrenandfamilieshomevisiting') %>%
+  
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+    
+  #pivot longer
+  mutate(families_2017=as.numeric(paste(families_2017))) %>%
+  mutate(families_2020=as.numeric(paste(families_2020))) %>%
+  mutate(children_2020=as.numeric(paste(children_2020))) %>%
+  pivot_longer(cols=c(families_2017,children_2017,families_2018,children_2018,families_2019,children_2019,families_2020,children_2020),names_to='category',values_to='data') %>%
+  
+  #split category to include the date
+  separate(category,into=c('category','timeframe'),sep=-4) %>%
+  mutate(category=case_when(
+    category=='families_' ~ 'Families',
+    category=='children_' ~ 'Children'))
+  
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(homevisitingdata2$locationid))>=1) {
+  print(homevisitingdata2$location[is.na(homevisitingdata2$locationid)])
+} else if (sum(is.na(homevisitingdata2$locationid))==0) {
+  'all locations match'
+}
+
+
+#2. Check that no values are less than 5
+temp_suppresscheck <- homevisitingdata2 %>% subset(data<5)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+
+# 3. Visually inspect output data
+View(homevisitingdata2)
+```
+
+## STEP 2: ADD TO DATABASE
+```{r}
+#CHECK DATASET NAMED homevisitingdata2 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',homevisitingdata2,append=TRUE,row.names=FALSE)
+
+```
+
+## STEP 3: OUTPUT FILE FOR KC
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, category, data FROM montana WHERE timeframe='",year,"' AND varname='childrenandfamilieshomevisiting';")
+
+upload_data <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         Category=category)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("./Output/health/",statefile,"_",year,"_childrenandfamilieshomevisiting.csv"),row.names=FALSE)
+```
+
+
