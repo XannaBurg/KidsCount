@@ -680,7 +680,7 @@ data_under6_number_tomerge <- data_under6_number %>%
          denominator=denominator_under6) %>%
   select(-c(denominator_under6_moe)) %>%
   mutate(dataformat='Number') %>%
-  mutate(age_group='Ages 0-5')
+  mutate(age_group='0 to 5')
 
 data_under6_percent_tomerge <- data_under6_percent %>%
   rename(data=Percent_under6,
@@ -689,7 +689,7 @@ data_under6_percent_tomerge <- data_under6_percent %>%
          denominator=denominator_under6) %>%
   select(-c(denominator_under6_moe)) %>%
   mutate(dataformat='Percent') %>%
-  mutate(age_group='Ages 0-5')
+  mutate(age_group='0 to 5')
 
 data_6to13_number_tomerge <- data_6to13_number %>%
   rename(data=Number_6to13,
@@ -698,7 +698,7 @@ data_6to13_number_tomerge <- data_6to13_number %>%
          denominator=denominator_6to13) %>%
   select(-c(denominator_6to13_moe)) %>%
   mutate(dataformat='Number') %>%
-  mutate(age_group='Ages 6-13')
+  mutate(age_group='6 to 13')
 
 data_6to13_percent_tomerge <- data_6to13_percent %>%
   rename(data=Percent_6to13,
@@ -707,7 +707,7 @@ data_6to13_percent_tomerge <- data_6to13_percent %>%
          denominator=denominator_6to13) %>%
   select(-c(denominator_6to13_moe)) %>%
   mutate(dataformat='Percent') %>%
-  mutate(age_group='Ages 6-13')
+  mutate(age_group='6 to 13')
 
 data_0to13_number_tomerge <- data_0to13 %>%
   select(c(location,locationtype,state,timeframe,Number_0to13,number_0to13_moe,keep_0to13,denominator_0to13)) %>%
@@ -716,7 +716,7 @@ data_0to13_number_tomerge <- data_0to13 %>%
          keep=keep_0to13,
          denominator=denominator_0to13) %>%
   mutate(dataformat='Number') %>%
-  mutate(age_group='Ages 0-13')
+  mutate(age_group='0 to 13')
 
 data_0to13_percent_tomerge <- data_0to13 %>%
   select(c(location,locationtype,state,timeframe,Percent_0to13,percent_0to13_moe,keep_0to13,denominator_0to13)) %>%
@@ -725,7 +725,7 @@ data_0to13_percent_tomerge <- data_0to13 %>%
          keep=keep_0to13,
          denominator=denominator_0to13) %>%
   mutate(dataformat='Percent') %>%
-  mutate(age_group='Ages 0-13')
+  mutate(age_group='0 to 13')
 
 
 data_all <- data_under6_number_tomerge %>%
@@ -800,7 +800,7 @@ upload_data <- dbGetQuery(con,datacenter_sql) %>%
          TimeFrame=timeframe,
          DataFormat=dataformat,
          Data=data,
-         `Age Group`=age_group)
+         `Age group`=age_group) 
 
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
 write.csv(upload_data,file=paste0("./Output/economics/",database_state,"_",year,"_childrenages0to13parentsinlaborforce.csv"),row.names=FALSE)
@@ -816,12 +816,12 @@ moe_output <- dbGetQuery(con,moe_sql) %>%
   pivot_wider(names_from=dataformat,values_from=c(data,moe)) %>%
   pivot_wider(names_from=age_group,values_from=c(data_Number,moe_Number,data_Percent,moe_Percent)) %>%
   select(c(timeframe,location,
-           'data_Number_Ages 0-5','moe_Number_Ages 0-5',
-           'data_Percent_Ages 0-5','moe_Percent_Ages 0-5',
-           'data_Number_Ages 6-13',
-           'data_Percent_Ages 6-13',
-           'data_Number_Ages 0-13',
-           'data_Percent_Ages 0-13')) %>%
+           'data_Number_0 to 5','moe_Number_0 to 5',
+           'data_Percent_0 to 5','moe_Percent_0 to 5',
+           'data_Number_6 to 13',
+           'data_Percent_6 to 13',
+           'data_Number_0 to 13',
+           'data_Percent_0 to 13')) %>%
   arrange(location)
 
 
@@ -832,12 +832,12 @@ moe_output2 <- dbGetQuery(con,moe_sql2) %>%
   pivot_wider(names_from=dataformat,values_from=c(data,moe)) %>%
   pivot_wider(names_from=age_group,values_from=c(data_Number,moe_Number,data_Percent,moe_Percent)) %>%
   select(c(timeframe,location,
-           'data_Number_Ages 0-5','moe_Number_Ages 0-5',
-           'data_Percent_Ages 0-5','moe_Percent_Ages 0-5',
-           'data_Number_Ages 6-13',
-           'data_Percent_Ages 6-13',
-           'data_Number_Ages 0-13',
-           'data_Percent_Ages 0-13')) %>%
+           'data_Number_0 to 5','moe_Number_0 to 5',
+           'data_Percent_0 to 5','moe_Percent_0 to 5',
+           'data_Number_6 to 13',
+           'data_Percent_6 to 13',
+           'data_Number_0 to 13',
+           'data_Percent_0 to 13')) %>%
   arrange(location)
 
 #state planning region
@@ -847,12 +847,12 @@ moe_output3 <- dbGetQuery(con,moe_sql3) %>%
   pivot_wider(names_from=dataformat,values_from=c(data,moe)) %>%
   pivot_wider(names_from=age_group,values_from=c(data_Number,moe_Number,data_Percent,moe_Percent)) %>%
   select(c(timeframe,location,
-           'data_Number_Ages 0-5','moe_Number_Ages 0-5',
-           'data_Percent_Ages 0-5','moe_Percent_Ages 0-5',
-           'data_Number_Ages 6-13',
-           'data_Percent_Ages 6-13',
-           'data_Number_Ages 0-13',
-           'data_Percent_Ages 0-13')) %>%
+           'data_Number_0 to 5','moe_Number_0 to 5',
+           'data_Percent_0 to 5','moe_Percent_0 to 5',
+           'data_Number_6 to 13',
+           'data_Percent_6 to 13',
+           'data_Number_0 to 13',
+           'data_Percent_0 to 13')) %>%
   arrange(location)
 
 #tribal area (North Dakota only)
@@ -862,12 +862,12 @@ moe_output4 <- dbGetQuery(con,moe_sql4) %>%
   pivot_wider(names_from=dataformat,values_from=c(data,moe)) %>%
   pivot_wider(names_from=age_group,values_from=c(data_Number,moe_Number,data_Percent,moe_Percent)) %>%
   select(c(timeframe,location,
-           'data_Number_Ages 0-5','moe_Number_Ages 0-5',
-           'data_Percent_Ages 0-5','moe_Percent_Ages 0-5',
-           'data_Number_Ages 6-13',
-           'data_Percent_Ages 6-13',
-           'data_Number_Ages 0-13',
-           'data_Percent_Ages 0-13')) %>%
+           'data_Number_0 to 5','moe_Number_0 to 5',
+           'data_Percent_0 to 5','moe_Percent_0 to 5',
+           'data_Number_6 to 13',
+           'data_Percent_6 to 13',
+           'data_Number_0 to 13',
+           'data_Percent_0 to 13')) %>%
   arrange(location)
 
 #combine county and state/state planning region
