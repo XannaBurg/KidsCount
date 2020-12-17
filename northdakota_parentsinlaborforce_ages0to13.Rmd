@@ -1,0 +1,889 @@
+---
+title: "Parents in Labor Force - North Dakota"
+author: "Xanna Burg"
+date: "7/20/2020"
+output: html_document
+---
+
+## Indicator 1: Children ages 0 to 13 with all available parents in the labor force
+
+**Created by:** Xanna Burg
+**Date:** July 2020
+**Updated by:**
+
+**Data Source:** U.S. Census Bureau, American Community Survey 5-year Estimates, Table B23008
+**Purpose:** Connect to Census ACS data, clean data, and output dataset to upload to KIDS COUNT Data Center.
+
+**Data format:** Final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Age group (character), Data (numeric: number, percentage), DataFormat (character: "number" or "percent"), LocationId (numeric: assigned for KIDS COUNT system)
+
+A secondary output is an Excel file to copy to the Margin of Error template in order to report margin of error for the estimates.
+
+**To use this code for a new year:**
+* Update the year and acsyear (5 year interval) in the third code chunk for variables 'year' and 'acsyear'
+* Update the state name (exactly as appears in FIPS) of interest
+* Check each dataset visually and through the report logs prior to commiting to the database.
+
+
+```{r,message=FALSE}
+#install required packages the first time you use this code
+#install.packages('tidyverse')
+#install.packages('tidycensus')
+#install.packages('censusapi')
+#install.packages('stringr')
+
+#load required packages
+library(tidyverse)
+library(tidycensus)
+library(censusapi)
+library(stringr)
+```
+
+```{r}
+#metadata for available variables
+#acs_vars <- listCensusMetadata(name="2018/acs/acs5",
+                               #type="variables")
+
+
+#metadata for available geographies
+#acs_geos <- listCensusMetadata(name="2018/acs/acs5",
+                              # type="geography")
+
+
+#county and state names that match fips codes (from tidycensus package)
+fips <- fips_codes
+
+#import tribal fips code (from file on local drive)
+fips_tribal <- read.csv("./Input/AIANNHCE Codes.csv")
+
+```
+
+```{r}
+#CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
+#state should match exactly as is in FIPS code in order for code to correctly run
+statename <- "North Dakota"
+year <- "2019"
+acsyear <- "2015-2019"
+
+
+#run this code to create an object needed for the database (DO NOT EDIT)
+if (statename=='Montana') {
+  database_state <- 'montana'
+} else if (statename=='North Dakota') {
+  database_state <- 'northdakota'
+} else if (statename=='South Dakota') {
+  database_state <- 'southdakota'
+}
+
+#import the location ids matching the correct state (for MT, ND, and SD; DO NOT EDIT)
+locationids <- if (statename=='Montana') {
+  read.csv("./Input/MT KC Location IDs.csv")
+} else if (statename=='North Dakota') {
+  read.csv("./Input/ND KC Location IDs.csv")
+} else if (statename=='South Dakota') {
+  read.csv("./Input/SD KC Location IDs.csv")
+}
+locationids$Location <- as.character(locationids$Location) #assign as character instead of factor for merging
+
+#import the region match file matching the correct state (for MT, ND, and SD; DO NOT EDIT)
+regionids <- if (statename=='Montana') {
+  read.csv("./Input/MT KC Region List.csv")
+} else if (statename=='North Dakota') {
+  read.csv("./Input/ND KC Region List.csv") 
+} else if (statename=='South Dakota') {
+  read.csv("./Input/SD KC Region List.csv")
+}
+regionids$county <- as.character(regionids$county)
+regionids$region <- as.character(regionids$region)
+
+
+#UPDATE THE BELOW FILE PATH IF USING THIS CODE OUTSIDE OF MT, ND, OR SD TO ADD LOCATION IDS
+#the csv file should have 2 columns: "LocationId" and "Location"
+#locationids <- read.csv("your_file_path_here.csv")
+
+#UPDATE THE BELOW FILE PATH IF USING THIS CODE OUTSIDE OF MT, ND, OR SD TO ADD REGIONS (GROUPS OF COUNTIES)
+#the csv file should have 2 columns: "county" and "region"
+#regionids <- read.csv("your_file_path_here.csv")
+
+
+#RUN THIS CODE, BUT NOT REQUIRED TO CHANGE ANYTHING
+#the api will subset data to each state based on the state FIPS code: MT=30, North Dakota=38, South Dakota=46
+statecode <- as.numeric(unique(fips$state_code[fips$state_name==statename]))
+```
+
+## ###################################################### ##
+## CHILDREN WITH ALL AVAILABLE PARENTS IN THE LABOR FORCE ##
+## ############ AGES 0 to 13 ONLY ####################### ##
+## ###################################################### ##
+
+## STEP 1: COMPILE DATA FOR COUNTY, STATE, AND STATE PLANNING REGION ##
+```{r}
+##UNDER THE getCensus() FUNCTION, ADD YOUR OWN CENSUS API KEY IN ORDER TO USE THIS CODE. OR FOLLOW THE INSTRUCTIONS ON THE PACKAGE DOCUMENTATION TO SET YOUR API KEY IN YOUR R ENVIRONMENT
+#https://cran.r-project.org/web/packages/censusapi/vignettes/getting-started.html
+
+
+#[year]/acs/acs5 table is: ACS 5-year estimates for detailed tables (those beginning with B) for the year specified
+#see lookup table for categorical vars: https://api.census.gov/data/2018/acs/acs5/variables.html 
+
+############
+#COUNTY DATA
+acs_county <- getCensus(name="acs/acs5",
+          vintage=year,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("B23008_002E","B23008_002M","B23008_004E","B23008_004M",
+                 "B23008_010E","B23008_010M","B23008_013E","B23008_013M",
+                 "B23008_015E","B23008_015M","B23008_017E","B23008_017M",
+                 "B23008_023E","B23008_023M","B23008_026E","B23008_026M"),
+          region="county:*",
+          regionin=paste0("state:",statecode)) %>%
+  
+  #clean the data that's been imported
+  
+  #assign location type to county
+  mutate(locationtype='County') %>%
+  
+  #add in county name from fips codes, remove word 'county', add in state name
+  left_join(fips,by=c('county'='county_code','state'='state_code')) %>% 
+  mutate(county=gsub("\\s*\\w*$", "", county.y)) %>%
+  
+  #calculate the sums and percent
+  
+  #########################
+  #for children under 6
+  mutate(numerator_under6=(B23008_004E+B23008_010E+B23008_013E)) %>%
+  mutate(numerator_under6_moe=sqrt((B23008_004M^2)+(B23008_010M^2)+
+                                     (B23008_013M^2))) %>%
+  mutate(denominator_under6=B23008_002E) %>%
+  mutate(denominator_under6_moe=B23008_002M) %>%
+  
+  mutate(Number_under6=numerator_under6) %>%
+  mutate(number_under6_moe=numerator_under6_moe) %>%
+  mutate(Percent_under6=numerator_under6/denominator_under6) %>%
+  mutate(percent_under6_moe=(1/denominator_under6)*sqrt((numerator_under6_moe^2)-((Percent_under6^2)*(denominator_under6_moe^2)))) %>%
+  mutate(percent_under6_moe=if_else(is.na(percent_under6_moe),(1/denominator_under6)*sqrt((numerator_under6_moe^2)+((Percent_under6^2)*(denominator_under6_moe^2))),percent_under6_moe)) %>%
+
+ #calculate the relative standard error
+  mutate(number_under6_relativese=((number_under6_moe/1.645)/Number_under6)*100) %>%
+  mutate(percent_under6_relativese=((percent_under6_moe/1.645)/Percent_under6)*100) %>%
+  mutate(keep_under6=if_else(percent_under6_relativese>30 | number_under6_relativese>30,0,1)) %>%
+
+  ##########################
+  #for children ages 6 to 17
+  mutate(numerator_6to17=(B23008_017E+B23008_023E+B23008_026E)) %>%
+  mutate(numerator_6to17_moe=sqrt((B23008_017M^2)+(B23008_023M^2)+
+                                     (B23008_026M^2))) %>%
+  mutate(denominator_6to17=B23008_015E) %>%
+  mutate(denominator_6to17_moe=B23008_015M) %>%
+  
+  mutate(Number_6to17=numerator_6to17) %>%
+  mutate(number_6to17_moe=numerator_6to17_moe) %>%
+  mutate(Percent_6to17=numerator_6to17/denominator_6to17) %>%
+  mutate(percent_6to17_moe=(1/denominator_6to17)*sqrt((numerator_6to17_moe^2)-((Percent_6to17^2)*(denominator_6to17_moe^2)))) %>%
+  mutate(percent_6to17_moe=if_else(is.na(percent_6to17_moe),(1/denominator_6to17)*sqrt((numerator_6to17_moe^2)+((Percent_6to17^2)*(denominator_6to17_moe^2))),percent_6to17_moe)) %>%
+
+ #calculate the relative standard error
+  mutate(number_6to17_relativese=((number_6to17_moe/1.645)/Number_6to17)*100) %>%
+  mutate(percent_6to17_relativese=((percent_6to17_moe/1.645)/Percent_6to17)*100) %>%
+  mutate(keep_6to17=if_else(percent_6to17_relativese>30 | number_6to17_relativese>30,0,1)) %>%
+  
+  
+  ##########################
+  #for children ages 0 to 17
+  mutate(numerator_0to17=(B23008_017E+B23008_023E+B23008_026E+
+                            B23008_004E+B23008_010E+B23008_013E)) %>%
+  mutate(numerator_0to17_moe=sqrt((B23008_017M^2)+(B23008_023M^2)+
+                                    (B23008_026M^2)+(B23008_004M^2)+
+                                    (B23008_010M^2)+(B23008_013M^2))) %>%
+  mutate(denominator_0to17=B23008_015E+B23008_002E) %>%
+  mutate(denominator_0to17_moe=sqrt((B23008_015M^2)+(B23008_002M^2))) %>%
+  
+  mutate(Number_0to17=numerator_0to17) %>%
+  mutate(number_0to17_moe=numerator_0to17_moe) %>%
+  mutate(Percent_0to17=numerator_0to17/denominator_0to17) %>%
+  mutate(percent_0to17_moe=(1/denominator_0to17)*sqrt((numerator_0to17_moe^2)-((Percent_0to17^2)*(denominator_0to17_moe^2)))) %>%
+  mutate(percent_0to17_moe=if_else(is.na(percent_0to17_moe),(1/denominator_0to17)*sqrt((numerator_0to17_moe^2)+((Percent_0to17^2)*(denominator_0to17_moe^2))),percent_0to17_moe)) %>%
+
+ #calculate the relative standard error
+  mutate(number_0to17_relativese=((number_0to17_moe/1.645)/Number_0to17)*100) %>%
+  mutate(percent_0to17_relativese=((percent_0to17_moe/1.645)/Percent_0to17)*100) %>%
+  mutate(keep_0to17=if_else(percent_0to17_relativese>30 | number_0to17_relativese>30,0,1)) %>%
+  
+  
+
+  #select only needed variables and name to kids count database
+  select(c(county,locationtype,Number_under6,number_under6_moe,Percent_under6,percent_under6_moe,keep_under6,
+           Number_6to17,number_6to17_moe,Percent_6to17,percent_6to17_moe,keep_6to17,
+           Number_0to17,number_0to17_moe,Percent_0to17,percent_0to17_moe,keep_0to17,denominator_under6,denominator_under6_moe,denominator_6to17,denominator_6to17_moe)) %>%
+  
+  rename(location=county) %>%
+  mutate(state=statename) %>%
+  mutate(timeframe=acsyear) 
+  
+
+    
+###########
+#STATE DATA
+acs_state <- getCensus(name="acs/acs5",
+          vintage=year,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("B23008_002E","B23008_002M","B23008_004E","B23008_004M",
+                 "B23008_010E","B23008_010M","B23008_013E","B23008_013M",
+                 "B23008_015E","B23008_015M","B23008_017E","B23008_017M",
+                 "B23008_023E","B23008_023M","B23008_026E","B23008_026M"),
+          region=paste0("state:",statecode)) %>%
+  
+  #clean the data that's been imported
+  
+  #assign location type to county
+  mutate(locationtype='State') %>%
+  mutate(location=statename) %>%
+  
+  #calculate the sums and percent
+  
+  #########################
+  #for children under 6
+  mutate(numerator_under6=(B23008_004E+B23008_010E+B23008_013E)) %>%
+  mutate(numerator_under6_moe=sqrt((B23008_004M^2)+(B23008_010M^2)+
+                                     (B23008_013M^2))) %>%
+  mutate(denominator_under6=B23008_002E) %>%
+  mutate(denominator_under6_moe=B23008_002M) %>%
+  
+  mutate(Number_under6=numerator_under6) %>%
+  mutate(number_under6_moe=numerator_under6_moe) %>%
+  mutate(Percent_under6=numerator_under6/denominator_under6) %>%
+  mutate(percent_under6_moe=(1/denominator_under6)*sqrt((numerator_under6_moe^2)-((Percent_under6^2)*(denominator_under6_moe^2)))) %>%
+  mutate(percent_under6_moe=if_else(is.na(percent_under6_moe),(1/denominator_under6)*sqrt((numerator_under6_moe^2)+((Percent_under6^2)*(denominator_under6_moe^2))),percent_under6_moe)) %>%
+
+ #calculate the relative standard error
+  mutate(number_under6_relativese=((number_under6_moe/1.645)/Number_under6)*100) %>%
+  mutate(percent_under6_relativese=((percent_under6_moe/1.645)/Percent_under6)*100) %>%
+  mutate(keep_under6=if_else(percent_under6_relativese>30 | number_under6_relativese>30,0,1)) %>%
+
+  ##########################
+  #for children ages 6 to 17
+  mutate(numerator_6to17=(B23008_017E+B23008_023E+B23008_026E)) %>%
+  mutate(numerator_6to17_moe=sqrt((B23008_017M^2)+(B23008_023M^2)+
+                                     (B23008_026M^2))) %>%
+  mutate(denominator_6to17=B23008_015E) %>%
+  mutate(denominator_6to17_moe=B23008_015M) %>%
+  
+  mutate(Number_6to17=numerator_6to17) %>%
+  mutate(number_6to17_moe=numerator_6to17_moe) %>%
+  mutate(Percent_6to17=numerator_6to17/denominator_6to17) %>%
+  mutate(percent_6to17_moe=(1/denominator_6to17)*sqrt((numerator_6to17_moe^2)-((Percent_6to17^2)*(denominator_6to17_moe^2)))) %>%
+  mutate(percent_6to17_moe=if_else(is.na(percent_6to17_moe),(1/denominator_6to17)*sqrt((numerator_6to17_moe^2)+((Percent_6to17^2)*(denominator_6to17_moe^2))),percent_6to17_moe)) %>%
+
+ #calculate the relative standard error
+  mutate(number_6to17_relativese=((number_6to17_moe/1.645)/Number_6to17)*100) %>%
+  mutate(percent_6to17_relativese=((percent_6to17_moe/1.645)/Percent_6to17)*100) %>%
+  mutate(keep_6to17=if_else(percent_6to17_relativese>30 | number_6to17_relativese>30,0,1)) %>%
+  
+  
+  ##########################
+  #for children ages 0 to 17
+  mutate(numerator_0to17=(B23008_017E+B23008_023E+B23008_026E+
+                            B23008_004E+B23008_010E+B23008_013E)) %>%
+  mutate(numerator_0to17_moe=sqrt((B23008_017M^2)+(B23008_023M^2)+
+                                    (B23008_026M^2)+(B23008_004M^2)+
+                                    (B23008_010M^2)+(B23008_013M^2))) %>%
+  mutate(denominator_0to17=B23008_015E+B23008_002E) %>%
+  mutate(denominator_0to17_moe=sqrt((B23008_015M^2)+(B23008_002M^2))) %>%
+  
+  mutate(Number_0to17=numerator_0to17) %>%
+  mutate(number_0to17_moe=numerator_0to17_moe) %>%
+  mutate(Percent_0to17=numerator_0to17/denominator_0to17) %>%
+  mutate(percent_0to17_moe=(1/denominator_0to17)*sqrt((numerator_0to17_moe^2)-((Percent_0to17^2)*(denominator_0to17_moe^2)))) %>%
+  mutate(percent_0to17_moe=if_else(is.na(percent_0to17_moe),(1/denominator_0to17)*sqrt((numerator_0to17_moe^2)+((Percent_0to17^2)*(denominator_0to17_moe^2))),percent_0to17_moe)) %>%
+
+ #calculate the relative standard error
+  mutate(number_0to17_relativese=((number_0to17_moe/1.645)/Number_0to17)*100) %>%
+  mutate(percent_0to17_relativese=((percent_0to17_moe/1.645)/Percent_0to17)*100) %>%
+  mutate(keep_0to17=if_else(percent_0to17_relativese>30 | number_0to17_relativese>30,0,1)) %>%
+  
+  
+
+  #select only needed variables and name to kids count database
+  select(c(location,locationtype,Number_under6,number_under6_moe,Percent_under6,percent_under6_moe,keep_under6,
+           Number_6to17,number_6to17_moe,Percent_6to17,percent_6to17_moe,keep_6to17,
+           Number_0to17,number_0to17_moe,Percent_0to17,percent_0to17_moe,keep_0to17,denominator_under6,denominator_under6_moe,denominator_6to17,denominator_6to17_moe)) %>%
+  
+  mutate(state=statename) %>%
+  mutate(timeframe=acsyear) 
+
+
+###########################
+#STATE PLANNING REGION DATA
+acs_region <- getCensus(name="acs/acs5",
+          vintage=year,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("B23008_002E","B23008_002M","B23008_004E","B23008_004M",
+                 "B23008_010E","B23008_010M","B23008_013E","B23008_013M",
+                 "B23008_015E","B23008_015M","B23008_017E","B23008_017M",
+                 "B23008_023E","B23008_023M","B23008_026E","B23008_026M"),
+          region="county:*",
+          regionin=paste0("state:",statecode)) %>%
+  
+  #clean the data that's been imported
+  
+  #assign location type to county
+  mutate(locationtype='Planning Region') %>%
+  
+  #add in county name from fips codes, remove word 'county', add in state name
+  left_join(fips,by=c('county'='county_code','state'='state_code')) %>% 
+  mutate(county=gsub("\\s*\\w*$", "", county.y)) %>%
+  
+  #calculate the sums and percent
+  
+  #########################
+  #for children under 6
+  mutate(numerator_under6=(B23008_004E+B23008_010E+B23008_013E)) %>%
+  mutate(numerator_under6_moe=sqrt((B23008_004M^2)+(B23008_010M^2)+
+                                     (B23008_013M^2))) %>%
+  mutate(denominator_under6=B23008_002E) %>%
+  mutate(denominator_under6_moe=B23008_002M) %>%
+  
+  ##########################
+  #for children ages 6 to 17
+  mutate(numerator_6to17=(B23008_017E+B23008_023E+B23008_026E)) %>%
+  mutate(numerator_6to17_moe=sqrt((B23008_017M^2)+(B23008_023M^2)+
+                                     (B23008_026M^2))) %>%
+  mutate(denominator_6to17=B23008_015E) %>%
+  mutate(denominator_6to17_moe=B23008_015M) %>%
+  
+  
+  
+  ##########################
+  #for children ages 0 to 17
+  mutate(numerator_0to17=(B23008_017E+B23008_023E+B23008_026E+
+                            B23008_004E+B23008_010E+B23008_013E)) %>%
+  mutate(numerator_0to17_moe=sqrt((B23008_017M^2)+(B23008_023M^2)+
+                                    (B23008_026M^2)+(B23008_004M^2)+
+                                    (B23008_010M^2)+(B23008_013M^2))) %>%
+  mutate(denominator_0to17=B23008_015E+B23008_002E) %>%
+  mutate(denominator_0to17_moe=sqrt((B23008_015M^2)+(B23008_002M^2))) %>%
+  
+ left_join(regionids,by=c('county'='county')) %>%
+  subset(region!='') %>%
+  
+  group_by(region) %>%
+  summarise(Number_under6=sum(numerator_under6),
+            Number_6to17=sum(numerator_6to17),
+            Number_0to17=sum(numerator_0to17),
+            
+            number_under6_moe=sqrt(sum(numerator_under6_moe^2)),
+            number_6to17_moe=sqrt(sum(numerator_6to17_moe^2)),
+            number_0to17_moe=sqrt(sum(numerator_0to17_moe^2)),
+            
+            Percent_under6=sum(numerator_under6)/sum(denominator_under6),
+            Percent_6to17=sum(numerator_6to17)/sum(denominator_6to17),
+            Percent_0to17=sum(numerator_0to17)/sum(denominator_0to17),
+            
+            percent_under6_moe=(1/sum(denominator_under6))*sqrt((number_under6_moe^2)-((Percent_under6^2)*(sqrt(sum(denominator_under6_moe))^2))),
+            percent_6to17_moe=(1/sum(denominator_6to17))*sqrt((number_6to17_moe^2)-((Percent_6to17^2)*(sqrt(sum(denominator_6to17_moe))^2))),
+            percent_0to17_moe=(1/sum(denominator_0to17))*sqrt((number_0to17_moe^2)-((Percent_0to17^2)*(sqrt(sum(denominator_0to17_moe))^2))),
+            
+            denominator_under6=sum(denominator_under6),
+            denominator_6to17=sum(denominator_6to17),
+            denominator_0to17=sum(denominator_0to17),
+            
+            denominator_under6_moe=sqrt(sum(denominator_under6_moe^2)),
+            denominator_6to17_moe=sqrt(sum(denominator_6to17_moe^2)),
+            denominator_0to17_moe=sqrt(sum(denominator_0to17_moe^2))
+            ) %>%
+  ungroup %>%
+  
+  #calculate the relative standard error
+  mutate(number_under6_relativese=((number_under6_moe/1.645)/Number_under6)*100) %>%
+  mutate(percent_under6_relativese=((percent_under6_moe/1.645)/Percent_under6)*100) %>%
+  mutate(keep_under6=if_else(percent_under6_relativese>30 | number_under6_relativese>30,0,1)) %>%
+  
+  mutate(number_6to17_relativese=((number_6to17_moe/1.645)/Number_6to17)*100) %>%
+  mutate(percent_6to17_relativese=((percent_6to17_moe/1.645)/Percent_6to17)*100) %>%
+  mutate(keep_6to17=if_else(percent_6to17_relativese>30 | number_6to17_relativese>30,0,1)) %>%
+  
+  mutate(number_0to17_relativese=((number_0to17_moe/1.645)/Number_0to17)*100) %>%
+  mutate(percent_0to17_relativese=((percent_0to17_moe/1.645)/Percent_0to17)*100) %>%
+  mutate(keep_0to17=if_else(percent_0to17_relativese>30 | number_0to17_relativese>30,0,1)) %>%
+
+
+  rename(location=region) %>%
+  mutate(state=statename) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(timeframe=acsyear) 
+```
+
+## STEP 2: COMPILE DATA FOR TRIBAL AREAS, IF APPLICABLE TO STATE
+```{r}
+###########
+#TRIBAL DATA
+acs_tribal <- getCensus(name="acs/acs5",
+          vintage=year,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("B23008_002E","B23008_002M","B23008_004E","B23008_004M",
+                 "B23008_010E","B23008_010M","B23008_013E","B23008_013M",
+                 "B23008_015E","B23008_015M","B23008_017E","B23008_017M",
+                 "B23008_023E","B23008_023M","B23008_026E","B23008_026M"),
+          region="american indian area/alaska native area/hawaiian home land (or part):*",
+          regionin=paste0("state:",statecode)) %>%
+  
+
+  #clean the data that's been imported
+  
+  #assign location type
+  mutate(locationtype='Tribal Area') %>%
+  
+  #add in location name from fips codes
+  mutate(american_indian_area_alaska_native_area_hawaiian_home_land_or_part=as.numeric(american_indian_area_alaska_native_area_hawaiian_home_land_or_part)) %>%
+  left_join(fips_tribal,by=c('american_indian_area_alaska_native_area_hawaiian_home_land_or_part'='AIANNHCE')) %>%
+  
+  #calculate the sums and percent
+  
+  #########################
+  #for children under 6
+  mutate(numerator_under6=(B23008_004E+B23008_010E+B23008_013E)) %>%
+  mutate(numerator_under6_moe=sqrt((B23008_004M^2)+(B23008_010M^2)+
+                                     (B23008_013M^2))) %>%
+  mutate(denominator_under6=B23008_002E) %>%
+  mutate(denominator_under6_moe=B23008_002M) %>%
+  
+  mutate(Number_under6=numerator_under6) %>%
+  mutate(number_under6_moe=numerator_under6_moe) %>%
+  mutate(Percent_under6=numerator_under6/denominator_under6) %>%
+  mutate(percent_under6_moe=(1/denominator_under6)*sqrt((numerator_under6_moe^2)-((Percent_under6^2)*(denominator_under6_moe^2)))) %>%
+  mutate(percent_under6_moe=if_else(is.na(percent_under6_moe),(1/denominator_under6)*sqrt((numerator_under6_moe^2)+((Percent_under6^2)*(denominator_under6_moe^2))),percent_under6_moe)) %>%
+
+ #calculate the relative standard error
+  mutate(number_under6_relativese=((number_under6_moe/1.645)/Number_under6)*100) %>%
+  mutate(percent_under6_relativese=((percent_under6_moe/1.645)/Percent_under6)*100) %>%
+  mutate(keep_under6=if_else(percent_under6_relativese>30 | number_under6_relativese>30,0,1)) %>%
+
+  ##########################
+  #for children ages 6 to 17
+  mutate(numerator_6to17=(B23008_017E+B23008_023E+B23008_026E)) %>%
+  mutate(numerator_6to17_moe=sqrt((B23008_017M^2)+(B23008_023M^2)+
+                                     (B23008_026M^2))) %>%
+  mutate(denominator_6to17=B23008_015E) %>%
+  mutate(denominator_6to17_moe=B23008_015M) %>%
+  
+  mutate(Number_6to17=numerator_6to17) %>%
+  mutate(number_6to17_moe=numerator_6to17_moe) %>%
+  mutate(Percent_6to17=numerator_6to17/denominator_6to17) %>%
+  mutate(percent_6to17_moe=(1/denominator_6to17)*sqrt((numerator_6to17_moe^2)-((Percent_6to17^2)*(denominator_6to17_moe^2)))) %>%
+  mutate(percent_6to17_moe=if_else(is.na(percent_6to17_moe),(1/denominator_6to17)*sqrt((numerator_6to17_moe^2)+((Percent_6to17^2)*(denominator_6to17_moe^2))),percent_6to17_moe)) %>%
+
+ #calculate the relative standard error
+  mutate(number_6to17_relativese=((number_6to17_moe/1.645)/Number_6to17)*100) %>%
+  mutate(percent_6to17_relativese=((percent_6to17_moe/1.645)/Percent_6to17)*100) %>%
+  mutate(keep_6to17=if_else(percent_6to17_relativese>30 | number_6to17_relativese>30,0,1)) %>%
+  
+  
+  ##########################
+  #for children ages 0 to 17
+  mutate(numerator_0to17=(B23008_017E+B23008_023E+B23008_026E+
+                            B23008_004E+B23008_010E+B23008_013E)) %>%
+  mutate(numerator_0to17_moe=sqrt((B23008_017M^2)+(B23008_023M^2)+
+                                    (B23008_026M^2)+(B23008_004M^2)+
+                                    (B23008_010M^2)+(B23008_013M^2))) %>%
+  mutate(denominator_0to17=B23008_015E+B23008_002E) %>%
+  mutate(denominator_0to17_moe=sqrt((B23008_015M^2)+(B23008_002M^2))) %>%
+  
+  mutate(Number_0to17=numerator_0to17) %>%
+  mutate(number_0to17_moe=numerator_0to17_moe) %>%
+  mutate(Percent_0to17=numerator_0to17/denominator_0to17) %>%
+  mutate(percent_0to17_moe=(1/denominator_0to17)*sqrt((numerator_0to17_moe^2)-((Percent_0to17^2)*(denominator_0to17_moe^2)))) %>%
+  mutate(percent_0to17_moe=if_else(is.na(percent_0to17_moe),(1/denominator_0to17)*sqrt((numerator_0to17_moe^2)+((Percent_0to17^2)*(denominator_0to17_moe^2))),percent_0to17_moe)) %>%
+
+ #calculate the relative standard error
+  mutate(number_0to17_relativese=((number_0to17_moe/1.645)/Number_0to17)*100) %>%
+  mutate(percent_0to17_relativese=((percent_0to17_moe/1.645)/Percent_0to17)*100) %>%
+  mutate(keep_0to17=if_else(percent_0to17_relativese>30 | number_0to17_relativese>30,0,1)) %>%
+  
+  
+
+  #select only needed variables and name to kids count database
+  select(c(AIANNHNAME,locationtype,Number_under6,number_under6_moe,Percent_under6,percent_under6_moe,keep_under6,
+           Number_6to17,number_6to17_moe,Percent_6to17,percent_6to17_moe,keep_6to17,
+           Number_0to17,number_0to17_moe,Percent_0to17,percent_0to17_moe,keep_0to17,denominator_under6,denominator_under6_moe,denominator_6to17,denominator_6to17_moe)) %>%
+  
+  rename(location=AIANNHNAME) %>%
+  mutate(state=statename) %>%
+  mutate(locationtype='Tribal Area') %>%
+  mutate(timeframe=acsyear) %>%
+  
+  #change from factor to character for correctly updating below
+  mutate(location=as.character(location)) %>%
+  
+  #rename the location to match kids count location - for locations that cross state lines, to clarify which portion is included
+  #includes locations for all three states
+  mutate(location=replace(location, 
+                          state=='North Dakota' & location=='Standing Rock Reservation', 
+                          'Standing Rock Reservation (North Dakota portion)')) %>%
+  
+    mutate(location=replace(location, 
+                          state=='South Dakota' & location=='Standing Rock Reservation', 
+                          'Standing Rock Reservation (South Dakota portion)')) %>%
+   
+  mutate(location=replace(location, 
+                          state=='North Dakota' & 
+                            location=='Turtle Mountain Reservation and Off-Reservation Trust Land', 
+                          'Turtle Mountain Reservation and Off-Reservation Trust Land (North Dakota portion)')) %>%
+  
+  mutate(location=replace(location, 
+                          state=='North Dakota' & 
+                            location=='Lake Traverse Reservation and Off-Reservation Trust Land', 
+                          'Lake Traverse Reservation and Off-Reservation Trust Land (North Dakota portion)')) %>%
+  
+   mutate(location=replace(location, 
+                          state=='South Dakota' & location=='Lake Traverse Reservation and Off-Reservation Trust Land', 
+                          'Lake Traverse Reservation and Off-Reservation Trust Land (South Dakota portion)')) %>%
+  
+  
+  #for North Dakota Lake Traverse data is too small to be meaningful, remove
+  filter(state!='North Dakota' | location!='Lake Traverse Reservation and Off-Reservation Trust Land (North Dakota portion)') %>%
+  
+  #for Montana Turtle Mountain is too small to have data, remove
+  filter(state!='Montana' | location !='Turtle Mountain Reservation and Off-Reservation Trust Land') %>%
+  
+  #for South Dakota Turtle Mountain is too small to have data, remove
+  filter(state!='South Dakota' | location !='Turtle Mountain Reservation and Off-Reservation Trust Land') %>%
+  
+  #for South Dakota Northern Cheyenne is too small to have data, remove
+  filter(state!='South Dakota' | location !='Northern Cheyenne Indian Reservation and Off-Reservation Trust Land') 
+```
+
+## STEP 3: COMBINE ALL AGE GROUPS AND GEOGRAPHIES
+```{r}
+######################
+#create under 6 dataset
+data_under6_number <- acs_county %>%
+  bind_rows(acs_state) %>%
+  bind_rows(acs_region) %>%
+  bind_rows(acs_tribal) %>%
+  select(c(location,locationtype,state,timeframe,Number_under6,number_under6_moe,keep_under6,denominator_under6,denominator_under6_moe)) %>% 
+  rename(keep_under6_number=keep_under6)
+
+data_under6_percent <- acs_county %>%
+  bind_rows(acs_state) %>%
+  bind_rows(acs_region) %>%
+  bind_rows(acs_tribal) %>%
+  select(c(location,locationtype,state,timeframe,Percent_under6,percent_under6_moe,keep_under6),denominator_under6,denominator_under6_moe) %>%
+  rename(keep_under6_percent=keep_under6) 
+
+#######################
+#create 6 to 13 dataset
+
+#first need to determine what percentage 6 to 13 year olds are of 6 to 17 year olds. Use the 'childpopulationbysingleyearofage' variable
+age_sql <- paste0("SELECT location, locationtype, timeframe, dataformat, age_group, vintageyear, data, varname FROM ",database_state," WHERE varname='childpopulationbysingleyearofage';")
+  
+age_data <- dbGetQuery(con,age_sql) %>%
+  #subset for current year
+  subset(vintageyear==year & timeframe==year) %>%
+
+  mutate(age_group=as.numeric(paste(age_group))) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  select(c(location,age_group,data))
+
+pop_ages6to13 <- age_data %>%
+  subset(age_group>=6 & age_group<=13) %>%
+  group_by(location) %>%
+  summarise(pop_ages6to13=sum(data)) %>%
+  ungroup
+
+pop_ages6to17 <- age_data %>%
+  subset(age_group>=6 & age_group<=17) %>%
+  group_by(location) %>%
+  summarise(pop_ages6to17=sum(data)) %>%
+  ungroup
+
+pop_percentages <- pop_ages6to13 %>%
+  left_join(pop_ages6to17, by=c('location'='location')) %>%
+  mutate(percent_ages6to13=pop_ages6to13/pop_ages6to17)
+
+#tribal data population percentage is estimated from the population percentages of the counties that are included in the reservation
+pop_percentages_tribal <- pop_percentages %>%
+  mutate(tribalarea=case_when(
+    location=='Dunn' | location=='McKenzie' | location=='McLean' | 
+      location=='Mercer' | location=='Mountrail' | location=='Ward' ~ 'Fort Berthold Reservation',
+    location=='Benson' | location=='Ramsey' | location=='Eddy' ~ 'Spirit Lake Reservation',
+    location=='Sioux' ~ 'Standing Rock Reservation (North Dakota portion)',
+    location=='Rolette' ~ 'Turtle Mountain Reservation and Off-Reservation Trust Land (North Dakota portion)')) %>%
+  group_by(tribalarea) %>%
+  summarise(percent_ages6to13=sum(pop_ages6to13)/sum(pop_ages6to17)) %>%
+  ungroup %>%
+  subset(!is.na(tribalarea)) %>% 
+  rename(location=tribalarea)
+
+pop_percentages1 <- pop_percentages %>%
+  bind_rows(pop_percentages_tribal)
+
+#next calculate the number using the percentage of 6 to 13 year olds
+data_6to13_number <-  acs_county %>%
+  bind_rows(acs_state) %>%
+  bind_rows(acs_region) %>%
+  bind_rows(acs_tribal) %>%
+  
+  select(c(location,locationtype,state,timeframe,Number_6to17,number_6to17_moe,keep_6to17,denominator_6to17,denominator_6to17_moe)) %>% 
+  
+  left_join(pop_percentages1,by=c('location'='location')) %>%
+  mutate(Number_6to13=percent_ages6to13*Number_6to17) %>%
+  mutate(number_6to13_moe=percent_ages6to13*number_6to17_moe) %>%
+  mutate(keep_6to13_number=keep_6to17) %>%
+  mutate(denominator_6to13=percent_ages6to13*denominator_6to17) %>%
+  mutate(denominator_6to13_moe=percent_ages6to13*denominator_6to17_moe) %>%
+  select(location,locationtype,state,timeframe,Number_6to13,number_6to13_moe,keep_6to13_number,denominator_6to13,denominator_6to13_moe)
+
+data_6to13_percent <- acs_county %>%
+  bind_rows(acs_state) %>%
+  bind_rows(acs_region) %>%
+  bind_rows(acs_tribal) %>%
+  select(c(location,locationtype,state,timeframe,Percent_6to17,percent_6to17_moe,keep_6to17,denominator_6to17,denominator_6to17_moe)) %>%
+  
+  left_join(pop_percentages1,by=c('location'='location')) %>%
+  mutate(denominator_6to13=percent_ages6to13*denominator_6to17) %>%
+  mutate(denominator_6to13_moe=percent_ages6to13*denominator_6to17_moe) %>%
+  rename(Percent_6to13=Percent_6to17,
+         percent_6to13_moe=percent_6to17_moe,
+         keep_6to13_percent=keep_6to17) %>%
+    select(location,locationtype,state,timeframe,Percent_6to13,percent_6to13_moe,keep_6to13_percent,denominator_6to13,denominator_6to13_moe)
+
+
+#######################
+#create 0 to 13 dataset
+data_0to13 <- data_under6_number %>%
+  left_join(data_under6_percent,by=c('location','locationtype','state','timeframe')) %>%
+  left_join(data_6to13_number,by=c('location','locationtype','state','timeframe')) %>%
+  left_join(data_6to13_percent,by=c('location','locationtype','state','timeframe')) %>%
+  
+  mutate(Number_0to13=Number_under6+Number_6to13) %>%
+  mutate(Percent_0to13=(Number_under6+Number_6to13)/(denominator_under6.x+denominator_6to13.x)) %>%
+  mutate(denominator_0to13=denominator_under6.x+denominator_6to13.x) %>%
+  mutate(denominator_0to13_moe=sqrt((denominator_under6_moe.x^2)+(denominator_6to13_moe.x^2))) %>%
+  
+  mutate(number_0to13_moe=sqrt((number_under6_moe^2)+(number_6to13_moe^2))) %>%
+  mutate(percent_0to13_moe=(1/(denominator_under6.x+denominator_6to13.x)
+                            )*sqrt((number_0to13_moe^2)-((Percent_0to13^2)*((sqrt((denominator_under6_moe.x^2)+(denominator_6to13_moe.x^2)))^2)))) %>%
+  mutate(percent_0to13_moe=if_else(is.na(percent_0to13_moe),(1/(denominator_under6.x+denominator_6to13.x)
+                            )*sqrt((number_0to13_moe^2)+((Percent_0to13^2)*((sqrt((denominator_under6_moe.x^2)+(denominator_6to13_moe.x^2)))^2))),percent_0to13_moe)) %>%
+  
+  mutate(number_0to13_relativese=((number_0to13_moe/1.645)/Number_0to13)*100) %>%
+  mutate(percent_0to13_relativese=((percent_0to13_moe/1.645)/Percent_0to13)*100) %>%
+  mutate(keep_0to13=if_else(percent_0to13_relativese>30 | number_0to13_relativese>30,0,1)) %>%
+  
+  select(c(location,locationtype,state,timeframe,Number_0to13,number_0to13_moe,Percent_0to13,percent_0to13_moe,keep_0to13,denominator_0to13)) 
+
+
+
+#rename for merging
+data_under6_number_tomerge <- data_under6_number %>%
+  rename(data=Number_under6,
+         moe=number_under6_moe,
+         keep=keep_under6_number,
+         denominator=denominator_under6) %>%
+  select(-c(denominator_under6_moe)) %>%
+  mutate(dataformat='Number') %>%
+  mutate(age_group='Ages 0-5')
+
+data_under6_percent_tomerge <- data_under6_percent %>%
+  rename(data=Percent_under6,
+         moe=percent_under6_moe,
+         keep=keep_under6_percent,
+         denominator=denominator_under6) %>%
+  select(-c(denominator_under6_moe)) %>%
+  mutate(dataformat='Percent') %>%
+  mutate(age_group='Ages 0-5')
+
+data_6to13_number_tomerge <- data_6to13_number %>%
+  rename(data=Number_6to13,
+         moe=number_6to13_moe,
+         keep=keep_6to13_number,
+         denominator=denominator_6to13) %>%
+  select(-c(denominator_6to13_moe)) %>%
+  mutate(dataformat='Number') %>%
+  mutate(age_group='Ages 6-13')
+
+data_6to13_percent_tomerge <- data_6to13_percent %>%
+  rename(data=Percent_6to13,
+         moe=percent_6to13_moe,
+         keep=keep_6to13_percent,
+         denominator=denominator_6to13) %>%
+  select(-c(denominator_6to13_moe)) %>%
+  mutate(dataformat='Percent') %>%
+  mutate(age_group='Ages 6-13')
+
+data_0to13_number_tomerge <- data_0to13 %>%
+  select(c(location,locationtype,state,timeframe,Number_0to13,number_0to13_moe,keep_0to13,denominator_0to13)) %>%
+  rename(data=Number_0to13,
+         moe=number_0to13_moe,
+         keep=keep_0to13,
+         denominator=denominator_0to13) %>%
+  mutate(dataformat='Number') %>%
+  mutate(age_group='Ages 0-13')
+
+data_0to13_percent_tomerge <- data_0to13 %>%
+  select(c(location,locationtype,state,timeframe,Percent_0to13,percent_0to13_moe,keep_0to13,denominator_0to13)) %>%
+  rename(data=Percent_0to13,
+         moe=percent_0to13_moe,
+         keep=keep_0to13,
+         denominator=denominator_0to13) %>%
+  mutate(dataformat='Percent') %>%
+  mutate(age_group='Ages 0-13')
+
+
+data_all <- data_under6_number_tomerge %>%
+  bind_rows(data_under6_percent_tomerge) %>%
+  bind_rows(data_6to13_number_tomerge) %>%
+  bind_rows(data_6to13_percent_tomerge) %>%
+  bind_rows(data_0to13_number_tomerge) %>%
+  bind_rows(data_0to13_percent_tomerge) %>%
+  
+  mutate(varname='childrenages0to13parentsinlaborforce') %>%
+  
+  #merge in location ids
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  mutate(location=replace(location, 
+                          statename=='South Dakota' & location=='Shannon', 
+                          'Oglala Lakota')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
+  
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(data_all$locationid))>=1) {
+  print(data_all$location[is.na(data_all$locationid)])
+} else if (sum(is.na(data_all$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- data_all %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+View(data_all)
+```
+
+## STEP 4: COMMIT TO DATABASE 
+```{r}
+#CHECK DATASET NAMED data_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,data_all,append=TRUE,row.names=FALSE)
+```
+
+
+
+
+## STEP 5a: OUTPUT FILES - INCLUDING TRIBAL AREAS (NORTH DAKOTA)
+```{r}
+#########################
+##OUTPUT DATA CENTER FILE
+
+#with tribal data (North Dakota)
+datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data, age_group FROM ", database_state," WHERE timeframe='",acsyear,"' AND varname='childrenages0to13parentsinlaborforce';")
+
+upload_data <- dbGetQuery(con,datacenter_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         `Age Group`=age_group)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("./Output/economics/",database_state,"_",year,"_childrenages0to13parentsinlaborforce.csv"),row.names=FALSE)
+
+
+#############################
+##OUTPUT MARGIN OF ERROR FILE
+moe_sql <- paste0("SELECT location, timeframe, dataformat, data, moe, age_group FROM ", database_state," WHERE timeframe='",acsyear,"' AND varname='childrenages0to13parentsinlaborforce' AND locationtype='County';")
+
+
+#alphabetize counties
+moe_output <- dbGetQuery(con,moe_sql) %>%
+  pivot_wider(names_from=dataformat,values_from=c(data,moe)) %>%
+  pivot_wider(names_from=age_group,values_from=c(data_Number,moe_Number,data_Percent,moe_Percent)) %>%
+  select(c(timeframe,location,
+           'data_Number_Ages 0-5','moe_Number_Ages 0-5',
+           'data_Percent_Ages 0-5','moe_Percent_Ages 0-5',
+           'data_Number_Ages 6-13',
+           'data_Percent_Ages 6-13',
+           'data_Number_Ages 0-13',
+           'data_Percent_Ages 0-13')) %>%
+  arrange(location)
+
+
+#state
+moe_sql2 <- paste0("SELECT location, timeframe, dataformat, data, moe, age_group FROM ", database_state," WHERE timeframe='",acsyear,"' AND varname='childrenages0to13parentsinlaborforce' AND locationtype='State';")
+
+moe_output2 <- dbGetQuery(con,moe_sql2) %>%
+  pivot_wider(names_from=dataformat,values_from=c(data,moe)) %>%
+  pivot_wider(names_from=age_group,values_from=c(data_Number,moe_Number,data_Percent,moe_Percent)) %>%
+  select(c(timeframe,location,
+           'data_Number_Ages 0-5','moe_Number_Ages 0-5',
+           'data_Percent_Ages 0-5','moe_Percent_Ages 0-5',
+           'data_Number_Ages 6-13',
+           'data_Percent_Ages 6-13',
+           'data_Number_Ages 0-13',
+           'data_Percent_Ages 0-13')) %>%
+  arrange(location)
+
+#state planning region
+moe_sql3 <- paste0("SELECT location, timeframe, dataformat, data, moe, age_group FROM ", database_state," WHERE timeframe='",acsyear,"' AND varname='childrenages0to13parentsinlaborforce' AND locationtype='Planning Region';")
+
+moe_output3 <- dbGetQuery(con,moe_sql3) %>%
+  pivot_wider(names_from=dataformat,values_from=c(data,moe)) %>%
+  pivot_wider(names_from=age_group,values_from=c(data_Number,moe_Number,data_Percent,moe_Percent)) %>%
+  select(c(timeframe,location,
+           'data_Number_Ages 0-5','moe_Number_Ages 0-5',
+           'data_Percent_Ages 0-5','moe_Percent_Ages 0-5',
+           'data_Number_Ages 6-13',
+           'data_Percent_Ages 6-13',
+           'data_Number_Ages 0-13',
+           'data_Percent_Ages 0-13')) %>%
+  arrange(location)
+
+#tribal area (North Dakota only)
+moe_sql4 <- paste0("SELECT location, timeframe, dataformat, data, moe, age_group FROM ", database_state," WHERE timeframe='",acsyear,"' AND varname='childrenages0to13parentsinlaborforce' AND locationtype='Tribal Area';")
+
+moe_output4 <- dbGetQuery(con,moe_sql4) %>%
+  pivot_wider(names_from=dataformat,values_from=c(data,moe)) %>%
+  pivot_wider(names_from=age_group,values_from=c(data_Number,moe_Number,data_Percent,moe_Percent)) %>%
+  select(c(timeframe,location,
+           'data_Number_Ages 0-5','moe_Number_Ages 0-5',
+           'data_Percent_Ages 0-5','moe_Percent_Ages 0-5',
+           'data_Number_Ages 6-13',
+           'data_Percent_Ages 6-13',
+           'data_Number_Ages 0-13',
+           'data_Percent_Ages 0-13')) %>%
+  arrange(location)
+
+#combine county and state/state planning region
+moe_output_ordered <- moe_output %>%
+  bind_rows(moe_output2) %>%
+  bind_rows(moe_output3) %>%
+  
+  #for tribal area
+  bind_rows(moe_output4)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(moe_output_ordered,file=paste0("./Output/economics/moe/",database_state,"_",year,"_childrenages0to13parentsinlaborforce_moe.csv"),row.names=FALSE)
+
+```
+
+
+
+
