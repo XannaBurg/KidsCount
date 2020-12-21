@@ -61,8 +61,8 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 statename <- "Montana"
-year <- "2016"
-acsyear <- "2012-2016"
+year <- "2019"
+acsyear <- "2015-2019"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -290,8 +290,6 @@ write.csv(upload_data,file=paste0("../Output/health/",database_state,"_",year,"_
 
 #############################
 ##OUTPUT MARGIN OF ERROR FILE
-year <- '2012'
-acsyear <- '2008-2012'
 moe_sql <- paste0("SELECT location, timeframe, dataformat, data, moe FROM ", database_state," WHERE timeframe='",acsyear,"' AND varname='uninsuredchildrenages0to18_acstribal' AND locationtype='Tribal Area';")
 
 #alphabetize location
