@@ -1,0 +1,137 @@
+---
+title: "SD Juvenile Admissions to Drug/Alcohol Data"
+output: html_document
+---
+
+## Indicator 1: Juvenile admissions to drug or alcohol treatment programs
+
+**Created by:** Xanna Burg
+**Date:** December 2020
+**Updated by:**
+
+**Data Source:** South Dakota DSS, Division of Behavioral Health
+**Purpose:** Clean and process the data requested from SD DSS into correct format for Kids Count Data Center.
+
+**Data format:** Final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Data (numeric: number, percentage), DataFormat (character: "number", LocationId (numeric: assigned for KIDS COUNT system)
+
+
+**To use this code for a new year:**
+* Update the year in the second code chunk for variable 'year'
+* Check each dataset visually and through the report logs prior to committing to the database.
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+library(stringr)
+```
+
+
+```{r}
+####UPDATE to reflect the current year data working with
+year <- '2020'
+statename <- 'South Dakota'
+
+#run this code to create an object needed for the database (DO NOT EDIT)
+database_state <- 'southdakota'
+
+#input location ID file for SD
+locationids <- read.csv("./Input/SD KC Location IDs.csv")
+locationids$Location <- as.character(locationids$Location)
+
+#input a list of counties for SD
+countylist <- read.csv("./Input/SD County List.csv")
+countylist$county <- as.character(countylist$county)
+
+#input the region ID file for SD
+regionids <- read.csv("./Input/SD KC Region List.csv")
+regionids$county <- as.character(regionids$county)
+```
+
+
+
+## STEP 1: IMPORT AND CLEAN DATA
+```{r}
+#import the data
+importdata <- read.csv(paste0("./Input/safety/southdakota_",year,"_juvenileadmissionstodrugoralcoholprograms.csv")) 
+
+
+#subset to only include totals
+drug_data <- importdata %>%
+  filter(str_detect(County,"Total")) %>%
+  
+  #fix county names
+  mutate(location=str_remove_all(County," Total")) %>%
+  subset(location!='OUT OF STATE') %>%
+  mutate(location=replace(location,location=='Grand','SOUTH DAKOTA')) %>%
+  mutate(location=tolower(location)) %>%
+  mutate(location=str_to_title(location)) %>%
+  
+  #add in counties that are zero // not included in dataset
+  full_join(countylist, by=c('location'='county')) %>%
+  
+  #reformat data
+  rename(data=PrimaryDrug) %>%
+  select(location,data) %>%
+  mutate(data=replace(data,is.na(data),0)) %>%
+  mutate(locationtype=if_else(location=='South Dakota','State','County')) %>%
+  mutate(state='South Dakota',
+         timeframe=year,
+         dataformat='Number',
+         varname='juvenileadmissionstodrugoralcoholprograms') %>%
+  
+  #merge in locationids
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  #assign NA if less than 4 and greater than or equal to 1
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(data=replace(data,data<4 & data>=1,NA))
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(drug_data$locationid))>=1) {
+  print(drug_data$location[is.na(drug_data$locationid)])
+} else if (sum(is.na(drug_data$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Visually inspect output data
+View(drug_data)
+```
+
+## STEP 2: ADD TO DATABASE
+```{r}
+#CHECK DATASET NAMED drug_data TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,drug_data,append=TRUE,row.names=FALSE)
+```
+
+## STEP 3: OUTPUT FILE FOR DATA CENTER
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='juvenileadmissionstodrugoralcoholprograms';")
+
+
+upload_datacenter <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter,file=paste0("./Output/safety/",database_state,"_",year,"_juvenileadmissionstodrugoralcoholprograms.csv"),row.names=FALSE)
+```
+
