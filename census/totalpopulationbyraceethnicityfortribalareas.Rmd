@@ -37,8 +37,8 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 statename <- "South Dakota"
-year <- "2018"
-year_5 <- "2014-2018"
+year <- "2019"
+year_5 <- "2015-2019"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -187,6 +187,11 @@ acs_tribal3 <- acs_tribal2 %>%
   mutate(dataformat=case_when(
     dataformat=='N ' ~ 'Number',
     dataformat=='P ' ~ 'Percent')) %>%
+  
+  #calculate the relative se and whether or not value is reliable
+  mutate(relativese=((moe/1.645)/data)*100) %>%
+  mutate(keep=if_else(relativese>30,0,1)) %>%
+  select(-c(relativese)) %>%
   
   
   
@@ -414,6 +419,11 @@ acs_tribal3 <- acs_tribal2 %>%
   mutate(dataformat=case_when(
     dataformat=='N ' ~ 'Number',
     dataformat=='P ' ~ 'Percent')) %>%
+  
+  #calculate the relative se and whether or not value is reliable
+  mutate(relativese=((moe/1.645)/data)*100) %>%
+  mutate(keep=if_else(relativese>30,0,1)) %>%
+  select(-c(relativese)) %>%
   
   
   
