@@ -56,7 +56,7 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 statename <- "South Dakota"
-year <- "2018"
+year <- "2019"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -130,7 +130,8 @@ for (i in 1:nrow(tribalcodes1)) {
   acs_tribal[[i]] <- getCensus(name="acs/acs5/profile",
           vintage=year,
           key=Sys.getenv("CENSUS_API_KEY"),
-          vars=c("DP05_0005E","DP05_0006E","DP05_0007E","DP05_0008E","DP05_0009E"),
+          vars=c("DP05_0005E","DP05_0006E","DP05_0007E","DP05_0008E","DP05_0009E",
+                 "DP05_0005M","DP05_0006M","DP05_0007M","DP05_0008M","DP05_0009M"),
           region=paste0("state (or part):",statecode),
           regionin=paste0("american indian area/alaska native area/hawaiian home land:",codenumber))
   
@@ -177,16 +178,30 @@ acs_tribal3 <- acs_tribal2 %>%
   
   #select only needed variables and name to kids count database
   select(c(AIANNHNAME,locationtype,DP05_0005E,DP05_0006E,DP05_0007E,
-           DP05_0008E,DP05_0009E)) %>%
+           DP05_0008E,DP05_0009E,DP05_0005M,DP05_0006M,DP05_0007M,
+           DP05_0008M,DP05_0009M)) %>%
   rename(location=AIANNHNAME,
-         '0 to 4'=DP05_0005E,
-         '5 to 9'=DP05_0006E,
-         '10 to 14'=DP05_0007E,
-         '15 to 19'=DP05_0008E,
-         '20 to 24'=DP05_0009E) %>%
+         'E 0 to 4'=DP05_0005E,'M 0 to 4'=DP05_0005M,
+         'E 5 to 9'=DP05_0006E,'M 5 to 9'=DP05_0006M,
+         'E 10 to 14'=DP05_0007E,'M 10 to 14'=DP05_0007M,
+         'E 15 to 19'=DP05_0008E,'M 15 to 19'=DP05_0008M,
+         'E 20 to 24'=DP05_0009E,'M 20 to 24'=DP05_0009M) %>%
   
   #change from wide to long format
-  pivot_longer(cols=c('0 to 4','5 to 9','10 to 14','15 to 19','20 to 24'),names_to='age_group',values_to='data') %>%
+  pivot_longer(cols=c('E 0 to 4','E 5 to 9','E 10 to 14','E 15 to 19','E 20 to 24','M 0 to 4','M 5 to 9','M 10 to 14','M 15 to 19','M 20 to 24'),names_to='age_group',values_to='data') %>%
+  
+  #separate estimate/moe indicator from age group
+  separate(col=age_group,into=c('datatype','age_groupnew'),sep=2) %>%
+  #pivot moe back wider
+  pivot_wider(id_cols=c('locationtype','location','age_groupnew'),names_from='datatype',values_from='data') %>%
+  rename(data='E ',
+         moe='M ',
+         age_group=age_groupnew) %>%
+  
+  #calculate the relative se and whether or not value is reliable
+  mutate(relativese=((moe/1.645)/data)*100) %>%
+  mutate(keep=if_else(relativese>30,0,1)) %>%
+  select(-c(relativese)) %>%
   
   mutate(timeframe=year) %>%
   mutate(state=statename) %>%

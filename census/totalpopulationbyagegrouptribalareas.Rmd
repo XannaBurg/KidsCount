@@ -35,8 +35,8 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 statename <- "South Dakota"
-year <- "2017"
-year_5 <- "2013-2017"
+year <- "2019"
+year_5 <- "2015-2019"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -193,6 +193,11 @@ acs_tribal3 <- acs_tribal2 %>%
          moe='M ',
          age_group=age_groupnew) %>%
   
+  #calculate the relative se and whether or not value is reliable
+  mutate(relativese=((moe/1.645)/data)*100) %>%
+  mutate(keep=if_else(relativese>30,0,1)) %>%
+  select(-c(relativese)) %>%
+  
   mutate(timeframe=year_5) %>%
   mutate(state=statename) %>%
   mutate(dataformat='Number') %>%
@@ -265,6 +270,7 @@ View(acs_tribal3)
 #run postgres code (separate file) first
 dbWriteTable(con,database_state,acs_tribal3,append=TRUE,row.names=FALSE)
 ```
+
 
 
 
@@ -380,6 +386,11 @@ acs_tribal3 <- acs_tribal2 %>%
   rename(data='E ',
          moe='M ',
          age_group=age_groupnew) %>%
+  
+  #calculate the relative se and whether or not value is reliable
+  mutate(relativese=((moe/1.645)/data)*100) %>%
+  mutate(keep=if_else(relativese>30,0,1)) %>%
+  select(-c(relativese)) %>%
   
   mutate(timeframe=year_5) %>%
   mutate(state=statename) %>%
@@ -565,6 +576,11 @@ acs_tribal3 <- acs_tribal2 %>%
   rename(data='E ',
          moe='M ',
          age_group=age_groupnew) %>%
+  
+  #calculate the relative se and whether or not value is reliable
+  mutate(relativese=((moe/1.645)/data)*100) %>%
+  mutate(keep=if_else(relativese>30,0,1)) %>%
+  select(-c(relativese)) %>%
   
   mutate(timeframe=year_5) %>%
   mutate(state=statename) %>%
