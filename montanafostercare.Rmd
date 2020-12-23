@@ -1,0 +1,426 @@
+---
+title: "Montana Foster Care Data"
+output: html_document
+---
+
+## Indicator 1: Children ages 0 to 17 in foster care by county
+## Indicator 2: Children ages 0 to 5 in foster care by county
+
+
+**Created by:** Xanna Burg
+**Date:** November 2020
+**Updated by:**
+
+**Data Source:** Montana Department of Public Health and Human Services, Child and Family Services Division
+**Purpose:** Input the foster care data
+
+**Data format:** final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Data (numeric: number, percentage, rate), DataFormat (character: "number" or "percent" or "rate"), LocationId (numeric: assigned for KIDS COUNT system)
+
+**To use this code for a new year:**
+* Update the year in the second code chunk for variable 'year' and 'fullyear'
+* Check each dataset visually and through the report logs prior to commiting to the database.
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+```
+
+```{r}
+####UPDATE to reflect the current year data working with
+year <- '2019'
+year_short <- '19'
+
+statefile <- 'montana'
+statename <- 'Montana'
+
+#input location ID file for MT
+locationids <- read.csv("./Input/MT KC Location IDs.csv")
+locationids$Location <- as.character(locationids$Location)
+
+#input region ID file for MT
+regionids <- read.csv("./Input/MT KC Region List.csv")
+regionids$county <- as.character(regionids$county)
+```
+
+
+## IMPORT THE DATA FILES THAT WILL BE USED
+```{r}
+fostercaredata_0to17 <- read_excel(path=paste0("./Input/safety/montana_",year_short,"_fostercaredata.xlsx"),sheet='Ages 0-17',skip=3) 
+
+fostercaredata_0to5 <- read_excel(path=paste0("./Input/safety/montana_",year_short,"_fostercaredata.xlsx"),sheet='Ages 0-5',skip=3) 
+```
+
+
+## -- FOR CHILDREN AGES 0 TO 17 -- ##
+
+## CLEAN THE IMPORTED DATA
+```{r}
+fostercaredata_0to17_2 <- fostercaredata_0to17 %>% 
+  
+  rename(location=`...1`,
+         children_2017=`CY 2017`,
+         children_2018=`CY 2018`,
+         children_2019=`CY 2019`) %>%
+  
+  #update locations
+  mutate(location=replace(location,location=='State Total','Montana')) %>%
+  filter(!location %in% c("Blackfoot Tribal","Crow Tribal","Flathead Tribal","Fort Belknap Tribal","Fort Peck Tribal","Northern Cheyenne Tribal","Rocky Boy Tribal")) %>%
+  mutate(locationtype=ifelse(location=='Montana','State','County')) %>%
+  mutate(location=replace(location,location=='Choteau','Chouteau')) %>%
+  mutate(location=replace(location,location=='Lewis and Clark','Lewis & Clark')) %>%
+  mutate(location=replace(location,location=='Power River','Powder River')) %>%
+
+  mutate(state='Montana',
+         dataformat='Number',
+         varname='childrenages0to17infostercare') %>%
+  
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+    
+  #pivot longer
+  pivot_longer(cols=c(children_2017,children_2018,children_2019),names_to='timeframe',values_to='data') %>%
+  
+  #split category to include the date
+  mutate(timeframe=case_when(
+    timeframe=='children_2017' ~ '2017',
+    timeframe=='children_2018' ~ '2018',
+    timeframe=='children_2019' ~ '2019')) %>%
+  
+  #suppress if less than 4
+  mutate(data=replace(data,data<4,NA))
+  
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(fostercaredata_0to17_2$locationid))>=1) {
+  print(fostercaredata_0to17_2$location[is.na(fostercaredata_0to17_2$locationid)])
+} else if (sum(is.na(fostercaredata_0to17_2$locationid))==0) {
+  'all locations match'
+}
+
+
+#2. Check that no values are less than 4
+temp_suppresscheck <- fostercaredata_0to17_2 %>% subset(data<4)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- fostercaredata_0to17_2 %>%
+  subset(locationtype=='County') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- fostercaredata_0to17_2 %>%
+#  subset(locationtype=='County') %>%
+#  arrange(data)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#fostercaredata_0to17_2$fostercaredata_0to17_2[births_all$location=='Billings'] <- NA
+
+# 4. Visually inspect output data
+View(fostercaredata_0to17_2)
+```
+
+## STEP 2: ADD TO DATABASE
+```{r}
+#CHECK DATASET NAMED fostercaredata_0to17_2 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',fostercaredata_0to17_2,append=TRUE,row.names=FALSE)
+```
+
+## STEP 3: CALCULATE THE RATE
+```{r}
+##########################################
+#CALCULATE THE PERCENT FROM THE POPULATION
+
+#write the sql code needed to pull population data from the database
+childpop_sql <- paste0("SELECT location, timeframe, age_group, data FROM montana WHERE (timeframe='",year,"' AND vintageyear='",year,"') AND varname='childpopulationbysingleyearofage';")
+
+
+childpop <- dbGetQuery(con,childpop_sql) %>%
+  mutate(age_group=as.numeric(age_group)) %>%
+  subset(age_group<18) %>%
+  
+  #create 0 to 17 age group sums
+  mutate(data=as.numeric(paste(data))) %>%
+  group_by(location,timeframe) %>%
+  summarise(totalpop0to17=sum(data),.groups='keep') %>%
+  ungroup
+
+
+#write the sql code needed to pull the medicaid data that has already been published to the database
+fostercare_sql <- paste0("SELECT location, locationtype, locationid, state, timeframe, dataformat, data, varname FROM montana WHERE timeframe='",year,"' AND varname='childrenages0to17infostercare' AND dataformat='Number';")
+
+fostercare_pop <- dbGetQuery(con,fostercare_sql)
+
+
+##############################
+#CALCULATE PERCENTS FOR COUNTY, STATE
+fostercare_percent <- fostercare_pop %>%
+  left_join(childpop,by=c('location'='location','timeframe'='timeframe')) %>%
+  rename(childinfostercare=data) %>%
+  mutate(childinfostercare=as.numeric(paste(childinfostercare))) %>%
+  mutate(data=(childinfostercare/totalpop0to17)*1000) %>%
+  select(-c(childinfostercare,totalpop0to17)) %>%
+  
+  mutate(dataformat='Rate')
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(fostercare_percent$locationid))>=1) {
+  print(fostercare_percent$location[is.na(fostercare_percent$locationid)])
+} else if (sum(is.na(fostercare_percent$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Visually inspect output data
+view(fostercare_percent)
+
+
+```
+
+## STEP 4: ADD RATE TO DATABASE
+```{r}
+#CHECK DATASET NAMED fostercare_percent TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',fostercare_percent,append=TRUE,row.names=FALSE)
+
+```
+
+## STEP 3: OUTPUT FILE FOR KC
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",year,"' AND varname='childrenages0to17infostercare';")
+
+upload_data <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("./Output/safety/",statefile,"_",year,"_childrenages0to17infostercare.csv"),row.names=FALSE)
+```
+
+
+
+
+## -- FOR CHILDREN AGES 0 TO 5 -- ##
+
+## CLEAN THE IMPORTED DATA
+```{r}
+fostercaredata_0to5_2 <- fostercaredata_0to5 %>% 
+  
+  rename(location=`...1`,
+         children_2017=`CY 2017`,
+         children_2018=`CY 2018`,
+         children_2019=`CY 2019`) %>%
+  
+  #update locations
+  mutate(location=replace(location,location=='State Total','Montana')) %>%
+  filter(!location %in% c("Blackfoot Tribal","Crow Tribal","Flathead Tribal","Fort Belknap Tribal","Fort Peck Tribal","Northern Cheyenne Tribal","Rocky Boy Tribal")) %>%
+  mutate(locationtype=ifelse(location=='Montana','State','County')) %>%
+  mutate(location=replace(location,location=='Choteau','Chouteau')) %>%
+  mutate(location=replace(location,location=='Lewis and Clark','Lewis & Clark')) %>%
+  mutate(location=replace(location,location=='Power River','Powder River')) %>%
+
+  mutate(state='Montana',
+         dataformat='Number',
+         varname='childrenages0to5infostercare') %>%
+  
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+    
+  #pivot longer
+  pivot_longer(cols=c(children_2017,children_2018,children_2019),names_to='timeframe',values_to='data') %>%
+  
+  #split category to include the date
+  mutate(timeframe=case_when(
+    timeframe=='children_2017' ~ '2017',
+    timeframe=='children_2018' ~ '2018',
+    timeframe=='children_2019' ~ '2019')) %>%
+  
+  #suppress if less than 4
+  mutate(data=replace(data,data<4,NA))
+  
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(fostercaredata_0to5_2$locationid))>=1) {
+  print(fostercaredata_0to5_2$location[is.na(fostercaredata_0to5_2$locationid)])
+} else if (sum(is.na(fostercaredata_0to5_2$locationid))==0) {
+  'all locations match'
+}
+
+
+#2. Check that no values are less than 4
+temp_suppresscheck <- fostercaredata_0to5_2 %>% subset(data<4)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- fostercaredata_0to5_2 %>%
+  subset(locationtype=='County') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- fostercaredata_0to5_2 %>%
+#  subset(locationtype=='County') %>%
+#  arrange(data)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#fostercaredata_0to5_2$fostercaredata_0to5_2[births_all$location=='Billings'] <- NA
+
+# 4. Visually inspect output data
+View(fostercaredata_0to5_2)
+```
+
+## STEP 2: ADD TO DATABASE
+```{r}
+#CHECK DATASET NAMED fostercaredata_0to5_2 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',fostercaredata_0to5_2,append=TRUE,row.names=FALSE)
+```
+
+## STEP 3: CALCULATE THE RATE
+```{r}
+##########################################
+#CALCULATE THE PERCENT FROM THE POPULATION
+
+#write the sql code needed to pull population data from the database
+childpop_sql <- paste0("SELECT location, timeframe, age_group, data FROM montana WHERE (timeframe='",year,"' AND vintageyear='",year,"') AND varname='childpopulationbysingleyearofage';")
+
+
+childpop <- dbGetQuery(con,childpop_sql) %>%
+  mutate(age_group=as.numeric(age_group)) %>%
+  subset(age_group<=5) %>%
+  
+  #create 0 to 5 age group sums
+  mutate(data=as.numeric(paste(data))) %>%
+  group_by(location,timeframe) %>%
+  summarise(totalpop0to5=sum(data),.groups='keep') %>%
+  ungroup
+
+
+#write the sql code needed to pull the medicaid data that has already been published to the database
+fostercare_sql <- paste0("SELECT location, locationtype, locationid, state, timeframe, dataformat, data, varname FROM montana WHERE timeframe='",year,"' AND varname='childrenages0to5infostercare' AND dataformat='Number';")
+
+fostercare_pop <- dbGetQuery(con,fostercare_sql)
+
+
+##############################
+#CALCULATE PERCENTS FOR COUNTY, STATE
+fostercare_percent <- fostercare_pop %>%
+  left_join(childpop,by=c('location'='location','timeframe'='timeframe')) %>%
+  rename(childinfostercare=data) %>%
+  mutate(childinfostercare=as.numeric(paste(childinfostercare))) %>%
+  mutate(data=(childinfostercare/totalpop0to5)*1000) %>%
+  select(-c(childinfostercare,totalpop0to5)) %>%
+  
+  mutate(dataformat='Rate')
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(fostercare_percent$locationid))>=1) {
+  print(fostercare_percent$location[is.na(fostercare_percent$locationid)])
+} else if (sum(is.na(fostercare_percent$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Visually inspect output data
+view(fostercare_percent)
+
+
+```
+
+## STEP 4: ADD RATE TO DATABASE
+```{r}
+#CHECK DATASET NAMED fostercare_percent TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',fostercare_percent,append=TRUE,row.names=FALSE)
+
+```
+
+## STEP 3: OUTPUT FILE FOR KC
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",year,"' AND varname='childrenages0to5infostercare';")
+
+upload_data <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("./Output/safety/",statefile,"_",year,"_childrenages0to5infostercare.csv"),row.names=FALSE)
+```
+
