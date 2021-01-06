@@ -40,7 +40,7 @@ state <- 'northdakota'
 ```{r}
 
 #read in the most recent year of child care data
-child_data <- read.csv(paste0("./Input/Education/northdakota_",year,"_childcaredata.csv"))
+child_data <- read.csv(paste0("./Input/education/northdakota_",year,"_childcaredata.csv"))
 
 #read in the codes for county name
 countymatch <- read.csv("./Documentation/Indicator Documentation/childcareproviders/ND County Codes.csv")
