@@ -379,17 +379,17 @@ dbWriteTable(con,'southdakota',enrollment,append=TRUE,row.names=FALSE)
 #The same code can be used to run all indicators by changing the objects at the beginning of the first chunk
 ```{r}
 #read in data from statistical digest - may need to confirm the number of rows to skip before columns begin
-df_digest <- read_excel(path=paste0("./Input/education/southdakota_",year,"_educationstatisticaldigest.xlsx"),skip=4)
+df_digest <- read_excel(path=paste0("./Input/education/southdakota_",year,"_educationstatisticaldigest.xlsx"),skip=3)
 
 ####### UPDATE THESE VARIABLES PRIOR TO RUNNING THE CODE
 #verify column names prior to assigning, should be: 'Dropout Rate\r\n (%)' and 'Expenditure per ADM' and 'ACT Composite Score' and 'Fall Count of Home School Students' and 'Free & Reduced Lunch Eligibility Percentage'
 #variable.names(df_digest)
 
-columnname <- 'Fall Count of Home School Students'
+columnname <- 'ACT Composite Score'
 input_dataformat <- 'Number'
-variablename <- 'homeschoolk12enrollment'
+variablename <- 'averageactcompositescore'
 #pull state data from the school profile on the statistical digest
-state_data <- 3648
+state_data <- 21.8
 #######
 
 
@@ -407,7 +407,7 @@ digestdata_state <- as.data.frame(state_data) %>%
 #CALCULATE THE DISTRICT DATA
 digestdata_district <- df_digest %>%
   rename(location='District Name',
-         data=columnname) %>%
+         data=all_of(columnname)) %>%
   select(c(location,data)) %>%
   mutate(locationtype='School District') %>%
   mutate(state='South Dakota') %>%
@@ -444,12 +444,22 @@ digestdata_district <- df_digest %>%
                          'Oglala Lakota County School District 65-1',location)) %>%
   left_join(locationids,by=c('location'='Location')) %>%
   rename(locationid=LocationId) %>%
-  subset(!is.na(locationid))
+  subset(!is.na(locationid)) 
 
 #COMBINE STATE AND DISTRICT DATA
 digestdata <- digestdata_state %>%
   bind_rows(digestdata_district)
 
+#DATA CHECKS
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(digestdata$locationid))>=1) {
+  print(digestdata$location[is.na(digestdata$locationid)])
+} else if (sum(is.na(digestdata$locationid))==0) {
+  'all locations match'
+}
+
+# 2. View data
+View(digestdata)
 ```
 
 ```{r}
@@ -461,11 +471,13 @@ dbWriteTable(con,'southdakota',digestdata,append=TRUE,row.names=FALSE)
 ```{r}
 #write query from database to get needed format for KC data center
 
-digest_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM southdakota WHERE timeframe='",fullyear,"' AND  varname='",variablename,"';")
 
-upload_data_digest <- dbGetQuery(con,digest_sql)
+#for FRL only, which has county data for same year represented in statistical digest
+#digest_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM southdakota WHERE timeframe='",fullyear,"' AND  varname='",variablename,"' AND (locationtype='School District' OR locationtype='State');")
 
-upload_data_digest2 <- upload_data_digest %>%
+digest_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM southdakota WHERE timeframe='",fullyear,"' AND  varname='",variablename,"' AND locationtype <> 'Tribal Area';")
+
+upload_data_digest <- dbGetQuery(con,digest_sql) %>%
   rename(LocationId=locationid,
          Location=location,
          TimeFrame=timeframe,
