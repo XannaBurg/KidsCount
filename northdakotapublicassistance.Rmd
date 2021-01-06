@@ -1,0 +1,736 @@
+---
+title: "North Dakota Public Assistance"
+author: "Xanna Burg"
+date: "2/20/2020"
+output: html_document
+---
+
+## Indicator 1: TANF recipients ages 0 to 19
+## Indicator 2: SNAP recipients ages 0 to 18
+## Indicator 3: Child care assistance recipients ages 0 to 13
+## Indicator 4: Medicaid recipients ages 0 to 20
+## Indicator 5: Children ages 0 to 18 enrolled in Healthy Steps
+
+**Created by:** Xanna Burg
+**Date:** February, 2020
+**Updated by:**
+
+**Data Source:** North Dakota Department of Human Services 
+**Purpose:** Clean the public assistance provided by the Department of Human Services and update KIDS COUNT data for North Dakota.
+**Description:** this program calculates five indicators 
+**TANF recipients ages 0 to 19**
+**SNAP recipients age 0 to 18**
+**Child care assitance recipients ages 0 to 13**
+**Medicaid recipients ages 0 to 20**
+**Chidren ages 0 to 18 enrolled in Healthy Steps**
+
+* Geographies: state total, county, state planning regions (where applicable, which are groups of counties)
+* Number - count of individuals participating in program
+* Percent - The percent of individuals participating in program out of estimated population in age range. [Numerator: count of participation, Denominator: children in corresponding age group from Census estimates] 
+
+**Data format:** final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (numeric: year), Data (numeric: number or percentage), DataFormat (character: "number" or "percent"), LocationId (numeric: assigned for KIDS COUNT system)
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+```
+
+```{r}
+#UPDATE to reflect the current year data working with
+year <- '2019'
+fiscalyear <- 'FY19'
+state <- 'northdakota'
+```
+
+
+```{r}
+#read in the data in Excel format with multiple sheets
+
+xl_data <- paste0("./Input/economics/northdakota_",fiscalyear,"_economicassistance.xlsx")
+excel_sheets(path = xl_data)
+
+df_tanf <- read_excel(path=xl_data, sheet='TANF 0-19')
+df_snap <- read_excel(path=xl_data, sheet='SNAP 0-18')
+df_ccap <- read_excel(path=xl_data, sheet='Child Care 0-13')
+df_medicaid <- read_excel(path=xl_data, sheet='Medicaid 0-20')
+df_healthysteps <- read_excel(path=xl_data, sheet='Healthy Steps 0-19')
+
+#input location ID file for ND
+locationids <- read.csv("./Input/ND KC Location IDs.csv")
+
+```
+
+```{r}
+#FOR SNAP
+#clean the county data
+df_snap2 <- df_snap %>%
+  rename(location=county) %>%
+  rename(zerotosix='0-6 YEARS') %>%
+  rename(seventoeighteen='7-18 YEARS') %>%
+  mutate(locationtype='County') %>%
+  mutate(state='North Dakota') %>%
+  mutate(data=(zerotosix+seventoeighteen)) %>%
+  mutate(dataformat='Number') %>%
+  mutate(timeframe='2019') %>%
+  mutate(varname='snapages0to18') %>%
+  select(-c(zerotosix,seventoeighteen))
+
+#create state summary
+df_snap_state <- df_snap2 %>%
+  group_by(state) %>%
+  summarise(data=sum(data)) %>%
+  mutate(location='North Dakota') %>%
+  mutate(locationtype='State') %>%
+  mutate(timeframe='2019') %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='snapages0to18')
+
+#create region summaries
+df_snap_regions <- df_snap2 %>% 
+  rename(county=location) %>%
+  mutate(region = case_when(
+  county=="Divide" | county=="McKenzie" | county=="Williams" ~
+    "Planning Region 1",
+  county=="Bottineau" | county=="Burke" | county=="McHenry" | 
+    county=="Mountrail" | county=="Pierce" | county=="Pierce" | 
+    county=="Renville" | county=="Ward" ~ "Planning Region 2",
+  county=="Benson" | county=="Cavalier" | county=="Eddy" | 
+    county=="Ramsey" | county=="Rolette" | county=="Towner"~
+    "Planning Region 3",
+  county=="Grand Forks" | county=="Nelson" | county=="Pembina" | 
+    county=="Walsh" ~ "Planning Region 4",
+  county=="Cass" | county=="Ransom" | county=="Richland" | 
+    county=="Sargent" | county=="Steele" | county=="Traill" ~ 
+    "Planning Region 5",
+  county=="Barnes"| county=="Dickey" | county=="Foster" | 
+    county=="Griggs" | county=="LaMoure" | county=="Logan" | 
+    county=="McIntosh" | county=="Stutsman" | county=="Wells" ~ 
+    "Planning Region 6",
+  county=="Burleigh" | county=="Emmons" | county=="Grant" | 
+    county=="Kidder" | county=="McLean" | county=="Mercer" | 
+    county=="Morton" | county=="Oliver" | county=="Sheridan" |
+    county=="Sioux" ~ "Planning Region 7",
+  county=="Adams" | county=="Billings" | county=="Bowman" | 
+    county=="Dunn" | county=="Golden Valley" | county=="Hettinger" | 
+    county=="Slope" | county=="Stark" ~ "Planning Region 8"
+))
+
+df_snap_regions2 <- df_snap_regions %>%
+  group_by(region) %>%
+  summarise(data=sum(data)) %>%
+  mutate(location=region) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(timeframe='2019') %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='snapages0to18') %>%
+  mutate(state='North Dakota') %>%
+  select(-c(region))
+
+#union all three datasets together and add location ID
+snapages0to18 <- df_snap2 %>%
+  bind_rows(df_snap_state) %>%
+  bind_rows(df_snap_regions2) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+  
+ 
+
+```
+
+```{r}
+#add to database count of snapages0to18
+dbWriteTable(con,'northdakota',snapages0to18,append=TRUE,row.names=FALSE)
+
+```
+```{r}
+#calculate percent of population 0 to 18 on snap
+
+#create dataset that has population merged with geography for 0 to 18 year olds
+#population is for the beginning of the FY, which is minus 1 from the year that is reported
+pop0_18 <- dbGetQuery(con,"SELECT locationid,location,age_group,data
+                     FROM northdakota
+                     WHERE timeframe = '2018' AND varname = 'nchspopulationbysingleyearofage' AND (age_group='0' OR age_group='1' OR age_group='2' OR age_group='3' OR age_group='4' OR age_group='5' OR age_group='6' OR age_group='7' OR age_group='8' OR age_group='9' OR age_group='10' OR age_group='11' OR age_group='12' OR age_group='13' OR age_group='14' OR age_group='15' OR age_group='16' OR age_group='17' OR age_group='18') ;")
+
+#sum the population across all age groups 0 to 18
+pop0_18_sums <- pop0_18 %>%
+  group_by(location) %>%
+  summarise(total_pop=sum(data))
+
+#merge population with snap data
+snap_percent <- snapages0to18 %>%
+  left_join(pop0_18_sums,by='location') %>%
+  mutate(percent_snap=(data/total_pop)) %>%
+  select(-c(data,total_pop)) %>%
+  rename(data=percent_snap) %>%
+  mutate(dataformat='Percent')
+```
+
+```{r}
+#add to database percent of snapages0to18
+dbWriteTable(con,'northdakota',snap_percent,append=TRUE,row.names=FALSE)
+
+```
+
+
+
+```{r}
+#FOR TANF
+#clean the county data
+df_tanf2 <- df_tanf %>%
+  rename(location=county) %>%
+  rename(zerotofive='0-5 YEARS') %>%
+  rename(sixtofifteen='6-15 YEARS') %>%
+  rename(sixteentoseventeen='16-17 YEARS') %>%
+  rename(eighteentonineteen='18-19 YEARS') %>%
+  mutate(locationtype='County') %>%
+  mutate(state='North Dakota') %>%
+  mutate(data=(zerotofive+sixtofifteen+sixteentoseventeen+eighteentonineteen)) %>%
+  mutate(dataformat='Number') %>%
+  mutate(timeframe='2019') %>%
+  mutate(varname='tanfages0to19') %>%
+  select(-c(zerotofive,sixtofifteen,sixteentoseventeen,eighteentonineteen))
+
+#create state summary
+df_tanf_state <- df_tanf2 %>%
+  group_by(state) %>%
+  summarise(data=sum(data)) %>%
+  mutate(location='North Dakota') %>%
+  mutate(locationtype='State') %>%
+  mutate(timeframe='2019') %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='tanfages0to19')
+
+#create region summaries
+df_tanf_regions <- df_tanf2 %>% 
+  rename(county=location) %>%
+  mutate(region = case_when(
+  county=="Divide" | county=="McKenzie" | county=="Williams" ~
+    "Planning Region 1",
+  county=="Bottineau" | county=="Burke" | county=="McHenry" | 
+    county=="Mountrail" | county=="Pierce" | county=="Pierce" | 
+    county=="Renville" | county=="Ward" ~ "Planning Region 2",
+  county=="Benson" | county=="Cavalier" | county=="Eddy" | 
+    county=="Ramsey" | county=="Rolette" | county=="Towner"~
+    "Planning Region 3",
+  county=="Grand Forks" | county=="Nelson" | county=="Pembina" | 
+    county=="Walsh" ~ "Planning Region 4",
+  county=="Cass" | county=="Ransom" | county=="Richland" | 
+    county=="Sargent" | county=="Steele" | county=="Traill" ~ 
+    "Planning Region 5",
+  county=="Barnes"| county=="Dickey" | county=="Foster" | 
+    county=="Griggs" | county=="LaMoure" | county=="Logan" | 
+    county=="McIntosh" | county=="Stutsman" | county=="Wells" ~ 
+    "Planning Region 6",
+  county=="Burleigh" | county=="Emmons" | county=="Grant" | 
+    county=="Kidder" | county=="McLean" | county=="Mercer" | 
+    county=="Morton" | county=="Oliver" | county=="Sheridan" |
+    county=="Sioux" ~ "Planning Region 7",
+  county=="Adams" | county=="Billings" | county=="Bowman" | 
+    county=="Dunn" | county=="Golden Valley" | county=="Hettinger" | 
+    county=="Slope" | county=="Stark" ~ "Planning Region 8"
+))
+
+df_tanf_regions2 <- df_tanf_regions %>%
+  group_by(region) %>%
+  summarise(data=sum(data)) %>%
+  mutate(location=region) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(timeframe='2019') %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='tanfages0to19') %>%
+  mutate(state='North Dakota') %>%
+  select(-c(region))
+
+#union all three datasets together and add location ID
+tanfages0to19 <- df_tanf2 %>%
+  bind_rows(df_tanf_state) %>%
+  bind_rows(df_tanf_regions2) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+  
+ 
+
+```
+
+```{r}
+#add to database count of tanfages0to19
+dbWriteTable(con,'northdakota',tanfages0to19,append=TRUE,row.names=FALSE)
+
+```
+```{r}
+#calculate percent of population 0 to 19 on tanf
+
+#create dataset that has population merged with geography for 0 to 19 year olds
+#population is for the beginning of the FY, which is minus 1 from the year that is reported
+pop0_19 <- dbGetQuery(con,"SELECT locationid,location,age_group,data
+                     FROM northdakota
+                     WHERE timeframe = '2018' AND varname = 'nchspopulationbysingleyearofage' AND (age_group='0' OR age_group='1' OR age_group='2' OR age_group='3' OR age_group='4' OR age_group='5' OR age_group='6' OR age_group='7' OR age_group='8' OR age_group='9' OR age_group='10' OR age_group='11' OR age_group='12' OR age_group='13' OR age_group='14' OR age_group='15' OR age_group='16' OR age_group='17' OR age_group='18' OR age_group='19') ;")
+
+#sum the population across all age groups 0 to 19
+pop0_19_sums <- pop0_19 %>%
+  group_by(location) %>%
+  summarise(total_pop=sum(data))
+
+#merge population with snap data
+tanf_percent <- tanfages0to19 %>%
+  left_join(pop0_19_sums,by='location') %>%
+  mutate(percent_tanf=(data/total_pop)) %>%
+  select(-c(data,total_pop)) %>%
+  rename(data=percent_tanf) %>%
+  mutate(dataformat='Percent')
+```
+
+```{r}
+#add to database percent of tanfages0to19
+dbWriteTable(con,'northdakota',tanf_percent,append=TRUE,row.names=FALSE)
+
+```
+
+
+```{r}
+#FOR CCAP
+#clean the county data
+df_ccap2 <- df_ccap %>%
+  rename(location=county) %>%
+  rename(undertwo='Under 2') %>%
+  rename(twoonly='2 Only') %>%
+  rename(threeonly='3 Only') %>%
+  rename(fourtofive='4-5') %>%
+  rename(sixtothirteen='6-13') %>%
+  mutate(locationtype='County') %>%
+  mutate(state='North Dakota') %>%
+  mutate(data=(undertwo+twoonly+threeonly+fourtofive+sixtothirteen)) %>%
+  mutate(dataformat='Number') %>%
+  mutate(timeframe='2019') %>%
+  mutate(varname='ccapages0to13') %>%
+  select(-c(undertwo,twoonly,threeonly,fourtofive,sixtothirteen))
+
+#create state summary
+df_ccap_state <- df_ccap2 %>%
+  group_by(state) %>%
+  summarise(data=sum(data)) %>%
+  mutate(location='North Dakota') %>%
+  mutate(locationtype='State') %>%
+  mutate(timeframe='2019') %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='ccapages0to13')
+
+#create region summaries
+df_ccap_regions <- df_ccap2 %>% 
+  rename(county=location) %>%
+  mutate(region = case_when(
+  county=="Divide" | county=="McKenzie" | county=="Williams" ~
+    "Planning Region 1",
+  county=="Bottineau" | county=="Burke" | county=="McHenry" | 
+    county=="Mountrail" | county=="Pierce" | county=="Pierce" | 
+    county=="Renville" | county=="Ward" ~ "Planning Region 2",
+  county=="Benson" | county=="Cavalier" | county=="Eddy" | 
+    county=="Ramsey" | county=="Rolette" | county=="Towner"~
+    "Planning Region 3",
+  county=="Grand Forks" | county=="Nelson" | county=="Pembina" | 
+    county=="Walsh" ~ "Planning Region 4",
+  county=="Cass" | county=="Ransom" | county=="Richland" | 
+    county=="Sargent" | county=="Steele" | county=="Traill" ~ 
+    "Planning Region 5",
+  county=="Barnes"| county=="Dickey" | county=="Foster" | 
+    county=="Griggs" | county=="LaMoure" | county=="Logan" | 
+    county=="McIntosh" | county=="Stutsman" | county=="Wells" ~ 
+    "Planning Region 6",
+  county=="Burleigh" | county=="Emmons" | county=="Grant" | 
+    county=="Kidder" | county=="McLean" | county=="Mercer" | 
+    county=="Morton" | county=="Oliver" | county=="Sheridan" |
+    county=="Sioux" ~ "Planning Region 7",
+  county=="Adams" | county=="Billings" | county=="Bowman" | 
+    county=="Dunn" | county=="Golden Valley" | county=="Hettinger" | 
+    county=="Slope" | county=="Stark" ~ "Planning Region 8"
+))
+
+df_ccap_regions2 <- df_ccap_regions %>%
+  group_by(region) %>%
+  summarise(data=sum(data)) %>%
+  mutate(location=region) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(timeframe='2019') %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='ccapages0to13') %>%
+  mutate(state='North Dakota') %>%
+  select(-c(region))
+
+#union all three datasets together and add location ID
+ccapages0to13 <- df_ccap2 %>%
+  bind_rows(df_ccap_state) %>%
+  bind_rows(df_ccap_regions2) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+  
+ 
+
+```
+
+```{r}
+#add to database count of ccapages0to13
+dbWriteTable(con,'northdakota',ccapages0to13,append=TRUE,row.names=FALSE)
+
+```
+```{r}
+#calculate percent of population 0 to 13 on ccap
+
+#create dataset that has population merged with geography for 0 to 13 year olds
+#population is for the beginning of the FY, which is minus 1 from the year that is reported
+pop0_13 <- dbGetQuery(con,"SELECT locationid,location,age_group,data
+                     FROM northdakota
+                     WHERE timeframe = '2018' AND varname = 'nchspopulationbysingleyearofage' AND (age_group='0' OR age_group='1' OR age_group='2' OR age_group='3' OR age_group='4' OR age_group='5' OR age_group='6' OR age_group='7' OR age_group='8' OR age_group='9' OR age_group='10' OR age_group='11' OR age_group='12' OR age_group='13') ;")
+
+#sum the population across all age groups 0 to 13
+pop0_13_sums <- pop0_13 %>%
+  group_by(location) %>%
+  summarise(total_pop=sum(data))
+
+#merge population with snap data
+ccap_percent <- ccapages0to13 %>%
+  left_join(pop0_13_sums,by='location') %>%
+  mutate(percent_ccap=(data/total_pop)) %>%
+  select(-c(data,total_pop)) %>%
+  rename(data=percent_ccap) %>%
+  mutate(dataformat='Percent')
+```
+
+```{r}
+#add to database percent of ccapages0to13
+dbWriteTable(con,'northdakota',ccap_percent,append=TRUE,row.names=FALSE)
+
+```
+
+
+```{r}
+#FOR MEDICAID
+#clean the county data
+df_medicaid2 <- df_medicaid %>%
+  rename(location=county) %>%
+  rename(zerotofive='0-5') %>%
+  rename(sixtoeighteen='6-18') %>%
+  rename(nineteentotwenty='19-20') %>%
+  mutate(locationtype='County') %>%
+  mutate(state='North Dakota') %>%
+  mutate(data=(zerotofive+sixtoeighteen+nineteentotwenty)) %>%
+  mutate(dataformat='Number') %>%
+  mutate(timeframe='2019') %>%
+  mutate(varname='medicaidages0to20') %>%
+  select(-c(zerotofive,sixtoeighteen,nineteentotwenty))
+
+#create state summary
+df_medicaid_state <- df_medicaid2 %>%
+  group_by(state) %>%
+  summarise(data=sum(data)) %>%
+  mutate(location='North Dakota') %>%
+  mutate(locationtype='State') %>%
+  mutate(timeframe='2019') %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='medicaidages0to20')
+
+#create region summaries
+df_medicaid_regions <- df_medicaid2 %>% 
+  rename(county=location) %>%
+  mutate(region = case_when(
+  county=="Divide" | county=="McKenzie" | county=="Williams" ~
+    "Planning Region 1",
+  county=="Bottineau" | county=="Burke" | county=="McHenry" | 
+    county=="Mountrail" | county=="Pierce" | county=="Pierce" | 
+    county=="Renville" | county=="Ward" ~ "Planning Region 2",
+  county=="Benson" | county=="Cavalier" | county=="Eddy" | 
+    county=="Ramsey" | county=="Rolette" | county=="Towner"~
+    "Planning Region 3",
+  county=="Grand Forks" | county=="Nelson" | county=="Pembina" | 
+    county=="Walsh" ~ "Planning Region 4",
+  county=="Cass" | county=="Ransom" | county=="Richland" | 
+    county=="Sargent" | county=="Steele" | county=="Traill" ~ 
+    "Planning Region 5",
+  county=="Barnes"| county=="Dickey" | county=="Foster" | 
+    county=="Griggs" | county=="LaMoure" | county=="Logan" | 
+    county=="McIntosh" | county=="Stutsman" | county=="Wells" ~ 
+    "Planning Region 6",
+  county=="Burleigh" | county=="Emmons" | county=="Grant" | 
+    county=="Kidder" | county=="McLean" | county=="Mercer" | 
+    county=="Morton" | county=="Oliver" | county=="Sheridan" |
+    county=="Sioux" ~ "Planning Region 7",
+  county=="Adams" | county=="Billings" | county=="Bowman" | 
+    county=="Dunn" | county=="Golden Valley" | county=="Hettinger" | 
+    county=="Slope" | county=="Stark" ~ "Planning Region 8"
+))
+
+df_medicaid_regions2 <- df_medicaid_regions %>%
+  group_by(region) %>%
+  summarise(data=sum(data)) %>%
+  mutate(location=region) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(timeframe='2019') %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='medicaidages0to20') %>%
+  mutate(state='North Dakota') %>%
+  select(-c(region))
+
+#union all three datasets together and add location ID
+medicaidages0to20 <- df_medicaid2 %>%
+  bind_rows(df_medicaid_state) %>%
+  bind_rows(df_medicaid_regions2) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+  
+ 
+
+```
+
+```{r}
+#add to database count of medicaidages0to20
+dbWriteTable(con,'northdakota',medicaidages0to20,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#calculate percent of population 0 to 20 on medicaid
+
+#create dataset that has population merged with geography for 0 to 20 year olds
+#population is for the beginning of the FY, which is minus 1 from the year that is reported
+pop0_20 <- dbGetQuery(con,"SELECT locationid,location,age_group,data
+                     FROM northdakota
+                     WHERE timeframe = '2018' AND varname = 'nchspopulationbysingleyearofage' AND (age_group='0' OR age_group='1' OR age_group='2' OR age_group='3' OR age_group='4' OR age_group='5' OR age_group='6' OR age_group='7' OR age_group='8' OR age_group='9' OR age_group='10' OR age_group='11' OR age_group='12' OR age_group='13' OR age_group='14' OR age_group='15' OR age_group='16' OR age_group='17' OR age_group='18' OR age_group='19' OR age_group='20') ;")
+
+#sum the population across all age groups 0 to 20
+pop0_20_sums <- pop0_20 %>%
+  group_by(location) %>%
+  summarise(total_pop=sum(data))
+
+#merge population with snap data
+medicaid_percent <- medicaidages0to20 %>%
+  left_join(pop0_20_sums,by='location') %>%
+  mutate(percent_medicaid=(data/total_pop)) %>%
+  select(-c(data,total_pop)) %>%
+  rename(data=percent_medicaid) %>%
+  mutate(dataformat='Percent')
+```
+
+```{r}
+#add to database percent of medicaidages0to20
+dbWriteTable(con,'northdakota',medicaid_percent,append=TRUE,row.names=FALSE)
+
+```
+
+
+
+```{r}
+#FOR HEALTHY STEPS
+#clean the county data
+df_healthysteps2 <- df_healthysteps %>%
+  rename(location=county) %>%
+  rename(zerotofive='0-5') %>%
+  rename(sixtonineteen='6-19') %>%
+  mutate(locationtype='County') %>%
+  mutate(state='North Dakota') %>%
+  mutate(data=(zerotofive+sixtonineteen)) %>%
+  mutate(dataformat='Number') %>%
+  mutate(timeframe='2019') %>%
+  mutate(varname='healthystepsages0to18') %>%
+  select(-c(zerotofive,sixtonineteen))
+
+#create state summary
+df_healthysteps_state <- df_healthysteps2 %>%
+  group_by(state) %>%
+  summarise(data=sum(data)) %>%
+  mutate(location='North Dakota') %>%
+  mutate(locationtype='State') %>%
+  mutate(timeframe='2019') %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='healthystepsages0to18')
+
+#create region summaries
+df_healthysteps_regions <- df_healthysteps2 %>%
+  rename(county=location) %>%
+  mutate(region = case_when(
+  county=="Divide" | county=="McKenzie" | county=="Williams" ~
+    "Planning Region 1",
+  county=="Bottineau" | county=="Burke" | county=="McHenry" | 
+    county=="Mountrail" | county=="Pierce" | county=="Pierce" | 
+    county=="Renville" | county=="Ward" ~ "Planning Region 2",
+  county=="Benson" | county=="Cavalier" | county=="Eddy" | 
+    county=="Ramsey" | county=="Rolette" | county=="Towner"~
+    "Planning Region 3",
+  county=="Grand Forks" | county=="Nelson" | county=="Pembina" | 
+    county=="Walsh" ~ "Planning Region 4",
+  county=="Cass" | county=="Ransom" | county=="Richland" | 
+    county=="Sargent" | county=="Steele" | county=="Traill" ~ 
+    "Planning Region 5",
+  county=="Barnes"| county=="Dickey" | county=="Foster" | 
+    county=="Griggs" | county=="LaMoure" | county=="Logan" | 
+    county=="McIntosh" | county=="Stutsman" | county=="Wells" ~ 
+    "Planning Region 6",
+  county=="Burleigh" | county=="Emmons" | county=="Grant" | 
+    county=="Kidder" | county=="McLean" | county=="Mercer" | 
+    county=="Morton" | county=="Oliver" | county=="Sheridan" |
+    county=="Sioux" ~ "Planning Region 7",
+  county=="Adams" | county=="Billings" | county=="Bowman" | 
+    county=="Dunn" | county=="Golden Valley" | county=="Hettinger" | 
+    county=="Slope" | county=="Stark" ~ "Planning Region 8"
+))
+
+df_healthysteps_regions2 <- df_healthysteps_regions %>%
+  group_by(region) %>%
+  summarise(data=sum(data)) %>%
+  mutate(location=region) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(timeframe='2019') %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='healthystepsages0to18') %>%
+  mutate(state='North Dakota') %>%
+  select(-c(region))
+
+#union all three datasets together and add location ID
+healthystepsages0to18 <- df_healthysteps2 %>%
+  bind_rows(df_healthysteps_state) %>%
+  bind_rows(df_healthysteps_regions2) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+  
+ 
+
+```
+
+```{r}
+#add to database count of healthystepsages0to18
+dbWriteTable(con,'northdakota',healthystepsages0to18,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#calculate percent of population 0 to 18 on healthysteps
+
+#use the population dataset created for SNAP
+#population is for the beginning of the FY, which is minus 1 from the year that is reported
+
+#merge population with snap data
+healthysteps_percent <- healthystepsages0to18 %>%
+  left_join(pop0_18_sums,by='location') %>%
+  mutate(percent_healthysteps=(data/total_pop)) %>%
+  select(-c(data,total_pop)) %>%
+  rename(data=percent_healthysteps) %>%
+  mutate(dataformat='Percent')
+```
+
+```{r}
+#add to database percent of healthystepsages0to18
+dbWriteTable(con,'northdakota',healthysteps_percent,append=TRUE,row.names=FALSE)
+
+```
+
+
+```{r}
+#write query from database to get needed format for KC data center
+#COUNT AND PERCENT OF SNAP
+
+upload_data_snap <- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data
+                     FROM northdakota
+                     WHERE timeframe = '2019' AND varname = 'snapages0to18';")
+
+upload_data_snap2 <- upload_data_snap %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_snap2,file=paste0("./Output/economics/",state,"_",year,"_snapages0to18.csv"),row.names=FALSE)
+
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+#COUNT AND PERCENT OF TANF
+
+upload_data_tanf <- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data
+                     FROM northdakota
+                     WHERE timeframe = '2019' AND varname = 'tanfages0to19';")
+
+upload_data_tanf2 <- upload_data_tanf %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_tanf2,file=paste0("./Output/economics/",state,"_",year,"_tanfages0to19.csv"),row.names=FALSE)
+
+```
+
+
+```{r}
+#write query from database to get needed format for KC data center
+#COUNT AND PERCENT OF CCAP
+
+upload_data_ccap <- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data
+                     FROM northdakota
+                     WHERE timeframe = '2019' AND varname = 'ccapages0to13';")
+
+upload_data_ccap2 <- upload_data_ccap %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_ccap2,file=paste0("./Output/economics/",state,"_",year,"_ccapages0to13.csv"),row.names=FALSE)
+
+```
+
+
+```{r}
+#write query from database to get needed format for KC data center
+#COUNT AND PERCENT OF MEDICAID
+
+upload_data_medicaid <- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data
+                     FROM northdakota
+                     WHERE timeframe = '2019' AND varname = 'medicaidages0to20';")
+
+upload_data_medicaid2 <- upload_data_medicaid %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_medicaid2,file=paste0("./Output/economics/",state,"_",year,"_medicaidages0to20.csv"),row.names=FALSE)
+
+```
+
+
+```{r}
+#write query from database to get needed format for KC data center
+#COUNT AND PERCENT OF HEALTHY STEPS
+
+upload_data_healthysteps <- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data
+                     FROM northdakota
+                     WHERE timeframe = '2019' AND varname = 'healthystepsages0to18';")
+
+upload_data_healthysteps2 <- upload_data_healthysteps %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_healthysteps2,file=paste0("./Output/economics/",state,"_",year,"_healthystepsages0to18.csv"),row.names=FALSE)
+
+```
+
+
