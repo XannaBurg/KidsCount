@@ -224,7 +224,9 @@ wicracedata <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_wi
          varname='wicaveragemonthlyenrollmentnativeamerican',
          race='American Indian') %>%
   
-  pivot_longer(cols=c(`2017`,`2018`,`2019`),names_to='timeframe',values_to='data')
+  pivot_longer(cols=c(`2017`,`2018`,`2019`),names_to='timeframe',values_to='data') %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
 
 #query overall participation to calculate a percent
 wic_sql <- paste0("SELECT locationid, location, timeframe, data FROM southdakota WHERE varname='wicaveragemonthlyenrollment' AND locationtype='State';")
