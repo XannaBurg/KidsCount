@@ -405,7 +405,91 @@ upload_datacenter <- dbGetQuery(con,uploadnumber_sql) %>%
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
 write.csv(upload_datacenter,file=paste0("./Output/education/",database_state,"_",year,"_licensedchildcarecapacitybystarslevel.csv"),row.names=FALSE)
 ```  
+
+
+
+## ####################################################### ##
+## LICENSED CHILD CARE CAPACITY FOR INFANTS BY STARS LEVEL ##
+## ####################################################### ##
+
+```{r}
+total_capacity <- childcare_data2 %>%
+  bind_rows(childcaredata_state) %>%
+  subset(category=='Total') %>%
+  select(-c(category)) %>%
+  rename(facilitycount_total=facilitycount,
+         capacity_total=capacity,
+         infant_capacity_total=infant_capacity)
+
+capacity <- childcare_data2 %>%
+  bind_rows(childcaredata_state) %>%
+  left_join(total_capacity,by=c('location'='location')) %>%
+  select(c(location,category,infant_capacity,infant_capacity_total)) %>%
   
+  #calculate percentages
+  mutate(infant_capacitypercent=infant_capacity/infant_capacity_total) %>%
+  #replace nas with 0
+  mutate(infant_capacitypercent=replace(infant_capacitypercent,is.na(infant_capacitypercent),0)) %>%
+  select(-c(infant_capacity_total)) %>%
+  
+  #wide to long
+  pivot_longer(cols=c('infant_capacity','infant_capacitypercent'),names_to='dataformat',values_to='data') %>%
+  mutate(dataformat=case_when(
+    dataformat=='infant_capacity' ~ 'Number',
+    dataformat=='infant_capacitypercent' ~ 'Percent')) %>%
+  
+  #add in KC variables
+  mutate(locationtype=ifelse(location=='Montana','State','County'),
+         state='Montana',
+         timeframe=year,
+         varname='licensedchildcarecapacityinfantsbystarslevel') %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(capacity$locationid))>=1) {
+  print(capacity$location[is.na(capacity$locationid)])
+} else if (sum(is.na(capacity$locationid))==0) {
+  'all locations match'
+}
+
+
+# 2. Visually inspect output data
+View(capacity)
+```
+
+```{r}
+#CHECK DATASET NAMED capacity TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,capacity,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+uploadnumber_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data, category FROM ", database_state," WHERE timeframe='",year,"' AND varname='licensedchildcarecapacityinfantsbystarslevel';")
+
+
+upload_datacenter <- dbGetQuery(con,uploadnumber_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         Category=category)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter,file=paste0("./Output/education/",database_state,"_",year,"_licensedchildcarecapacityinfantsbystarslevel.csv"),row.names=FALSE)
+``` 
+
+
 
 
 ## ############################################################ ##
