@@ -7,6 +7,7 @@ output: html_document
 ## Indicator 2: Licensed or registered child care
 ## Indicator 3: Licensed before and after school programs
 ## Indicator 4: Licensed or registered child care capacity
+## Indicator 5: Licensed before and after school program capacity
 
 **Created by:** Xanna Burg
 **Date:** August 2020
@@ -464,7 +465,92 @@ View(childcare_all)
 dbWriteTable(con,database_state,childcare_all,append=TRUE,row.names=FALSE)
 ```
 
-## STEP 3: OUTPUT FILE FOR DATA CENTER
+## STEP 3: INPUT COUNTY-LEVEL CAPACITY DATA
+```{r}
+#create all possible combos of categories and counties
+category <- c('Licensed child care centers','Registered family child care homes','Licensed group family child care homes','Licensed before and after school programs')
+categorylist <- as.data.frame(category)
+county_categorylist <-crossing(countylist,categorylist)
+
+
+childcare_county <- read_excel(path=paste0("./Input/education/southdakota_",year,"_childcarecapacitybycounty.xlsx")) 
+
+childcare_county2 <- childcare_county %>%
+  
+  #fix formatting so there is a county for each row
+  fill(County,.direction=c("down")) %>%
+  #remove grand total (we can calculate)
+  subset(County != 'Grand Total') %>%
+  #remove the word total
+  mutate(County=str_remove_all(County," Total")) %>%
+  
+  #update the category names and remove the total (we can calculate total)
+  subset(!is.na(`Provider Type`)) %>%
+  mutate(category=case_when(
+    `Provider Type`=='Child Care Center' ~ 'Licensed child care centers',
+    `Provider Type`=='Family Child Care' ~ 'Registered family child care homes',
+    `Provider Type`=='Group Family Child Care' ~ 'Licensed group family child care homes',
+    `Provider Type`=='Out of Time School Program' ~ 'Licensed before and after school programs')) %>%
+  rename(data=`Total Slots`,
+         location=County) %>%
+  select(location,category,data) %>%
+  
+  #merge with all possible options of county and category
+  full_join(county_categorylist,by=c('location'='county','category'='category')) %>%
+   #assign missing counties to zero
+  replace(is.na(.),0) %>%
+  arrange(location,category)
+
+#subset to remove before and after school programs
+childcare_countycapacity <- childcare_county2 %>%
+  subset(category != 'Licensed before and after school programs') %>%
+  
+  #add in KC variables
+  mutate(locationtype='County',
+         state='South Dakota',
+         timeframe='1.21.21',
+         dataformat='Number',
+         varname='licensedorregisteredchildcarecapacity') %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId)
+
+#create totals
+childcare_countycapacity_total <- childcare_countycapacity %>%
+  group_by(location,locationtype,state,timeframe,dataformat,varname,locationid) %>%
+  summarise(data=sum(data),.groups='keep') %>%
+  ungroup %>%
+  mutate(category='Total')
+
+#merge back all categories and total
+childcare_countycapacity2 <- childcare_countycapacity %>%
+  bind_rows(childcare_countycapacity_total) %>%
+  arrange(location,category)
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(childcare_countycapacity2$locationid))>=1) {
+  print(childcare_countycapacity2$location[is.na(childcare_countycapacity2$locationid)])
+} else if (sum(is.na(childcare_countycapacity2$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Visually inspect output data
+View(childcare_countycapacity2)
+```
+
+## STEP 4: ADD TO DATABASE
+```{r}
+#CHECK DATASET NAMED childcare_countycapacity2 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,childcare_countycapacity2,append=TRUE,row.names=FALSE)
+```
+
+## STEP 5: OUTPUT FILE FOR DATA CENTER
 ```{r}
 #write query from database to get needed format for KC data center
 
@@ -485,3 +571,114 @@ write.csv(upload_datacenter,file=paste0("./Output/education/",database_state,"_"
 ```
 
 
+## ################################################ ##
+## LICENSED BEFORE OR AFTER SCHOOL PROGRAM CAPACITY ##
+## ################################################ ##
+
+## STEP 1: IMPORT AND CLEAN DATA
+```{r}
+#import the data
+beforeafterschoolcapacity <- read.csv(paste0("./Input/education/southdakota_allyears_licensedbeforeandafterschoolcapacity.csv")) 
+
+
+#STATE DATA
+beforeafterschool_state <- beforeafterschoolcapacity %>%
+  
+  subset(timeframe==year) %>%
+  
+  mutate(location='South Dakota',
+         state='South Dakota',
+         locationtype='State',
+         varname='licensedbeforeandafterschoolcapacity',
+         dataformat='Number') %>%
+  
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  select(-c(category))
+  
+  
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(beforeafterschool_state$locationid))>=1) {
+  print(beforeafterschool_state$location[is.na(beforeafterschool_state$locationid)])
+} else if (sum(is.na(beforeafterschool_state$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Visually inspect output data
+View(beforeafterschool_state)
+```
+
+## STEP 2: ADD TO DATABASE
+```{r}
+#CHECK DATASET NAMED beforeafterschool_state TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,beforeafterschool_state,append=TRUE,row.names=FALSE)
+```
+
+
+## STEP 3: CREATE FILE FOR BEFORE AND AFTER SCHOOL CAPACITY
+```{r}
+beforeafterschool_countycapacity <- childcare_county2 %>%
+  subset(category == 'Licensed before and after school programs') %>%
+  
+  #add in KC variables
+  mutate(locationtype='County',
+         state='South Dakota',
+         timeframe='1.21.21',
+         dataformat='Number',
+         varname='licensedbeforeandafterschoolcapacity') %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  select(-c(category))
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(beforeafterschool_countycapacity$locationid))>=1) {
+  print(beforeafterschool_countycapacity$location[is.na(beforeafterschool_countycapacity$locationid)])
+} else if (sum(is.na(beforeafterschool_countycapacity$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Visually inspect output data
+View(beforeafterschool_countycapacity)
+
+```
+
+## STEP 4: ADD TO DATABASE
+```{r}
+#CHECK DATASET NAMED beforeafterschool_countycapacity TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,beforeafterschool_countycapacity,append=TRUE,row.names=FALSE)
+```
+
+## STEP 5: OUTPUT FILE FOR DATA CENTER
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='licensedbeforeandafterschoolcapacity';")
+
+
+upload_datacenter <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter,file=paste0("./Output/education/",database_state,"_",year,"_licensedbeforeandafterschoolcapacity.csv"),row.names=FALSE)
+```
