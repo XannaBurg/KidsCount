@@ -4,7 +4,7 @@ author: "Xanna Burg"
 output: html_document
 ---
 
-**Created by:** Xanna Burg
+**Created by:** Xanna Burg 
 **Date:** January 2021
 **Updated by:**
 
