@@ -34,8 +34,8 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '19'
-fullyear <- '2019' 
+year <- '20'
+fullyear <- '2020' 
 
 
 #input location ID file
@@ -57,7 +57,7 @@ MT_counties$Location <- as.character(paste(MT_counties$Location))
 ## STEP 1: CLEAN THE COUNTS OF REFERRALS AND YOUTH
 ```{r}
 #import the referral and unduplicated youth data file
-youthdata <- read_excel(path=paste0("./Input/safety/montana_",fullyear,"_juvenilereferralsandyouth.xlsx"),sheet=fullyear,skip=2)
+youthdata <- read_excel(path=paste0("./Input/safety/montana_",fullyear,"_juvenilereferralsandyouth.xlsx"),sheet=fullyear,skip=3)
 
 ############
 #COUNTY DATA
@@ -191,7 +191,7 @@ write.csv(youth_upload,file=paste0("./Output/safety/montana_",fullyear,"_childre
 ## STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #import the data
-offensedata <- read_excel(path=paste0("./Input/safety/montana_",fullyear,"_juvenileoffenses.xlsx"),sheet=fullyear)
+offensedata <- read_excel(path=paste0("./Input/safety/montana_",fullyear,"_juvenileoffenses.xlsx"),sheet=fullyear,skip=1)
 
 ############
 #COUNTY DATA
@@ -212,6 +212,9 @@ offenses_county <- offensedata %>%
     mutate(location=replace(location, 
                           location=='Silverbow', 
                           'Silver Bow')) %>%
+    mutate(location=replace(location, 
+                          location=='MINERAL', 
+                          'Mineral')) %>%
   full_join(MT_counties,by=c('location'='Location')) %>%
     mutate(locationtype='County') 
 
