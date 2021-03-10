@@ -44,9 +44,9 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '20'
+year <- '21'
 
-fullyear <- '2019/20' 
+fullyear <- '2020/21' 
 threeyear <- '2017-2019'
 statefile <- 'montana'
 statename <- 'Montana'
@@ -68,13 +68,13 @@ countylist <- read.csv("./Input/MT County List.csv")
 **PUBLIC SCHOOL ENROLLMENT GRADES K THROUGH 12 BY COUNTY**
 ```{r}
 #read in the data
-df_enrollment <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='Enrollment Counts')
+df_enrollment <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='County')
 
 ###################
 #CREATE COUNTY DATA
 county_enrollment <- df_enrollment %>%
-  rename(location=CountyName,
-         data='K-12 Enrollment Count') %>%
+  rename(location=countyname,
+         data='Total K12 Count') %>%
   select(c(location,data)) %>%
   #format to database
   mutate(timeframe=fullyear) %>%
@@ -154,8 +154,8 @@ write.csv(upload_data_enrollment,file=paste0("./Output/education/",statefile,"_"
 **TOTAL SCHOOL ENROLLMENT GRADES K THROUGH 12 BY TYPE (PUBLIC, PRIVATE, AND HOME SCHOOL)**
 ```{r}
 #read in the data
-df_homeschool <- read_excel(path=paste0("./Input/education/montana_",year,"_nonpublic.xlsx"), sheet='Home School',skip=4)
-df_privateschool <- read_excel(path=paste0("./Input/education/montana_",year,"_nonpublic.xlsx"), sheet='Private School',skip=3)
+df_homeschool <- read_excel(path=paste0("./Input/education/montana_",year,"_nonpublic.xls"), sheet='Total Home S By CO')
+df_privateschool <- read_excel(path=paste0("./Input/education/montana_",year,"_nonpublic.xls"), sheet='Total Private By CO 2021',skip=1)
 
 #################
 #################
@@ -273,6 +273,7 @@ nonpublic <- county_nonpublic %>%
 enrollment_sql <- paste0("SELECT location, locationid,locationtype, state, timeframe, dataformat, data, varname FROM montana WHERE timeframe='",fullyear,"' AND varname='publicschoolk12enrollment';")
 
 publicschool <- dbGetQuery(con,enrollment_sql) %>%
+  mutate(data=as.numeric(paste(data))) %>%
   mutate(category='Public School') %>%
   mutate(varname='totalschoolenrollmentk12bytype')
 
