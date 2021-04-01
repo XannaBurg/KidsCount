@@ -1,0 +1,837 @@
+---
+title: "Percent of Child Care Demand Served by Current ECE Capacity - North Dakota"
+author: "Xanna Burg"
+output: html_document
+---
+
+**Created by:** Xanna Burg 
+**Date:** March 2021
+**Updated by:**
+
+**Data Source:** 
+Child Care Capacity Data: North Dakota Department of Human Services
+Child Population Data: NCHS Estimates for Population by Single Year of Age
+Working Parents Data: U.S. Census Bureau, American Community Survey 5-year Estimates, Table B23008
+**Purpose:** Connect to Census ACS data and Montana KIDS COUNT Data, clean data, and calculate percentages across three data sources.
+
+**Data format:** Final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Data (numeric: number, percentage), DataFormat (character: "number" or "percent"), LocationId (numeric: assigned for KIDS COUNT system)
+
+
+**To use this code for a new year:**
+* Update the year and acsyear (5 year interval) in the third code chunk for variables 'year' and 'acsyear'
+* Update the state name (exactly as appears in FIPS) of interest
+* Check each dataset visually and through the report logs prior to commiting to the database.
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(tidycensus)
+library(censusapi)
+library(stringr)
+
+#county and state names that match fips codes (from tidycensus package)
+fips <- fips_codes
+```
+
+## UPDATE THIS CODE CHUNK
+```{r}
+#CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
+#state should match exactly as is in FIPS code in order for code to correctly run
+#this matches the current state fiscal year data for child care data
+year <- "2020" 
+
+
+## - DO NOT EDIT - ##
+year_minus1 <- as.character(as.numeric(year)-1)
+year_minus2 <- as.character(as.numeric(year)-2)
+statename <- "North Dakota"
+database_state <- 'northdakota'
+
+#import the location ids matching the correct state (for MT, ND, and SD; DO NOT EDIT)
+locationids <-  read.csv("./Input/ND KC Location IDs.csv")
+locationids$Location <- as.character(locationids$Location) #assign as character instead of factor for merging
+
+#import the region ids
+regionids <- read.csv("./Input/ND KC Region List.csv")
+
+
+#RUN THIS CODE, BUT NOT REQUIRED TO CHANGE ANYTHING
+#the api will subset data to each state based on the state FIPS code: MT=30, North Dakota=38, South Dakota=46
+statecode <- as.numeric(unique(fips$state_code[fips$state_name==statename]))
+```
+
+
+## -- AGES 0-13 -- ##
+
+# STEP 1: Import the Census Data
+```{r}
+##UNDER THE getCensus() FUNCTION, ADD YOUR OWN CENSUS API KEY IN ORDER TO USE THIS CODE. OR FOLLOW THE INSTRUCTIONS ON THE PACKAGE DOCUMENTATION TO SET YOUR API KEY IN YOUR R ENVIRONMENT
+#https://cran.r-project.org/web/packages/censusapi/vignettes/getting-started.html
+
+
+#[year]/acs/acs5 table is: ACS 5-year estimates for detailed tables (those beginning with B) for the year specified
+#see lookup table for categorical vars: https://api.census.gov/data/2018/acs/acs5/variables.html 
+
+############
+#COUNTY DATA
+acs_county <- getCensus(name="acs/acs5",
+          vintage=year_minus2,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("B23008_002E","B23008_002M","B23008_004E","B23008_004M",
+                 "B23008_010E","B23008_010M","B23008_013E","B23008_013M",
+                 "B23008_015E","B23008_015M","B23008_017E","B23008_017M",
+                 "B23008_023E","B23008_023M","B23008_026E","B23008_026M"),
+          region="county:*",
+          regionin=paste0("state:",statecode)) %>%
+  
+  #clean the data that's been imported
+  
+  #assign location type to county
+  mutate(locationtype='County') %>%
+  
+  #add in county name from fips codes, remove word 'county', add in state name
+  left_join(fips,by=c('county'='county_code','state'='state_code')) %>% 
+  mutate(county=gsub("\\s*\\w*$", "", county.y)) %>%
+  
+  #calculate the sums and percent
+  
+  #########################
+  #for children under 6
+  mutate(numerator_under6=(B23008_004E+B23008_010E+B23008_013E)) %>%
+  mutate(numerator_under6_moe=sqrt((B23008_004M^2)+(B23008_010M^2)+
+                                     (B23008_013M^2))) %>%
+  mutate(denominator_under6=B23008_002E) %>%
+  mutate(denominator_under6_moe=B23008_002M) %>%
+  
+  mutate(Number_under6=numerator_under6) %>%
+  mutate(number_under6_moe=numerator_under6_moe) %>%
+  mutate(Percent_under6=numerator_under6/denominator_under6) %>%
+  mutate(percent_under6_moe=(1/denominator_under6)*sqrt((numerator_under6_moe^2)-((Percent_under6^2)*(denominator_under6_moe^2)))) %>%
+  mutate(percent_under6_moe=if_else(is.na(percent_under6_moe),(1/denominator_under6)*sqrt((numerator_under6_moe^2)+((Percent_under6^2)*(denominator_under6_moe^2))),percent_under6_moe)) %>%
+
+ #calculate the relative standard error
+  mutate(number_under6_relativese=((number_under6_moe/1.645)/Number_under6)*100) %>%
+  mutate(percent_under6_relativese=((percent_under6_moe/1.645)/Percent_under6)*100) %>%
+  mutate(keep_under6=if_else(percent_under6_relativese>30 | number_under6_relativese>30,0,1)) %>%
+
+  ##########################
+  #for children ages 6 to 17
+  mutate(numerator_6to17=(B23008_017E+B23008_023E+B23008_026E)) %>%
+  mutate(numerator_6to17_moe=sqrt((B23008_017M^2)+(B23008_023M^2)+
+                                     (B23008_026M^2))) %>%
+  mutate(denominator_6to17=B23008_015E) %>%
+  mutate(denominator_6to17_moe=B23008_015M) %>%
+  
+  mutate(Number_6to17=numerator_6to17) %>%
+  mutate(number_6to17_moe=numerator_6to17_moe) %>%
+  mutate(Percent_6to17=numerator_6to17/denominator_6to17) %>%
+  mutate(percent_6to17_moe=(1/denominator_6to17)*sqrt((numerator_6to17_moe^2)-((Percent_6to17^2)*(denominator_6to17_moe^2)))) %>%
+  mutate(percent_6to17_moe=if_else(is.na(percent_6to17_moe),(1/denominator_6to17)*sqrt((numerator_6to17_moe^2)+((Percent_6to17^2)*(denominator_6to17_moe^2))),percent_6to17_moe)) %>%
+
+ #calculate the relative standard error
+  mutate(number_6to17_relativese=((number_6to17_moe/1.645)/Number_6to17)*100) %>%
+  mutate(percent_6to17_relativese=((percent_6to17_moe/1.645)/Percent_6to17)*100) %>%
+  mutate(keep_6to17=if_else(percent_6to17_relativese>30 | number_6to17_relativese>30,0,1)) %>%
+  
+  
+  ##########################
+  #for children ages 0 to 17
+  mutate(numerator_0to17=(B23008_017E+B23008_023E+B23008_026E+
+                            B23008_004E+B23008_010E+B23008_013E)) %>%
+  mutate(numerator_0to17_moe=sqrt((B23008_017M^2)+(B23008_023M^2)+
+                                    (B23008_026M^2)+(B23008_004M^2)+
+                                    (B23008_010M^2)+(B23008_013M^2))) %>%
+  mutate(denominator_0to17=B23008_015E+B23008_002E) %>%
+  mutate(denominator_0to17_moe=sqrt((B23008_015M^2)+(B23008_002M^2))) %>%
+  
+  mutate(Number_0to17=numerator_0to17) %>%
+  mutate(number_0to17_moe=numerator_0to17_moe) %>%
+  mutate(Percent_0to17=numerator_0to17/denominator_0to17) %>%
+  mutate(percent_0to17_moe=(1/denominator_0to17)*sqrt((numerator_0to17_moe^2)-((Percent_0to17^2)*(denominator_0to17_moe^2)))) %>%
+  mutate(percent_0to17_moe=if_else(is.na(percent_0to17_moe),(1/denominator_0to17)*sqrt((numerator_0to17_moe^2)+((Percent_0to17^2)*(denominator_0to17_moe^2))),percent_0to17_moe)) %>%
+
+ #calculate the relative standard error
+  mutate(number_0to17_relativese=((number_0to17_moe/1.645)/Number_0to17)*100) %>%
+  mutate(percent_0to17_relativese=((percent_0to17_moe/1.645)/Percent_0to17)*100) %>%
+  mutate(keep_0to17=if_else(percent_0to17_relativese>30 | number_0to17_relativese>30,0,1)) %>%
+  
+  
+
+  #select only needed variables and name to kids count database
+  select(c(county,locationtype,Number_under6,number_under6_moe,Percent_under6,percent_under6_moe,keep_under6,
+           Number_6to17,number_6to17_moe,Percent_6to17,percent_6to17_moe,keep_6to17,
+           Number_0to17,number_0to17_moe,Percent_0to17,percent_0to17_moe,keep_0to17)) %>%
+  
+  rename(location=county) %>%
+  mutate(state=statename) %>%
+  mutate(varname='childrenwithparentsinlaborforce')
+  
+
+    
+###########
+#STATE DATA
+acs_state <- getCensus(name="acs/acs5",
+          vintage=year_minus2,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("B23008_002E","B23008_002M","B23008_004E","B23008_004M",
+                 "B23008_010E","B23008_010M","B23008_013E","B23008_013M",
+                 "B23008_015E","B23008_015M","B23008_017E","B23008_017M",
+                 "B23008_023E","B23008_023M","B23008_026E","B23008_026M"),
+          region=paste0("state:",statecode)) %>%
+  
+  #clean the data that's been imported
+  
+  #assign location type to county
+  mutate(locationtype='State') %>%
+  mutate(location=statename) %>%
+  
+  #calculate the sums and percent
+  
+  #########################
+  #for children under 6
+  mutate(numerator_under6=(B23008_004E+B23008_010E+B23008_013E)) %>%
+  mutate(numerator_under6_moe=sqrt((B23008_004M^2)+(B23008_010M^2)+
+                                     (B23008_013M^2))) %>%
+  mutate(denominator_under6=B23008_002E) %>%
+  mutate(denominator_under6_moe=B23008_002M) %>%
+  
+  mutate(Number_under6=numerator_under6) %>%
+  mutate(number_under6_moe=numerator_under6_moe) %>%
+  mutate(Percent_under6=numerator_under6/denominator_under6) %>%
+  mutate(percent_under6_moe=(1/denominator_under6)*sqrt((numerator_under6_moe^2)-((Percent_under6^2)*(denominator_under6_moe^2)))) %>%
+  mutate(percent_under6_moe=if_else(is.na(percent_under6_moe),(1/denominator_under6)*sqrt((numerator_under6_moe^2)+((Percent_under6^2)*(denominator_under6_moe^2))),percent_under6_moe)) %>%
+
+ #calculate the relative standard error
+  mutate(number_under6_relativese=((number_under6_moe/1.645)/Number_under6)*100) %>%
+  mutate(percent_under6_relativese=((percent_under6_moe/1.645)/Percent_under6)*100) %>%
+  mutate(keep_under6=if_else(percent_under6_relativese>30 | number_under6_relativese>30,0,1)) %>%
+
+  ##########################
+  #for children ages 6 to 17
+  mutate(numerator_6to17=(B23008_017E+B23008_023E+B23008_026E)) %>%
+  mutate(numerator_6to17_moe=sqrt((B23008_017M^2)+(B23008_023M^2)+
+                                     (B23008_026M^2))) %>%
+  mutate(denominator_6to17=B23008_015E) %>%
+  mutate(denominator_6to17_moe=B23008_015M) %>%
+  
+  mutate(Number_6to17=numerator_6to17) %>%
+  mutate(number_6to17_moe=numerator_6to17_moe) %>%
+  mutate(Percent_6to17=numerator_6to17/denominator_6to17) %>%
+  mutate(percent_6to17_moe=(1/denominator_6to17)*sqrt((numerator_6to17_moe^2)-((Percent_6to17^2)*(denominator_6to17_moe^2)))) %>%
+  mutate(percent_6to17_moe=if_else(is.na(percent_6to17_moe),(1/denominator_6to17)*sqrt((numerator_6to17_moe^2)+((Percent_6to17^2)*(denominator_6to17_moe^2))),percent_6to17_moe)) %>%
+
+ #calculate the relative standard error
+  mutate(number_6to17_relativese=((number_6to17_moe/1.645)/Number_6to17)*100) %>%
+  mutate(percent_6to17_relativese=((percent_6to17_moe/1.645)/Percent_6to17)*100) %>%
+  mutate(keep_6to17=if_else(percent_6to17_relativese>30 | number_6to17_relativese>30,0,1)) %>%
+  
+  
+  ##########################
+  #for children ages 0 to 17
+  mutate(numerator_0to17=(B23008_017E+B23008_023E+B23008_026E+
+                            B23008_004E+B23008_010E+B23008_013E)) %>%
+  mutate(numerator_0to17_moe=sqrt((B23008_017M^2)+(B23008_023M^2)+
+                                    (B23008_026M^2)+(B23008_004M^2)+
+                                    (B23008_010M^2)+(B23008_013M^2))) %>%
+  mutate(denominator_0to17=B23008_015E+B23008_002E) %>%
+  mutate(denominator_0to17_moe=sqrt((B23008_015M^2)+(B23008_002M^2))) %>%
+  
+  mutate(Number_0to17=numerator_0to17) %>%
+  mutate(number_0to17_moe=numerator_0to17_moe) %>%
+  mutate(Percent_0to17=numerator_0to17/denominator_0to17) %>%
+  mutate(percent_0to17_moe=(1/denominator_0to17)*sqrt((numerator_0to17_moe^2)-((Percent_0to17^2)*(denominator_0to17_moe^2)))) %>%
+  mutate(percent_0to17_moe=if_else(is.na(percent_0to17_moe),(1/denominator_0to17)*sqrt((numerator_0to17_moe^2)+((Percent_0to17^2)*(denominator_0to17_moe^2))),percent_0to17_moe)) %>%
+
+ #calculate the relative standard error
+  mutate(number_0to17_relativese=((number_0to17_moe/1.645)/Number_0to17)*100) %>%
+  mutate(percent_0to17_relativese=((percent_0to17_moe/1.645)/Percent_0to17)*100) %>%
+  mutate(keep_0to17=if_else(percent_0to17_relativese>30 | number_0to17_relativese>30,0,1)) %>%
+  
+  
+
+  #select only needed variables and name to kids count database
+  select(c(location,locationtype,Number_under6,number_under6_moe,Percent_under6,percent_under6_moe,keep_under6,
+           Number_6to17,number_6to17_moe,Percent_6to17,percent_6to17_moe,keep_6to17,
+           Number_0to17,number_0to17_moe,Percent_0to17,percent_0to17_moe,keep_0to17)) %>%
+  
+  mutate(state=statename) %>%
+  mutate(varname='childrenwithparentsinlaborforce')
+
+
+
+#STATE PLANNING REGION DATA
+acs_region <- getCensus(name="acs/acs5",
+          vintage=year_minus2,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("B23008_002E","B23008_002M","B23008_004E","B23008_004M",
+                 "B23008_010E","B23008_010M","B23008_013E","B23008_013M",
+                 "B23008_015E","B23008_015M","B23008_017E","B23008_017M",
+                 "B23008_023E","B23008_023M","B23008_026E","B23008_026M"),
+          region="county:*",
+          regionin=paste0("state:",statecode)) %>%
+  
+  #clean the data that's been imported
+  
+  #assign location type to county
+  mutate(locationtype='Planning Region') %>%
+  
+  #add in county name from fips codes, remove word 'county', add in state name
+  left_join(fips,by=c('county'='county_code','state'='state_code')) %>% 
+  mutate(county=gsub("\\s*\\w*$", "", county.y)) %>%
+  
+  #calculate the sums and percent
+  
+  #########################
+  #for children under 6
+  mutate(numerator_under6=(B23008_004E+B23008_010E+B23008_013E)) %>%
+  mutate(numerator_under6_moe=sqrt((B23008_004M^2)+(B23008_010M^2)+
+                                     (B23008_013M^2))) %>%
+  mutate(denominator_under6=B23008_002E) %>%
+  mutate(denominator_under6_moe=B23008_002M) %>%
+  
+  ##########################
+  #for children ages 6 to 17
+  mutate(numerator_6to17=(B23008_017E+B23008_023E+B23008_026E)) %>%
+  mutate(numerator_6to17_moe=sqrt((B23008_017M^2)+(B23008_023M^2)+
+                                     (B23008_026M^2))) %>%
+  mutate(denominator_6to17=B23008_015E) %>%
+  mutate(denominator_6to17_moe=B23008_015M) %>%
+  
+  
+  
+  ##########################
+  #for children ages 0 to 17
+  mutate(numerator_0to17=(B23008_017E+B23008_023E+B23008_026E+
+                            B23008_004E+B23008_010E+B23008_013E)) %>%
+  mutate(numerator_0to17_moe=sqrt((B23008_017M^2)+(B23008_023M^2)+
+                                    (B23008_026M^2)+(B23008_004M^2)+
+                                    (B23008_010M^2)+(B23008_013M^2))) %>%
+  mutate(denominator_0to17=B23008_015E+B23008_002E) %>%
+  mutate(denominator_0to17_moe=sqrt((B23008_015M^2)+(B23008_002M^2))) %>%
+  
+ left_join(regionids,by=c('county'='county')) %>%
+  subset(region!='') %>%
+  
+  group_by(region) %>%
+  summarise(Number_under6=sum(numerator_under6),
+            Number_6to17=sum(numerator_6to17),
+            Number_0to17=sum(numerator_0to17),
+            
+            number_under6_moe=sqrt(sum(numerator_under6_moe^2)),
+            number_6to17_moe=sqrt(sum(numerator_6to17_moe^2)),
+            number_0to17_moe=sqrt(sum(numerator_0to17_moe^2)),
+            
+            Percent_under6=sum(numerator_under6)/sum(denominator_under6),
+            Percent_6to17=sum(numerator_6to17)/sum(denominator_6to17),
+            Percent_0to17=sum(numerator_0to17)/sum(denominator_0to17),
+            
+            percent_under6_moe=(1/sum(denominator_under6))*sqrt((number_under6_moe^2)-((Percent_under6^2)*(sqrt(sum(denominator_under6_moe))^2))),
+            percent_6to17_moe=(1/sum(denominator_6to17))*sqrt((number_6to17_moe^2)-((Percent_6to17^2)*(sqrt(sum(denominator_6to17_moe))^2))),
+            percent_0to17_moe=(1/sum(denominator_0to17))*sqrt((number_0to17_moe^2)-((Percent_0to17^2)*(sqrt(sum(denominator_0to17_moe))^2)))) %>%
+  ungroup %>%
+  
+  #calculate the relative standard error
+  mutate(number_under6_relativese=((number_under6_moe/1.645)/Number_under6)*100) %>%
+  mutate(percent_under6_relativese=((percent_under6_moe/1.645)/Percent_under6)*100) %>%
+  mutate(keep_under6=if_else(percent_under6_relativese>30 | number_under6_relativese>30,0,1)) %>%
+  
+  mutate(number_6to17_relativese=((number_6to17_moe/1.645)/Number_6to17)*100) %>%
+  mutate(percent_6to17_relativese=((percent_6to17_moe/1.645)/Percent_6to17)*100) %>%
+  mutate(keep_6to17=if_else(percent_6to17_relativese>30 | number_6to17_relativese>30,0,1)) %>%
+  
+  mutate(number_0to17_relativese=((number_0to17_moe/1.645)/Number_0to17)*100) %>%
+  mutate(percent_0to17_relativese=((percent_0to17_moe/1.645)/Percent_0to17)*100) %>%
+  mutate(keep_0to17=if_else(percent_0to17_relativese>30 | number_0to17_relativese>30,0,1)) %>%
+
+
+  rename(location=region) %>%
+  mutate(state=statename) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(varname='childrenwithparentsinlaborforce') 
+
+
+
+data_0to17_percent <- acs_county %>%
+  bind_rows(acs_state) %>%
+  bind_rows(acs_region) %>%
+  select(c(location,locationtype,state,Percent_0to17,percent_0to17_moe,keep_0to17)) %>%
+  rename(data=Percent_0to17,
+         moe=percent_0to17_moe,
+         keep=keep_0to17) %>%
+  
+  rename(percentworking=data,
+         percentworking_moe=moe) %>%
+  mutate(percentworking_lci=percentworking-percentworking_moe,
+         percentworking_uci=percentworking+percentworking_moe) %>%
+  subset(locationtype=='State' | locationtype=='County' | locationtype=='Planning Region')
+```
+
+## STEP 2: QUERY POPULATION AND CHILD CARE CAPACITY DATA FROM KIDS COUNT DATABASES
+```{r}
+#for child population ages 0-13
+childpop_sql <- paste0("SELECT location, timeframe, age_group, data FROM ", database_state," WHERE (timeframe='",year_minus2,"' AND vintageyear='",year_minus2,"') AND varname='childpopulationbysingleyearofage';") 
+
+childpop_data <- dbGetQuery(con,childpop_sql) %>%
+  mutate(age_group=as.numeric(paste(age_group)),
+         data=as.numeric(paste(data))) %>%
+  subset(age_group<=13) %>%
+  group_by(location) %>%
+  summarise(children_0to13=sum(data),.groups='keep') %>%
+  ungroup
+
+
+#for child care capacity data
+childcarecapacity_sql <- paste0("SELECT location, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='childcarecapacitybytype' AND (category='Licensed' OR category='Licensed School Age') AND dataformat='Number';") 
+childcarecapacity_data <- dbGetQuery(con,childcarecapacity_sql) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  group_by(location) %>%
+  summarise(data=sum(data),.groups='keep') %>%
+  rename(capacity=data) 
+```
+
+## STEP 3: COMBINE ALL DATA AND CALCULATE PERCENTAGES
+```{r}
+ages0to13_data <- data_0to17_percent %>%
+  left_join(childpop_data,by=c('location'='location')) %>%
+  left_join(childcarecapacity_data,by=c('location'='location')) %>%
+  
+  #calculate denominator in four different ways: population, population*percentworking,population*percentworking lower confidence estimate, population*percentworking upper  confidence estimate
+  mutate(data_pop=capacity/children_0to13,
+         data_popxworking=capacity/(children_0to13*percentworking),
+         data_popxworking_lci=capacity/(children_0to13*percentworking_lci),
+         data_popxworking_uci=capacity/(children_0to13*percentworking_uci)) %>%
+  
+  #add in a few kids count database variables
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  mutate(timeframe=year,
+         dataformat='Percent')
+```
+
+## STEP 4: CALCULATE PERCENTAGE USING JUST POPULATION AS DENOMINATOR
+```{r}
+percentdata_population <- ages0to13_data %>%
+  select(location,locationtype,locationid,state,timeframe,dataformat,data_pop) %>%
+  rename(data=data_pop) %>%
+  mutate(varname='percentofallchildrenages0to13servedbyececapacity')
+
+
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(percentdata_population$locationid))>=1) {
+  print(percentdata_population$location[is.na(percentdata_population$locationid)])
+} else if (sum(is.na(percentdata_population$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- percentdata_population %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+View(percentdata_population)
+```
+
+## STEP 5: CALCULATE PERCENTAGE USING POPULATION AND WORKING ESTIMATES
+```{r}
+percentdata_populationworking <- ages0to13_data %>%
+  select(location,locationtype,locationid,state,timeframe,dataformat,data_popxworking,data_popxworking_lci,data_popxworking_uci,keep) %>%
+  rename(data=data_popxworking,
+         uci=data_popxworking_lci,
+         lci=data_popxworking_uci) %>%
+  mutate(varname='percentofchildrenages0to13withparentsworkingservedbyececapacity')
+
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(percentdata_populationworking$locationid))>=1) {
+  print(percentdata_populationworking$location[is.na(percentdata_populationworking$locationid)])
+} else if (sum(is.na(percentdata_populationworking$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- percentdata_populationworking %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+View(percentdata_populationworking)
+```
+
+## STEP 6: ADD TO KIDS COUNT DATABASES
+```{r}
+dbWriteTable(con,database_state,percentdata_population,append=TRUE,row.names=FALSE)
+dbWriteTable(con,database_state,percentdata_populationworking,append=TRUE,row.names=FALSE)
+```
+
+
+## STEP 7: EXPORT KIDS COUNT DATA CENTER FILES
+```{r}
+#write query from database to get needed format for KC data center
+
+#using all population
+upload_sql1 <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='percentofallchildrenages0to13servedbyececapacity' AND dataformat='Percent';")
+
+upload_datacenter1 <- dbGetQuery(con,upload_sql1) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter1,file=paste0("./Output/education/",database_state,"_",year,"_percentofallchildrenages0to13servedbyececapacity.csv"),row.names=FALSE)
+
+#using population * working parents percent
+upload_sql2 <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='percentofchildrenages0to13withparentsworkingservedbyececapacity' AND dataformat='Percent';")
+
+upload_datacenter2 <- dbGetQuery(con,upload_sql2) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter2,file=paste0("./Output/education/",database_state,"_",year,"_percentofchildrenages0to13withparentsworkingservedbyececapacity.csv"),row.names=FALSE)
+```
+
+
+
+## -- AGES 0-5 -- ##
+## STEP 1: CONNECT TO CENSUS DATA FOR PERCENT OF ALL PARENTS WORKING
+```{r}
+##UNDER THE getCensus() FUNCTION, ADD YOUR OWN CENSUS API KEY IN ORDER TO USE THIS CODE. OR FOLLOW THE INSTRUCTIONS ON THE PACKAGE DOCUMENTATION TO SET YOUR API KEY IN YOUR R ENVIRONMENT
+#https://cran.r-project.org/web/packages/censusapi/vignettes/getting-started.html
+
+
+#[year]/acs/acs5 table is: ACS 5-year estimates for detailed tables (those beginning with B) for the year specified
+#see lookup table for categorical vars: https://api.census.gov/data/2018/acs/acs5/variables.html 
+
+############
+#COUNTY DATA
+acs_county <- getCensus(name="acs/acs5",
+          vintage=year_minus2,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("B23008_002E","B23008_002M","B23008_004E","B23008_004M",
+                 "B23008_010E","B23008_010M","B23008_013E","B23008_013M",
+                 "B23008_015E","B23008_015M","B23008_017E","B23008_017M",
+                 "B23008_023E","B23008_023M","B23008_026E","B23008_026M"),
+          region="county:*",
+          regionin=paste0("state:",statecode)) %>%
+  
+  #clean the data that's been imported
+  
+  #assign location type to county
+  mutate(locationtype='County') %>%
+  
+  #add in county name from fips codes, remove word 'county', add in state name
+  left_join(fips,by=c('county'='county_code','state'='state_code')) %>% 
+  mutate(county=gsub("\\s*\\w*$", "", county.y)) %>%
+  
+  #calculate the sums and percent
+  
+  #########################
+  #for children under 6
+  mutate(numerator_under6=(B23008_004E+B23008_010E+B23008_013E)) %>%
+  mutate(numerator_under6_moe=sqrt((B23008_004M^2)+(B23008_010M^2)+
+                                     (B23008_013M^2))) %>%
+  mutate(denominator_under6=B23008_002E) %>%
+  mutate(denominator_under6_moe=B23008_002M) %>%
+  
+  mutate(Number_under6=numerator_under6) %>%
+  mutate(number_under6_moe=numerator_under6_moe) %>%
+  mutate(Percent_under6=numerator_under6/denominator_under6) %>%
+  mutate(percent_under6_moe=(1/denominator_under6)*sqrt((numerator_under6_moe^2)-((Percent_under6^2)*(denominator_under6_moe^2)))) %>%
+  mutate(percent_under6_moe=if_else(is.na(percent_under6_moe),(1/denominator_under6)*sqrt((numerator_under6_moe^2)+((Percent_under6^2)*(denominator_under6_moe^2))),percent_under6_moe)) %>%
+
+ #calculate the relative standard error
+  mutate(number_under6_relativese=((number_under6_moe/1.645)/Number_under6)*100) %>%
+  mutate(percent_under6_relativese=((percent_under6_moe/1.645)/Percent_under6)*100) %>%
+  mutate(keep_under6=if_else(percent_under6_relativese>30 | number_under6_relativese>30,0,1)) %>%
+
+  
+  #select only needed variables and name to kids count database
+  select(c(county,locationtype,Number_under6,number_under6_moe,Percent_under6,percent_under6_moe,keep_under6)) %>%
+  
+  rename(location=county) %>%
+  mutate(state=statename) %>%
+  mutate(varname='childrenwithparentsinlaborforce')
+  
+
+    
+###########
+#STATE DATA
+acs_state <- getCensus(name="acs/acs5",
+          vintage=year_minus2,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("B23008_002E","B23008_002M","B23008_004E","B23008_004M",
+                 "B23008_010E","B23008_010M","B23008_013E","B23008_013M",
+                 "B23008_015E","B23008_015M","B23008_017E","B23008_017M",
+                 "B23008_023E","B23008_023M","B23008_026E","B23008_026M"),
+          region=paste0("state:",statecode)) %>%
+  
+  #clean the data that's been imported
+  
+  #assign location type to county
+  mutate(locationtype='State') %>%
+  mutate(location=statename) %>%
+  
+  #calculate the sums and percent
+  
+  #########################
+  #for children under 6
+  mutate(numerator_under6=(B23008_004E+B23008_010E+B23008_013E)) %>%
+  mutate(numerator_under6_moe=sqrt((B23008_004M^2)+(B23008_010M^2)+
+                                     (B23008_013M^2))) %>%
+  mutate(denominator_under6=B23008_002E) %>%
+  mutate(denominator_under6_moe=B23008_002M) %>%
+  
+  mutate(Number_under6=numerator_under6) %>%
+  mutate(number_under6_moe=numerator_under6_moe) %>%
+  mutate(Percent_under6=numerator_under6/denominator_under6) %>%
+  mutate(percent_under6_moe=(1/denominator_under6)*sqrt((numerator_under6_moe^2)-((Percent_under6^2)*(denominator_under6_moe^2)))) %>%
+  mutate(percent_under6_moe=if_else(is.na(percent_under6_moe),(1/denominator_under6)*sqrt((numerator_under6_moe^2)+((Percent_under6^2)*(denominator_under6_moe^2))),percent_under6_moe)) %>%
+
+ #calculate the relative standard error
+  mutate(number_under6_relativese=((number_under6_moe/1.645)/Number_under6)*100) %>%
+  mutate(percent_under6_relativese=((percent_under6_moe/1.645)/Percent_under6)*100) %>%
+  mutate(keep_under6=if_else(percent_under6_relativese>30 | number_under6_relativese>30,0,1)) %>%
+
+
+  #select only needed variables and name to kids count database
+  select(c(location,locationtype,Number_under6,number_under6_moe,Percent_under6,percent_under6_moe,keep_under6)) %>%
+  
+  mutate(state=statename) %>%
+  mutate(varname='childrenwithparentsinlaborforce')
+
+
+#STATE PLANNING REGION DATA
+acs_region <- getCensus(name="acs/acs5",
+          vintage=year_minus2,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("B23008_002E","B23008_002M","B23008_004E","B23008_004M",
+                 "B23008_010E","B23008_010M","B23008_013E","B23008_013M",
+                 "B23008_015E","B23008_015M","B23008_017E","B23008_017M",
+                 "B23008_023E","B23008_023M","B23008_026E","B23008_026M"),
+          region="county:*",
+          regionin=paste0("state:",statecode)) %>%
+  
+  #clean the data that's been imported
+  
+  #assign location type to county
+  mutate(locationtype='Planning Region') %>%
+  
+  #add in county name from fips codes, remove word 'county', add in state name
+  left_join(fips,by=c('county'='county_code','state'='state_code')) %>% 
+  mutate(county=gsub("\\s*\\w*$", "", county.y)) %>%
+  
+  #calculate the sums and percent
+  
+  #########################
+  #for children under 6
+  mutate(numerator_under6=(B23008_004E+B23008_010E+B23008_013E)) %>%
+  mutate(numerator_under6_moe=sqrt((B23008_004M^2)+(B23008_010M^2)+
+                                     (B23008_013M^2))) %>%
+  mutate(denominator_under6=B23008_002E) %>%
+  mutate(denominator_under6_moe=B23008_002M) %>%
+  
+  left_join(regionids,by=c('county'='county')) %>%
+  subset(region!='') %>%
+  
+  group_by(region) %>%
+  summarise(Number_under6=sum(numerator_under6),
+            
+            number_under6_moe=sqrt(sum(numerator_under6_moe^2)),
+            
+            Percent_under6=sum(numerator_under6)/sum(denominator_under6),
+            
+            
+            percent_under6_moe=(1/sum(denominator_under6))*sqrt((number_under6_moe^2)-((Percent_under6^2)*(sqrt(sum(denominator_under6_moe))^2)))) %>%
+           
+  ungroup %>%
+  
+  #calculate the relative standard error
+  mutate(number_under6_relativese=((number_under6_moe/1.645)/Number_under6)*100) %>%
+  mutate(percent_under6_relativese=((percent_under6_moe/1.645)/Percent_under6)*100) %>%
+  mutate(keep_under6=if_else(percent_under6_relativese>30 | number_under6_relativese>30,0,1)) %>%
+  
+  rename(location=region) %>%
+  mutate(state=statename) %>%
+  mutate(locationtype='Planning Region') %>%
+  mutate(varname='childrenwithparentsinlaborforce') 
+
+
+
+data_under6_percent <- acs_county %>%
+  bind_rows(acs_state) %>%
+  bind_rows(acs_region) %>%
+  select(c(location,locationtype,state,Percent_under6,percent_under6_moe,keep_under6)) %>%
+  rename(data=Percent_under6,
+         moe=percent_under6_moe,
+         keep=keep_under6) %>%
+  
+  rename(percentworking=data,
+         percentworking_moe=moe) %>%
+  mutate(percentworking_lci=percentworking-percentworking_moe,
+         percentworking_uci=percentworking+percentworking_moe) %>%
+  subset(locationtype=='State' | locationtype=='County' | locationtype=='Planning Region')
+```
+
+## STEP 2: QUERY POPULATION AND CHILD CARE CAPACITY DATA FROM KIDS COUNT DATABASES
+```{r}
+#for child population ages 0-5
+childpop_sql <- paste0("SELECT location, timeframe, age_group, data FROM ", database_state," WHERE (timeframe='",year_minus2,"' AND vintageyear='",year_minus2,"') AND varname='childpopulationbysingleyearofage';") 
+
+childpop_data <- dbGetQuery(con,childpop_sql) %>%
+  mutate(age_group=as.numeric(paste(age_group)),
+         data=as.numeric(paste(data))) %>%
+  subset(age_group<=5) %>%
+  group_by(location) %>%
+  summarise(children_0to5=sum(data),.groups='keep') %>%
+  ungroup
+
+
+#for child care capacity data
+childcarecapacity_sql <- paste0("SELECT location, timeframe, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='childcarecapacitybytype' AND category='Licensed' AND dataformat='Number';") 
+childcarecapacity_data <- dbGetQuery(con,childcarecapacity_sql) %>%
+  rename(capacity=data) %>%
+  select(location,capacity) %>%
+  mutate(capacity=as.numeric(paste(capacity)))
+```
+
+## STEP 3: COMBINE ALL DATA AND CALCULATE PERCENTAGES
+```{r}
+under6_data <- data_under6_percent %>%
+  left_join(childpop_data,by=c('location'='location')) %>%
+  left_join(childcarecapacity_data,by=c('location'='location')) %>%
+  
+  #calculate denominator in four different ways: population, population*percentworking,population*percentworking lower confidence estimate, population*percentworking upper  confidence estimate
+  mutate(data_pop=capacity/children_0to5,
+         data_popxworking=capacity/(children_0to5*percentworking),
+         data_popxworking_lci=capacity/(children_0to5*percentworking_lci),
+         data_popxworking_uci=capacity/(children_0to5*percentworking_uci)) %>%
+  
+  #add in a few kids count database variables
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  mutate(timeframe=year,
+         dataformat='Percent')
+```
+
+## STEP 4: CALCULATE PERCENTAGE USING JUST POPULATION AS DENOMINATOR
+```{r}
+percentdata_population <- under6_data %>%
+  select(location,locationtype,locationid,state,timeframe,dataformat,data_pop) %>%
+  rename(data=data_pop) %>%
+  mutate(varname='percentofallchildrenunder6servedbyececapacity') %>%
+  mutate(data=replace(data,data>1,1)) 
+
+
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(percentdata_population$locationid))>=1) {
+  print(percentdata_population$location[is.na(percentdata_population$locationid)])
+} else if (sum(is.na(percentdata_population$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- percentdata_population %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+View(percentdata_population)
+```
+
+## STEP 5: CALCULATE PERCENTAGE USING POPULATION AND WORKING ESTIMATES
+```{r}
+percentdata_populationworking <- under6_data %>%
+  select(location,locationtype,locationid,state,timeframe,dataformat,data_popxworking,data_popxworking_lci,data_popxworking_uci,keep) %>%
+  rename(data=data_popxworking,
+         uci=data_popxworking_lci,
+         lci=data_popxworking_uci) %>%
+  mutate(data=replace(data,data>1,1)) %>%
+  mutate(varname='percentofchildrenunder6withparentsworkingservedbyececapacity')
+
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(percentdata_populationworking$locationid))>=1) {
+  print(percentdata_populationworking$location[is.na(percentdata_populationworking$locationid)])
+} else if (sum(is.na(percentdata_populationworking$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- percentdata_populationworking %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+View(percentdata_populationworking)
+```
+
+## STEP 6: ADD TO KIDS COUNT DATABASES
+```{r}
+dbWriteTable(con,database_state,percentdata_population,append=TRUE,row.names=FALSE)
+dbWriteTable(con,database_state,percentdata_populationworking,append=TRUE,row.names=FALSE)
+```
+
+
+## STEP 7: EXPORT KIDS COUNT DATA CENTER FILES
+```{r}
+#write query from database to get needed format for KC data center
+
+#using all population
+upload_sql1 <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='percentofallchildrenunder6servedbyececapacity' AND dataformat='Percent';")
+
+upload_datacenter1 <- dbGetQuery(con,upload_sql1) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter1,file=paste0("./Output/education/",database_state,"_",year,"_percentofallchildrenunder6servedbyececapacity.csv"),row.names=FALSE)
+
+#using population * working parents percent
+upload_sql2 <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='percentofchildrenunder6withparentsworkingservedbyececapacity' AND dataformat='Percent';")
+
+upload_datacenter2 <- dbGetQuery(con,upload_sql2) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter2,file=paste0("./Output/education/",database_state,"_",year,"_percentofchildrenunder6withparentsworkingservedbyececapacity.csv"),row.names=FALSE)
+```
+
