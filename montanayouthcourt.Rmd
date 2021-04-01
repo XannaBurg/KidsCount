@@ -7,7 +7,7 @@ output: html_document
 
 ## Indicator 1: Youth referred to Youth Court
 ## Indicator 2: Referrals to Youth Court
-## Indicator 3: Juvenile offenses 
+## Indicator 3: Juvenile offenses  
 
 **Created by:** Xanna Burg
 **Date:** June 2020
