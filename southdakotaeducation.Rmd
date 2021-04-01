@@ -45,9 +45,9 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '19_20'
-fullyear <- '2019/20' 
-year_prior <- '2018/19' #for dropout data
+year <- '20_21'
+fullyear <- '2020/21' 
+year_prior <- '2019/20' #for dropout data
 statefile <- 'southdakota'
 statename <- 'South Dakota'
 
@@ -494,12 +494,14 @@ write.csv(upload_data_digest,file=paste0("./Output/education/southdakota_",year,
 ```{r}
 #READ IN THE SPECIAL EDUCATION DATA
 
+#UPDATE THE RANGES TO INCLUDE THE NEW ROW
+
 #special education state data
-xl_data <- paste0("./Input/education/southdakota_12_19_specialeducationstate.xlsx")
+xl_data <- paste0("./Input/education/southdakota_",year,"_specialeducationstate.xlsx")
 df_specialed_impairment <- read_excel(path=xl_data, range="A4:W23")
-df_specialed_grade <- read_excel(path=xl_data, range="O26:V42")
-df_specialed_age <- read_excel(path=xl_data, range="O67:V87")
-df_specialed_race <- read_excel(path=xl_data, range="O49:V57")
+df_specialed_grade <- read_excel(path=xl_data, range="O26:W42")
+df_specialed_age <- read_excel(path=xl_data, range="O67:W87")
+df_specialed_race <- read_excel(path=xl_data, range="O49:W57")
 
 #special education district data
 xl_data_specialed_district <- paste0("./Input/education/southdakota_",year,"_specialeducationdistrict.xlsx")
@@ -510,11 +512,11 @@ df_specialed_district <- read_excel(path=xl_data_specialed_district,skip=3)
 **CHILDREN ENROLLED IN SPECIAL EDUCATION IN PUBLIC SCHOOLS**
 ```{r}
 specialed_count <- df_specialed_district %>%
-  select(c('District Name','2019 TOTAL Child Count (ages 3-21)')) %>%
+  select(c('District Name','2020 TOTAL Child Count (ages 3-21)')) %>%
   rename(location='District Name',
-         data='2019 TOTAL Child Count (ages 3-21)') %>%
+         data='2020 TOTAL Child Count (ages 3-21)') %>%
   subset(!is.na(location) & location != 'TOTAL' & 
-           location != 'Susan Woodmansey,') %>%
+           location != 'contact Susan Woodmansey,') %>%
   mutate(locationtype='School District') %>%
   mutate(state='South Dakota') %>%
   mutate(timeframe=fullyear) %>%
@@ -556,7 +558,7 @@ specialed_percent <- df_specialed_district %>%
   rename(location='District Name',
          data='Child Count as % of Fall PK-12 Enrollment') %>%
   subset(!is.na(location) & location != 'TOTAL' & 
-           location != 'Susan Woodmansey,') %>%
+           location != 'contact Susan Woodmansey,') %>%
   mutate(locationtype='School District') %>%
   mutate(state='South Dakota') %>%
   mutate(timeframe=fullyear) %>%
@@ -594,7 +596,7 @@ specialed_percent <- df_specialed_district %>%
 
 
 specialed_count_state <- df_specialed_district %>%
-  rename(data='2019 TOTAL Child Count (ages 3-21)',
+  rename(data='2020 TOTAL Child Count (ages 3-21)',
          location='District Name') %>%
   subset(location=='TOTAL') %>%
   select(c(data))  %>%
@@ -625,6 +627,22 @@ upload_specialeducation_district <- specialed_count %>%
   bind_rows(specialed_percent) %>%
   bind_rows(specialed_count_state) %>%
   bind_rows(specialed_percent_state)
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(upload_specialeducation_district$locationid))>=1) {
+  print(upload_specialeducation_district$location[is.na(upload_specialeducation_district$locationid)])
+} else if (sum(is.na(upload_specialeducation_district$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Visually inspect output data
+View(upload_specialeducation_district)
 ```
 
 ```{r}
@@ -664,10 +682,10 @@ tribalschools$school_specialednumber <- as.character(tribalschools$school_specia
 
 
 specialed_count <- df_specialed_district %>%
-  select(c('District Name','2019 TOTAL Child Count (ages 3-21)','District #')) %>%
+  select(c('District Name','2020 TOTAL Child Count (ages 3-21)','District #')) %>%
   rename(fulllocation_name='District Name',
          districtid='District #',
-         data='2019 TOTAL Child Count (ages 3-21)') %>%
+         data='2020 TOTAL Child Count (ages 3-21)') %>%
   
   #match to tribal area using crosswalk
   inner_join(tribalschools,by=c('districtid'='school_specialednumber')) %>%
@@ -704,6 +722,15 @@ specialed_percent <- df_specialed_district %>%
   
 upload_specialeducation_district <- specialed_count %>%
   bind_rows(specialed_percent) 
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Visually inspect output data
+View(upload_specialeducation_district)
+
 ```
 
 ```{r}
@@ -717,11 +744,12 @@ dbWriteTable(con,'southdakota',upload_specialeducation_district,append=TRUE,row.
 
 **CHILDREN ENROLLED IN SPECIAL EDUCATION IN PUBLIC SCHOOLS BY TYPE OF IMPAIRMENT**
 ```{r}
-#clean up the data
+fullyear_file <- '2020'
 year_variable <- paste0("December ",fullyear_file)
 
+
 specialed_impairment_count <- df_specialed_impairment %>%
-  rename(data=year_variable,
+  rename(data=all_of(year_variable),
          category_original='Disabling  Condition') %>%
   select(c(data,category_original)) %>%
   subset(!is.na(category_original) & 
@@ -765,7 +793,7 @@ specialed_impairment_count <- df_specialed_impairment %>%
 
 
 specialed_impairment_percent <- df_specialed_impairment %>%
-  rename(data_number=year_variable,
+  rename(data_number=all_of(year_variable),
          category_original='Disabling  Condition') %>%
   select(c(data_number,category_original)) %>%
   subset(!is.na(category_original) & 
@@ -812,6 +840,14 @@ specialed_impairment_percent <- df_specialed_impairment %>%
 
 upload_specialeducation <- specialed_impairment_count %>%
   bind_rows(specialed_impairment_percent)
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Visually inspect output data
+View(upload_specialeducation)
 ```
 
 ```{r}
@@ -846,7 +882,7 @@ write.csv(upload_data_specialed_impairment,file=paste0("./Output/education/",sta
 #clean up the data
 
 specialed_grade_count <- df_specialed_grade %>%
-  rename(data=fullyear_file,
+  rename(data=all_of(fullyear_file),
          category_original=Grade) %>%
   select(c(data,category_original)) %>%
   subset(!is.na(category_original) & 
@@ -880,7 +916,7 @@ specialed_grade_count <- df_specialed_grade %>%
 
 
 specialed_grade_percent <- df_specialed_grade %>%
-  rename(data_number=fullyear_file,
+  rename(data_number=all_of(fullyear_file),
          category_original='Grade') %>%
   select(c(data_number,category_original)) %>%
   subset(!is.na(category_original)) %>%
@@ -917,6 +953,14 @@ specialed_grade_percent <- df_specialed_grade %>%
 
 upload_specialeducation_grade <- specialed_grade_count %>%
   bind_rows(specialed_grade_percent)
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Visually inspect output data
+View(upload_specialeducation_grade)
 ```
 
 ```{r}
@@ -952,7 +996,7 @@ write.csv(upload_data_specialed_grade2,file=paste0("./Output/education/",statefi
 #clean up the data
 
 specialed_age_count <- df_specialed_age %>%
-  rename(data=fullyear_file,
+  rename(data=all_of(fullyear_file),
          category=Age) %>%
   select(c(data,category)) %>%
   subset(!is.na(category) & 
@@ -969,7 +1013,7 @@ specialed_age_count <- df_specialed_age %>%
 
 
 specialed_age_percent <- df_specialed_age %>%
-  rename(data_number=fullyear_file,
+  rename(data_number=all_of(fullyear_file),
          category=Age) %>%
   select(c(data_number,category)) %>%
   subset(!is.na(category)) %>%
@@ -992,7 +1036,13 @@ upload_specialeducation_age <- specialed_age_count %>%
   bind_rows(specialed_age_percent) %>%
   rename(age_group=category)
 
-  
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Visually inspect output data
+View(upload_specialeducation_age)
 ```
 
 ```{r}
@@ -1028,7 +1078,7 @@ write.csv(upload_data_specialed_age2,file=paste0("./Output/education/",statefile
 #clean up the data
 
 specialed_race_count <- df_specialed_race %>%
-  rename(data=fullyear_file,
+  rename(data=all_of(fullyear_file),
          category_original=Ethnicity) %>%
   select(c(data,category_original)) %>%
   subset(!is.na(category_original) & 
@@ -1054,7 +1104,7 @@ specialed_race_count <- df_specialed_race %>%
 
 
 specialed_race_percent <- df_specialed_race %>%
-  rename(data_number=fullyear_file,
+  rename(data_number=all_of(fullyear_file),
          category_original=Ethnicity) %>%
   select(c(data_number,category_original)) %>%
   subset(!is.na(category_original)) %>%
@@ -1084,6 +1134,14 @@ specialed_race_percent <- df_specialed_race %>%
 upload_specialeducation_race <- specialed_race_count %>%
   bind_rows(specialed_race_percent) %>%
   rename(race=category)
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Visually inspect output data
+View(upload_specialeducation_race)
 ```
 
 ```{r}
