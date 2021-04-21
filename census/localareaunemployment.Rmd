@@ -43,7 +43,7 @@ library(readxl)
 ```{r}
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
-statename <- "Montana"
+statename <- "South Dakota"
 
 #run this code to create an object needed for the database (DO NOT EDIT)
 if (statename=='Montana') {
@@ -191,6 +191,9 @@ blsdata_formatted <- blsdata %>%
 ```{r}
 # ***** UPDATE THE YEAR TO THE CURRENT YEAR ***** 
 year <- '2020'
+
+
+year_numeric <- as.numeric(paste(year))
 ```
 
 ```{r}
@@ -201,6 +204,7 @@ bls_annual <- blsdata_formatted %>%
   #subset to include only the annual average
   subset(period_name=='Annual Average') %>%
   subset(!is.na(Location)) %>%
+  subset(year==year_numeric) %>%
   
   #subset for the rate
   subset(measure_text=='unemployment rate') %>%
@@ -217,8 +221,7 @@ bls_annual <- blsdata_formatted %>%
          data=`       value`) %>%
   mutate(locationtype=if_else(location=='Montana','State','County')) %>%
   mutate(dataformat='Percent',
-         varname='lausunemployment',
-         vintageyear=year) %>%
+         varname='lausunemployment') %>%
   left_join(locationids,by=c('location'='Location')) %>%
   rename(locationid=LocationId)
   
@@ -264,7 +267,7 @@ dbWriteTable(con,database_state,bls_annual,append=TRUE,row.names=FALSE)
 #########################
 ##OUTPUT DATA CENTER FILE
 
-datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE vintageyear='",year,"' AND varname='lausunemployment';")
+datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='lausunemployment';")
 
 upload_data<- dbGetQuery(con,datacenter_sql) %>%
   rename(LocationId=locationid,
