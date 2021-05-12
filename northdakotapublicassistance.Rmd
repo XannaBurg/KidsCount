@@ -40,9 +40,12 @@ library(readxl)
 
 ```{r}
 #UPDATE to reflect the current year data working with
-year <- '2019'
-fiscalyear <- 'FY19'
+year <- '2020'
+fiscalyear <- 'FY20'
 state <- 'northdakota'
+
+
+year_minus1 <- as.character(as.numeric(year)-1)
 ```
 
 
@@ -52,112 +55,101 @@ state <- 'northdakota'
 xl_data <- paste0("./Input/economics/northdakota_",fiscalyear,"_economicassistance.xlsx")
 excel_sheets(path = xl_data)
 
-df_tanf <- read_excel(path=xl_data, sheet='TANF 0-19')
-df_snap <- read_excel(path=xl_data, sheet='SNAP 0-18')
-df_ccap <- read_excel(path=xl_data, sheet='Child Care 0-13')
-df_medicaid <- read_excel(path=xl_data, sheet='Medicaid 0-20')
-df_healthysteps <- read_excel(path=xl_data, sheet='Healthy Steps 0-19')
+df_tanf <- read_excel(path=xl_data, sheet='TANF 0-19', skip=7)
+df_snap <- read_excel(path=xl_data, sheet='SNAP 0-18',skip=6)
+df_ccap <- read_excel(path=xl_data, sheet='Child Care 0-13',skip=6)
+df_medicaid <- read_excel(path=xl_data, sheet='Medicaid 0-20',skip=7)
+df_healthysteps <- read_excel(path=xl_data, sheet='Healthy Steps 0-19',skip=7)
 
 #input location ID file for ND
 locationids <- read.csv("./Input/ND KC Location IDs.csv")
 
+#input region ID file for ND
+regionids <- read.csv("./Input/ND KC Region List.csv")
+regionids$county <- as.character(regionids$county)
+
 ```
+
+
+## -- SNAP -- ##
 
 ```{r}
 #FOR SNAP
 #clean the county data
 df_snap2 <- df_snap %>%
-  rename(location=county) %>%
+  rename(location=`...2`) %>%
+  subset(!is.na(location)) %>%
   rename(zerotosix='0-6 YEARS') %>%
   rename(seventoeighteen='7-18 YEARS') %>%
   mutate(locationtype='County') %>%
   mutate(state='North Dakota') %>%
   mutate(data=(zerotosix+seventoeighteen)) %>%
   mutate(dataformat='Number') %>%
-  mutate(timeframe='2019') %>%
+  mutate(timeframe=all_of(year)) %>%
   mutate(varname='snapages0to18') %>%
-  select(-c(zerotosix,seventoeighteen))
+  select(-c(zerotosix,seventoeighteen,`...1`,`...3`))
 
 #create state summary
 df_snap_state <- df_snap2 %>%
-  group_by(state) %>%
-  summarise(data=sum(data)) %>%
+  group_by(state,timeframe,dataformat,varname) %>%
+  summarise(data=sum(data),.groups='keep') %>%
   mutate(location='North Dakota') %>%
-  mutate(locationtype='State') %>%
-  mutate(timeframe='2019') %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='snapages0to18')
+  mutate(locationtype='State') 
 
 #create region summaries
 df_snap_regions <- df_snap2 %>% 
-  rename(county=location) %>%
-  mutate(region = case_when(
-  county=="Divide" | county=="McKenzie" | county=="Williams" ~
-    "Planning Region 1",
-  county=="Bottineau" | county=="Burke" | county=="McHenry" | 
-    county=="Mountrail" | county=="Pierce" | county=="Pierce" | 
-    county=="Renville" | county=="Ward" ~ "Planning Region 2",
-  county=="Benson" | county=="Cavalier" | county=="Eddy" | 
-    county=="Ramsey" | county=="Rolette" | county=="Towner"~
-    "Planning Region 3",
-  county=="Grand Forks" | county=="Nelson" | county=="Pembina" | 
-    county=="Walsh" ~ "Planning Region 4",
-  county=="Cass" | county=="Ransom" | county=="Richland" | 
-    county=="Sargent" | county=="Steele" | county=="Traill" ~ 
-    "Planning Region 5",
-  county=="Barnes"| county=="Dickey" | county=="Foster" | 
-    county=="Griggs" | county=="LaMoure" | county=="Logan" | 
-    county=="McIntosh" | county=="Stutsman" | county=="Wells" ~ 
-    "Planning Region 6",
-  county=="Burleigh" | county=="Emmons" | county=="Grant" | 
-    county=="Kidder" | county=="McLean" | county=="Mercer" | 
-    county=="Morton" | county=="Oliver" | county=="Sheridan" |
-    county=="Sioux" ~ "Planning Region 7",
-  county=="Adams" | county=="Billings" | county=="Bowman" | 
-    county=="Dunn" | county=="Golden Valley" | county=="Hettinger" | 
-    county=="Slope" | county=="Stark" ~ "Planning Region 8"
-))
-
-df_snap_regions2 <- df_snap_regions %>%
-  group_by(region) %>%
-  summarise(data=sum(data)) %>%
-  mutate(location=region) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(timeframe='2019') %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='snapages0to18') %>%
-  mutate(state='North Dakota') %>%
-  select(-c(region))
+  left_join(regionids,by=c('location'='county')) %>%
+  select(-c(location)) %>%
+  rename(location=region) %>%
+  
+  group_by(location,state,dataformat,timeframe,varname) %>%
+  summarise(data=sum(data),.groups='keep') %>%
+  mutate(locationtype='Planning Region') 
 
 #union all three datasets together and add location ID
 snapages0to18 <- df_snap2 %>%
   bind_rows(df_snap_state) %>%
-  bind_rows(df_snap_regions2) %>%
+  bind_rows(df_snap_regions) %>%
   left_join(locationids,by=c('location'='Location')) %>%
   rename(locationid=LocationId)
-  
- 
 
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(snapages0to18$locationid))>=1) {
+  print(snapages0to18$location[is.na(snapages0to18$locationid)])
+} else if (sum(is.na(snapages0to18$locationid))==0) {
+  'all locations match'
+}
+
+
+# 2. Visually inspect output data
+View(snapages0to18)
 ```
 
 ```{r}
 #add to database count of snapages0to18
 dbWriteTable(con,'northdakota',snapages0to18,append=TRUE,row.names=FALSE)
-
 ```
+
 ```{r}
 #calculate percent of population 0 to 18 on snap
 
 #create dataset that has population merged with geography for 0 to 18 year olds
 #population is for the beginning of the FY, which is minus 1 from the year that is reported
-pop0_18 <- dbGetQuery(con,"SELECT locationid,location,age_group,data
+snap_pop_sql <- paste0("SELECT locationid,location,age_group,data
                      FROM northdakota
-                     WHERE timeframe = '2018' AND varname = 'nchspopulationbysingleyearofage' AND (age_group='0' OR age_group='1' OR age_group='2' OR age_group='3' OR age_group='4' OR age_group='5' OR age_group='6' OR age_group='7' OR age_group='8' OR age_group='9' OR age_group='10' OR age_group='11' OR age_group='12' OR age_group='13' OR age_group='14' OR age_group='15' OR age_group='16' OR age_group='17' OR age_group='18') ;")
+                     WHERE timeframe = '",year_minus1,"' AND vintageyear='",year_minus1,"' AND varname = 'childpopulationbysingleyearofage' AND (age_group='0' OR age_group='1' OR age_group='2' OR age_group='3' OR age_group='4' OR age_group='5' OR age_group='6' OR age_group='7' OR age_group='8' OR age_group='9' OR age_group='10' OR age_group='11' OR age_group='12' OR age_group='13' OR age_group='14' OR age_group='15' OR age_group='16' OR age_group='17' OR age_group='18') ;")
+pop0_18 <- dbGetQuery(con,snap_pop_sql) %>%
+  mutate(data=as.numeric(paste(data)))
 
 #sum the population across all age groups 0 to 18
 pop0_18_sums <- pop0_18 %>%
   group_by(location) %>%
-  summarise(total_pop=sum(data))
+  summarise(total_pop=sum(data),.groups='keep')
 
 #merge population with snap data
 snap_percent <- snapages0to18 %>%
@@ -166,21 +158,74 @@ snap_percent <- snapages0to18 %>%
   select(-c(data,total_pop)) %>%
   rename(data=percent_snap) %>%
   mutate(dataformat='Percent')
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(snap_percent$locationid))>=1) {
+  print(snap_percent$location[is.na(snap_percent$locationid)])
+} else if (sum(is.na(snap_percent$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- snap_percent %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+
+# 3. Visually inspect output data
+View(snap_percent)
 ```
 
 ```{r}
 #add to database percent of snapages0to18
 dbWriteTable(con,'northdakota',snap_percent,append=TRUE,row.names=FALSE)
+```
 
+```{r}
+#write query from database to get needed format for KC data center
+#COUNT AND PERCENT OF SNAP
+
+upload_data_snap_sql <- paste0("SELECT locationid,location,timeframe,dataformat,data
+                     FROM northdakota
+                     WHERE timeframe = '",year,"' AND varname = 'snapages0to18';")
+
+upload_data_snap <- dbGetQuery(con,upload_data_snap_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_snap,file=paste0("./Output/economics/",state,"_",year,"_snapages0to18.csv"),row.names=FALSE)
 ```
 
 
+
+
+
+## -- TANF -- ##
 
 ```{r}
 #FOR TANF
 #clean the county data
 df_tanf2 <- df_tanf %>%
-  rename(location=county) %>%
+  rename(location=`...2`) %>%
+  subset(!is.na(location)) %>%
   rename(zerotofive='0-5 YEARS') %>%
   rename(sixtofifteen='6-15 YEARS') %>%
   rename(sixteentoseventeen='16-17 YEARS') %>%
@@ -189,90 +234,74 @@ df_tanf2 <- df_tanf %>%
   mutate(state='North Dakota') %>%
   mutate(data=(zerotofive+sixtofifteen+sixteentoseventeen+eighteentonineteen)) %>%
   mutate(dataformat='Number') %>%
-  mutate(timeframe='2019') %>%
+  mutate(timeframe=all_of(year)) %>%
   mutate(varname='tanfages0to19') %>%
-  select(-c(zerotofive,sixtofifteen,sixteentoseventeen,eighteentonineteen))
+  select(-c(zerotofive,sixtofifteen,sixteentoseventeen,eighteentonineteen,`...1`,`...3`))
 
 #create state summary
 df_tanf_state <- df_tanf2 %>%
-  group_by(state) %>%
-  summarise(data=sum(data)) %>%
-  mutate(location='North Dakota') %>%
-  mutate(locationtype='State') %>%
-  mutate(timeframe='2019') %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='tanfages0to19')
+  group_by(state,timeframe,dataformat,varname) %>%
+  summarise(data=sum(data),.groups='keep') %>%
+  mutate(location='North Dakota',
+         locationtype='State') 
 
 #create region summaries
 df_tanf_regions <- df_tanf2 %>% 
-  rename(county=location) %>%
-  mutate(region = case_when(
-  county=="Divide" | county=="McKenzie" | county=="Williams" ~
-    "Planning Region 1",
-  county=="Bottineau" | county=="Burke" | county=="McHenry" | 
-    county=="Mountrail" | county=="Pierce" | county=="Pierce" | 
-    county=="Renville" | county=="Ward" ~ "Planning Region 2",
-  county=="Benson" | county=="Cavalier" | county=="Eddy" | 
-    county=="Ramsey" | county=="Rolette" | county=="Towner"~
-    "Planning Region 3",
-  county=="Grand Forks" | county=="Nelson" | county=="Pembina" | 
-    county=="Walsh" ~ "Planning Region 4",
-  county=="Cass" | county=="Ransom" | county=="Richland" | 
-    county=="Sargent" | county=="Steele" | county=="Traill" ~ 
-    "Planning Region 5",
-  county=="Barnes"| county=="Dickey" | county=="Foster" | 
-    county=="Griggs" | county=="LaMoure" | county=="Logan" | 
-    county=="McIntosh" | county=="Stutsman" | county=="Wells" ~ 
-    "Planning Region 6",
-  county=="Burleigh" | county=="Emmons" | county=="Grant" | 
-    county=="Kidder" | county=="McLean" | county=="Mercer" | 
-    county=="Morton" | county=="Oliver" | county=="Sheridan" |
-    county=="Sioux" ~ "Planning Region 7",
-  county=="Adams" | county=="Billings" | county=="Bowman" | 
-    county=="Dunn" | county=="Golden Valley" | county=="Hettinger" | 
-    county=="Slope" | county=="Stark" ~ "Planning Region 8"
-))
-
-df_tanf_regions2 <- df_tanf_regions %>%
-  group_by(region) %>%
-  summarise(data=sum(data)) %>%
-  mutate(location=region) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(timeframe='2019') %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='tanfages0to19') %>%
-  mutate(state='North Dakota') %>%
-  select(-c(region))
+  left_join(regionids,by=c('location'='county')) %>%
+  select(-c(location)) %>%
+  rename(location=region) %>%
+  
+  group_by(location,state,dataformat,timeframe,varname) %>%
+  summarise(data=sum(data),.groups='keep') %>%
+  mutate(locationtype='Planning Region') 
+  
 
 #union all three datasets together and add location ID
 tanfages0to19 <- df_tanf2 %>%
   bind_rows(df_tanf_state) %>%
-  bind_rows(df_tanf_regions2) %>%
+  bind_rows(df_tanf_regions) %>%
   left_join(locationids,by=c('location'='Location')) %>%
   rename(locationid=LocationId)
   
- 
+  
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
 
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(tanfages0to19$locationid))>=1) {
+  print(tanfages0to19$location[is.na(tanfages0to19$locationid)])
+} else if (sum(is.na(tanfages0to19$locationid))==0) {
+  'all locations match'
+}
+
+
+# 2. Visually inspect output data
+View(tanfages0to19)
 ```
 
 ```{r}
 #add to database count of tanfages0to19
 dbWriteTable(con,'northdakota',tanfages0to19,append=TRUE,row.names=FALSE)
-
 ```
+
 ```{r}
 #calculate percent of population 0 to 19 on tanf
 
 #create dataset that has population merged with geography for 0 to 19 year olds
 #population is for the beginning of the FY, which is minus 1 from the year that is reported
-pop0_19 <- dbGetQuery(con,"SELECT locationid,location,age_group,data
+tanf_pop_sql <- paste0("SELECT locationid,location,age_group,data
                      FROM northdakota
-                     WHERE timeframe = '2018' AND varname = 'nchspopulationbysingleyearofage' AND (age_group='0' OR age_group='1' OR age_group='2' OR age_group='3' OR age_group='4' OR age_group='5' OR age_group='6' OR age_group='7' OR age_group='8' OR age_group='9' OR age_group='10' OR age_group='11' OR age_group='12' OR age_group='13' OR age_group='14' OR age_group='15' OR age_group='16' OR age_group='17' OR age_group='18' OR age_group='19') ;")
+                     WHERE timeframe = '",year_minus1,"' AND vintageyear='",year_minus1,"' AND varname = 'childpopulationbysingleyearofage' AND (age_group='0' OR age_group='1' OR age_group='2' OR age_group='3' OR age_group='4' OR age_group='5' OR age_group='6' OR age_group='7' OR age_group='8' OR age_group='9' OR age_group='10' OR age_group='11' OR age_group='12' OR age_group='13' OR age_group='14' OR age_group='15' OR age_group='16' OR age_group='17' OR age_group='18' OR age_group='19') ;")
+
+pop0_19 <- dbGetQuery(con,tanf_pop_sql) %>%
+  mutate(data=as.numeric(paste(data)))
 
 #sum the population across all age groups 0 to 19
 pop0_19_sums <- pop0_19 %>%
   group_by(location) %>%
-  summarise(total_pop=sum(data))
+  summarise(total_pop=sum(data),.groups='keep')
 
 #merge population with snap data
 tanf_percent <- tanfages0to19 %>%
@@ -281,20 +310,75 @@ tanf_percent <- tanfages0to19 %>%
   select(-c(data,total_pop)) %>%
   rename(data=percent_tanf) %>%
   mutate(dataformat='Percent')
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(tanf_percent$locationid))>=1) {
+  print(tanf_percent$location[is.na(tanf_percent$locationid)])
+} else if (sum(is.na(tanf_percent$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- tanf_percent %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+
+# 3. Visually inspect output data
+View(tanf_percent)
 ```
 
 ```{r}
 #add to database percent of tanfages0to19
 dbWriteTable(con,'northdakota',tanf_percent,append=TRUE,row.names=FALSE)
-
 ```
 
+```{r}
+#write query from database to get needed format for KC data center
+#COUNT AND PERCENT OF TANF
+
+upload_data_tanf_sql <- paste0("SELECT locationid,location,timeframe,dataformat,data
+                     FROM northdakota
+                     WHERE timeframe = '",year,"' AND varname = 'tanfages0to19';")
+upload_data_tanf <- dbGetQuery(con,upload_data_tanf_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_tanf,file=paste0("./Output/economics/",state,"_",year,"_tanfages0to19.csv"),row.names=FALSE)
+```
+
+
+
+
+
+
+
+
+## -- CCAP -- ##
 
 ```{r}
 #FOR CCAP
 #clean the county data
 df_ccap2 <- df_ccap %>%
-  rename(location=county) %>%
+  rename(location=`...2`) %>%
+  subset(!is.na(location)) %>%
   rename(undertwo='Under 2') %>%
   rename(twoonly='2 Only') %>%
   rename(threeonly='3 Only') %>%
@@ -304,112 +388,144 @@ df_ccap2 <- df_ccap %>%
   mutate(state='North Dakota') %>%
   mutate(data=(undertwo+twoonly+threeonly+fourtofive+sixtothirteen)) %>%
   mutate(dataformat='Number') %>%
-  mutate(timeframe='2019') %>%
+  mutate(timeframe=all_of(year)) %>%
   mutate(varname='ccapages0to13') %>%
-  select(-c(undertwo,twoonly,threeonly,fourtofive,sixtothirteen))
+  select(-c(undertwo,twoonly,threeonly,fourtofive,sixtothirteen,`...1`,`...3`))
 
 #create state summary
 df_ccap_state <- df_ccap2 %>%
-  group_by(state) %>%
-  summarise(data=sum(data)) %>%
-  mutate(location='North Dakota') %>%
-  mutate(locationtype='State') %>%
-  mutate(timeframe='2019') %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='ccapages0to13')
+  group_by(state,timeframe,dataformat,varname) %>%
+  summarise(data=sum(data),.groups='keep') %>%
+  mutate(location='North Dakota',
+         locationtype='State') 
 
 #create region summaries
 df_ccap_regions <- df_ccap2 %>% 
-  rename(county=location) %>%
-  mutate(region = case_when(
-  county=="Divide" | county=="McKenzie" | county=="Williams" ~
-    "Planning Region 1",
-  county=="Bottineau" | county=="Burke" | county=="McHenry" | 
-    county=="Mountrail" | county=="Pierce" | county=="Pierce" | 
-    county=="Renville" | county=="Ward" ~ "Planning Region 2",
-  county=="Benson" | county=="Cavalier" | county=="Eddy" | 
-    county=="Ramsey" | county=="Rolette" | county=="Towner"~
-    "Planning Region 3",
-  county=="Grand Forks" | county=="Nelson" | county=="Pembina" | 
-    county=="Walsh" ~ "Planning Region 4",
-  county=="Cass" | county=="Ransom" | county=="Richland" | 
-    county=="Sargent" | county=="Steele" | county=="Traill" ~ 
-    "Planning Region 5",
-  county=="Barnes"| county=="Dickey" | county=="Foster" | 
-    county=="Griggs" | county=="LaMoure" | county=="Logan" | 
-    county=="McIntosh" | county=="Stutsman" | county=="Wells" ~ 
-    "Planning Region 6",
-  county=="Burleigh" | county=="Emmons" | county=="Grant" | 
-    county=="Kidder" | county=="McLean" | county=="Mercer" | 
-    county=="Morton" | county=="Oliver" | county=="Sheridan" |
-    county=="Sioux" ~ "Planning Region 7",
-  county=="Adams" | county=="Billings" | county=="Bowman" | 
-    county=="Dunn" | county=="Golden Valley" | county=="Hettinger" | 
-    county=="Slope" | county=="Stark" ~ "Planning Region 8"
-))
+  left_join(regionids,by=c('location'='county')) %>%
+  select(-c(location)) %>%
+  rename(location=region) %>%
+  
+  group_by(location,state,dataformat,timeframe,varname) %>%
+  summarise(data=sum(data),.groups='keep') %>%
+  mutate(locationtype='Planning Region') 
 
-df_ccap_regions2 <- df_ccap_regions %>%
-  group_by(region) %>%
-  summarise(data=sum(data)) %>%
-  mutate(location=region) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(timeframe='2019') %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='ccapages0to13') %>%
-  mutate(state='North Dakota') %>%
-  select(-c(region))
 
 #union all three datasets together and add location ID
 ccapages0to13 <- df_ccap2 %>%
   bind_rows(df_ccap_state) %>%
-  bind_rows(df_ccap_regions2) %>%
+  bind_rows(df_ccap_regions) %>%
   left_join(locationids,by=c('location'='Location')) %>%
   rename(locationid=LocationId)
   
  
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
 
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(ccapages0to13$locationid))>=1) {
+  print(ccapages0to13$location[is.na(ccapages0to13$locationid)])
+} else if (sum(is.na(ccapages0to13$locationid))==0) {
+  'all locations match'
+}
+
+
+# 2. Visually inspect output data
+View(ccapages0to13)
 ```
 
 ```{r}
 #add to database count of ccapages0to13
 dbWriteTable(con,'northdakota',ccapages0to13,append=TRUE,row.names=FALSE)
-
 ```
+
 ```{r}
 #calculate percent of population 0 to 13 on ccap
 
 #create dataset that has population merged with geography for 0 to 13 year olds
 #population is for the beginning of the FY, which is minus 1 from the year that is reported
-pop0_13 <- dbGetQuery(con,"SELECT locationid,location,age_group,data
+ccap_pop_sql <- paste0("SELECT locationid,location,age_group,data
                      FROM northdakota
-                     WHERE timeframe = '2018' AND varname = 'nchspopulationbysingleyearofage' AND (age_group='0' OR age_group='1' OR age_group='2' OR age_group='3' OR age_group='4' OR age_group='5' OR age_group='6' OR age_group='7' OR age_group='8' OR age_group='9' OR age_group='10' OR age_group='11' OR age_group='12' OR age_group='13') ;")
+                     WHERE timeframe = '",year_minus1,"' AND vintageyear='",year_minus1,"' AND varname = 'childpopulationbysingleyearofage' AND (age_group='0' OR age_group='1' OR age_group='2' OR age_group='3' OR age_group='4' OR age_group='5' OR age_group='6' OR age_group='7' OR age_group='8' OR age_group='9' OR age_group='10' OR age_group='11' OR age_group='12' OR age_group='13') ;")
+
+pop0_13 <- dbGetQuery(con,ccap_pop_sql) %>%
+  mutate(data=as.numeric(paste(data)))
 
 #sum the population across all age groups 0 to 13
 pop0_13_sums <- pop0_13 %>%
   group_by(location) %>%
-  summarise(total_pop=sum(data))
+  summarise(total_pop=sum(data),.groups='keep')
 
-#merge population with snap data
+#merge population with ccap data
 ccap_percent <- ccapages0to13 %>%
   left_join(pop0_13_sums,by='location') %>%
   mutate(percent_ccap=(data/total_pop)) %>%
   select(-c(data,total_pop)) %>%
   rename(data=percent_ccap) %>%
   mutate(dataformat='Percent')
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(ccap_percent$locationid))>=1) {
+  print(ccap_percent$location[is.na(ccap_percent$locationid)])
+} else if (sum(is.na(ccap_percent$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- ccap_percent %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+
+# 3. Visually inspect output data
+View(ccap_percent)
 ```
 
 ```{r}
 #add to database percent of ccapages0to13
 dbWriteTable(con,'northdakota',ccap_percent,append=TRUE,row.names=FALSE)
+```
 
+```{r}
+#write query from database to get needed format for KC data center
+#COUNT AND PERCENT OF CCAP
+
+upload_data_ccap_sql <- paste0("SELECT locationid,location,timeframe,dataformat,data
+                     FROM northdakota
+                     WHERE timeframe = '",year,"' AND varname = 'ccapages0to13';")
+upload_data_ccap <- dbGetQuery(con,upload_data_ccap_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_ccap,file=paste0("./Output/economics/",state,"_",year,"_ccapages0to13.csv"),row.names=FALSE)
 ```
 
 
+
+## -- MEDICAID -- ##
 ```{r}
 #FOR MEDICAID
 #clean the county data
 df_medicaid2 <- df_medicaid %>%
-  rename(location=county) %>%
+  rename(location=`...2`) %>%
+  subset(!is.na(location)) %>%
   rename(zerotofive='0-5') %>%
   rename(sixtoeighteen='6-18') %>%
   rename(nineteentotwenty='19-20') %>%
@@ -417,76 +533,57 @@ df_medicaid2 <- df_medicaid %>%
   mutate(state='North Dakota') %>%
   mutate(data=(zerotofive+sixtoeighteen+nineteentotwenty)) %>%
   mutate(dataformat='Number') %>%
-  mutate(timeframe='2019') %>%
+  mutate(timeframe=all_of(year)) %>%
   mutate(varname='medicaidages0to20') %>%
-  select(-c(zerotofive,sixtoeighteen,nineteentotwenty))
+  select(-c(zerotofive,sixtoeighteen,nineteentotwenty,`...1`,`TOTAL RECIPIENTS`))
+
 
 #create state summary
 df_medicaid_state <- df_medicaid2 %>%
-  group_by(state) %>%
-  summarise(data=sum(data)) %>%
-  mutate(location='North Dakota') %>%
-  mutate(locationtype='State') %>%
-  mutate(timeframe='2019') %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='medicaidages0to20')
+  group_by(state,timeframe,dataformat,varname) %>%
+  summarise(data=sum(data),.groups='keep') %>%
+  mutate(location='North Dakota',
+         locationtype='State') 
 
 #create region summaries
 df_medicaid_regions <- df_medicaid2 %>% 
-  rename(county=location) %>%
-  mutate(region = case_when(
-  county=="Divide" | county=="McKenzie" | county=="Williams" ~
-    "Planning Region 1",
-  county=="Bottineau" | county=="Burke" | county=="McHenry" | 
-    county=="Mountrail" | county=="Pierce" | county=="Pierce" | 
-    county=="Renville" | county=="Ward" ~ "Planning Region 2",
-  county=="Benson" | county=="Cavalier" | county=="Eddy" | 
-    county=="Ramsey" | county=="Rolette" | county=="Towner"~
-    "Planning Region 3",
-  county=="Grand Forks" | county=="Nelson" | county=="Pembina" | 
-    county=="Walsh" ~ "Planning Region 4",
-  county=="Cass" | county=="Ransom" | county=="Richland" | 
-    county=="Sargent" | county=="Steele" | county=="Traill" ~ 
-    "Planning Region 5",
-  county=="Barnes"| county=="Dickey" | county=="Foster" | 
-    county=="Griggs" | county=="LaMoure" | county=="Logan" | 
-    county=="McIntosh" | county=="Stutsman" | county=="Wells" ~ 
-    "Planning Region 6",
-  county=="Burleigh" | county=="Emmons" | county=="Grant" | 
-    county=="Kidder" | county=="McLean" | county=="Mercer" | 
-    county=="Morton" | county=="Oliver" | county=="Sheridan" |
-    county=="Sioux" ~ "Planning Region 7",
-  county=="Adams" | county=="Billings" | county=="Bowman" | 
-    county=="Dunn" | county=="Golden Valley" | county=="Hettinger" | 
-    county=="Slope" | county=="Stark" ~ "Planning Region 8"
-))
+  left_join(regionids,by=c('location'='county')) %>%
+  select(-c(location)) %>%
+  rename(location=region) %>%
+  
+  group_by(location,state,dataformat,timeframe,varname) %>%
+  summarise(data=sum(data),.groups='keep') %>%
+  mutate(locationtype='Planning Region') 
 
-df_medicaid_regions2 <- df_medicaid_regions %>%
-  group_by(region) %>%
-  summarise(data=sum(data)) %>%
-  mutate(location=region) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(timeframe='2019') %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='medicaidages0to20') %>%
-  mutate(state='North Dakota') %>%
-  select(-c(region))
 
 #union all three datasets together and add location ID
 medicaidages0to20 <- df_medicaid2 %>%
   bind_rows(df_medicaid_state) %>%
-  bind_rows(df_medicaid_regions2) %>%
+  bind_rows(df_medicaid_regions) %>%
   left_join(locationids,by=c('location'='Location')) %>%
   rename(locationid=LocationId)
   
  
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
 
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(medicaidages0to20$locationid))>=1) {
+  print(medicaidages0to20$location[is.na(medicaidages0to20$locationid)])
+} else if (sum(is.na(medicaidages0to20$locationid))==0) {
+  'all locations match'
+}
+
+
+# 2. Visually inspect output data
+View(medicaidages0to20)
 ```
 
 ```{r}
 #add to database count of medicaidages0to20
 dbWriteTable(con,'northdakota',medicaidages0to20,append=TRUE,row.names=FALSE)
-
 ```
 
 ```{r}
@@ -494,14 +591,21 @@ dbWriteTable(con,'northdakota',medicaidages0to20,append=TRUE,row.names=FALSE)
 
 #create dataset that has population merged with geography for 0 to 20 year olds
 #population is for the beginning of the FY, which is minus 1 from the year that is reported
-pop0_20 <- dbGetQuery(con,"SELECT locationid,location,age_group,data
+medicaid_pop_sql <- paste0("SELECT locationid,location,age_group,data
                      FROM northdakota
-                     WHERE timeframe = '2018' AND varname = 'nchspopulationbysingleyearofage' AND (age_group='0' OR age_group='1' OR age_group='2' OR age_group='3' OR age_group='4' OR age_group='5' OR age_group='6' OR age_group='7' OR age_group='8' OR age_group='9' OR age_group='10' OR age_group='11' OR age_group='12' OR age_group='13' OR age_group='14' OR age_group='15' OR age_group='16' OR age_group='17' OR age_group='18' OR age_group='19' OR age_group='20') ;")
+                     WHERE timeframe = '",year_minus1,"' AND vintageyear='",year_minus1,"' AND varname = 'childpopulationbysingleyearofage';")
+
+
+
+pop0_20 <- dbGetQuery(con,medicaid_pop_sql) %>%
+  mutate(age_group=as.numeric(paste(age_group))) %>%
+  subset(age_group<=20) %>%
+  mutate(data=as.numeric(paste(data)))
 
 #sum the population across all age groups 0 to 20
 pop0_20_sums <- pop0_20 %>%
   group_by(location) %>%
-  summarise(total_pop=sum(data))
+  summarise(total_pop=sum(data),.groups='keep')
 
 #merge population with snap data
 medicaid_percent <- medicaidages0to20 %>%
@@ -509,98 +613,128 @@ medicaid_percent <- medicaidages0to20 %>%
   mutate(percent_medicaid=(data/total_pop)) %>%
   select(-c(data,total_pop)) %>%
   rename(data=percent_medicaid) %>%
-  mutate(dataformat='Percent')
+  mutate(dataformat='Percent') %>%
+  mutate(data=if_else(data>1,1,data))
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(medicaid_percent$locationid))>=1) {
+  print(medicaid_percent$location[is.na(medicaid_percent$locationid)])
+} else if (sum(is.na(medicaid_percent$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- medicaid_percent %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+
+# 3. Visually inspect output data
+View(medicaid_percent)
 ```
 
 ```{r}
 #add to database percent of medicaidages0to20
 dbWriteTable(con,'northdakota',medicaid_percent,append=TRUE,row.names=FALSE)
+```
 
+```{r}
+#write query from database to get needed format for KC data center
+#COUNT AND PERCENT OF MEDICAID
+
+upload_data_medicaid_sql <- paste0("SELECT locationid,location,timeframe,dataformat,data
+                     FROM northdakota
+                     WHERE timeframe = '",year,"' AND varname = 'medicaidages0to20';")
+upload_data_medicaid <- dbGetQuery(con,upload_data_medicaid_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_medicaid,file=paste0("./Output/economics/",state,"_",year,"_medicaidages0to20.csv"),row.names=FALSE)
 ```
 
 
+
+## -- HEALTHY STEPS -- ##
 
 ```{r}
 #FOR HEALTHY STEPS
 #clean the county data
 df_healthysteps2 <- df_healthysteps %>%
-  rename(location=county) %>%
+  rename(location=`...2`) %>%
+  subset(!is.na(location)) %>%
   rename(zerotofive='0-5') %>%
   rename(sixtonineteen='6-19') %>%
   mutate(locationtype='County') %>%
   mutate(state='North Dakota') %>%
   mutate(data=(zerotofive+sixtonineteen)) %>%
   mutate(dataformat='Number') %>%
-  mutate(timeframe='2019') %>%
+  mutate(timeframe=all_of(year)) %>%
   mutate(varname='healthystepsages0to18') %>%
-  select(-c(zerotofive,sixtonineteen))
+  select(-c(zerotofive,sixtonineteen,`...1`,`...3`))
+
 
 #create state summary
 df_healthysteps_state <- df_healthysteps2 %>%
-  group_by(state) %>%
-  summarise(data=sum(data)) %>%
-  mutate(location='North Dakota') %>%
-  mutate(locationtype='State') %>%
-  mutate(timeframe='2019') %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='healthystepsages0to18')
+  group_by(state,timeframe,dataformat,varname) %>%
+  summarise(data=sum(data),.groups='keep') %>%
+  mutate(location='North Dakota',
+         locationtype='State') 
 
 #create region summaries
 df_healthysteps_regions <- df_healthysteps2 %>%
-  rename(county=location) %>%
-  mutate(region = case_when(
-  county=="Divide" | county=="McKenzie" | county=="Williams" ~
-    "Planning Region 1",
-  county=="Bottineau" | county=="Burke" | county=="McHenry" | 
-    county=="Mountrail" | county=="Pierce" | county=="Pierce" | 
-    county=="Renville" | county=="Ward" ~ "Planning Region 2",
-  county=="Benson" | county=="Cavalier" | county=="Eddy" | 
-    county=="Ramsey" | county=="Rolette" | county=="Towner"~
-    "Planning Region 3",
-  county=="Grand Forks" | county=="Nelson" | county=="Pembina" | 
-    county=="Walsh" ~ "Planning Region 4",
-  county=="Cass" | county=="Ransom" | county=="Richland" | 
-    county=="Sargent" | county=="Steele" | county=="Traill" ~ 
-    "Planning Region 5",
-  county=="Barnes"| county=="Dickey" | county=="Foster" | 
-    county=="Griggs" | county=="LaMoure" | county=="Logan" | 
-    county=="McIntosh" | county=="Stutsman" | county=="Wells" ~ 
-    "Planning Region 6",
-  county=="Burleigh" | county=="Emmons" | county=="Grant" | 
-    county=="Kidder" | county=="McLean" | county=="Mercer" | 
-    county=="Morton" | county=="Oliver" | county=="Sheridan" |
-    county=="Sioux" ~ "Planning Region 7",
-  county=="Adams" | county=="Billings" | county=="Bowman" | 
-    county=="Dunn" | county=="Golden Valley" | county=="Hettinger" | 
-    county=="Slope" | county=="Stark" ~ "Planning Region 8"
-))
+  left_join(regionids,by=c('location'='county')) %>%
+  select(-c(location)) %>%
+  rename(location=region) %>%
+  
+  group_by(location,state,dataformat,timeframe,varname) %>%
+  summarise(data=sum(data),.groups='keep') %>%
+  mutate(locationtype='Planning Region') 
 
-df_healthysteps_regions2 <- df_healthysteps_regions %>%
-  group_by(region) %>%
-  summarise(data=sum(data)) %>%
-  mutate(location=region) %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(timeframe='2019') %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='healthystepsages0to18') %>%
-  mutate(state='North Dakota') %>%
-  select(-c(region))
 
 #union all three datasets together and add location ID
 healthystepsages0to18 <- df_healthysteps2 %>%
   bind_rows(df_healthysteps_state) %>%
-  bind_rows(df_healthysteps_regions2) %>%
+  bind_rows(df_healthysteps_regions) %>%
   left_join(locationids,by=c('location'='Location')) %>%
   rename(locationid=LocationId)
   
  
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
 
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(healthystepsages0to18$locationid))>=1) {
+  print(healthystepsages0to18$location[is.na(healthystepsages0to18$locationid)])
+} else if (sum(is.na(healthystepsages0to18$locationid))==0) {
+  'all locations match'
+}
+
+
+# 2. Visually inspect output data
+View(healthystepsages0to18)
 ```
 
 ```{r}
 #add to database count of healthystepsages0to18
 dbWriteTable(con,'northdakota',healthystepsages0to18,append=TRUE,row.names=FALSE)
-
 ```
 
 ```{r}
@@ -616,111 +750,48 @@ healthysteps_percent <- healthystepsages0to18 %>%
   select(-c(data,total_pop)) %>%
   rename(data=percent_healthysteps) %>%
   mutate(dataformat='Percent')
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(healthysteps_percent$locationid))>=1) {
+  print(healthysteps_percent$location[is.na(healthysteps_percent$locationid)])
+} else if (sum(is.na(healthysteps_percent$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- healthysteps_percent %>%
+  subset(dataformat=='Percent' & data>1)
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+
+# 3. Visually inspect output data
+View(healthysteps_percent)
 ```
 
 ```{r}
 #add to database percent of healthystepsages0to18
 dbWriteTable(con,'northdakota',healthysteps_percent,append=TRUE,row.names=FALSE)
-
 ```
-
-
-```{r}
-#write query from database to get needed format for KC data center
-#COUNT AND PERCENT OF SNAP
-
-upload_data_snap <- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data
-                     FROM northdakota
-                     WHERE timeframe = '2019' AND varname = 'snapages0to18';")
-
-upload_data_snap2 <- upload_data_snap %>%
-  rename(LocationId=locationid,
-         Location=location,
-         TimeFrame=timeframe,
-         DataFormat=dataformat,
-         Data=data)
-
-
-#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
-write.csv(upload_data_snap2,file=paste0("./Output/economics/",state,"_",year,"_snapages0to18.csv"),row.names=FALSE)
-
-```
-
-```{r}
-#write query from database to get needed format for KC data center
-#COUNT AND PERCENT OF TANF
-
-upload_data_tanf <- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data
-                     FROM northdakota
-                     WHERE timeframe = '2019' AND varname = 'tanfages0to19';")
-
-upload_data_tanf2 <- upload_data_tanf %>%
-  rename(LocationId=locationid,
-         Location=location,
-         TimeFrame=timeframe,
-         DataFormat=dataformat,
-         Data=data)
-
-
-#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
-write.csv(upload_data_tanf2,file=paste0("./Output/economics/",state,"_",year,"_tanfages0to19.csv"),row.names=FALSE)
-
-```
-
-
-```{r}
-#write query from database to get needed format for KC data center
-#COUNT AND PERCENT OF CCAP
-
-upload_data_ccap <- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data
-                     FROM northdakota
-                     WHERE timeframe = '2019' AND varname = 'ccapages0to13';")
-
-upload_data_ccap2 <- upload_data_ccap %>%
-  rename(LocationId=locationid,
-         Location=location,
-         TimeFrame=timeframe,
-         DataFormat=dataformat,
-         Data=data)
-
-
-#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
-write.csv(upload_data_ccap2,file=paste0("./Output/economics/",state,"_",year,"_ccapages0to13.csv"),row.names=FALSE)
-
-```
-
-
-```{r}
-#write query from database to get needed format for KC data center
-#COUNT AND PERCENT OF MEDICAID
-
-upload_data_medicaid <- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data
-                     FROM northdakota
-                     WHERE timeframe = '2019' AND varname = 'medicaidages0to20';")
-
-upload_data_medicaid2 <- upload_data_medicaid %>%
-  rename(LocationId=locationid,
-         Location=location,
-         TimeFrame=timeframe,
-         DataFormat=dataformat,
-         Data=data)
-
-
-#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
-write.csv(upload_data_medicaid2,file=paste0("./Output/economics/",state,"_",year,"_medicaidages0to20.csv"),row.names=FALSE)
-
-```
-
 
 ```{r}
 #write query from database to get needed format for KC data center
 #COUNT AND PERCENT OF HEALTHY STEPS
 
-upload_data_healthysteps <- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data
+upload_data_healthysteps_sql <- paste0("SELECT locationid,location,timeframe,dataformat,data
                      FROM northdakota
-                     WHERE timeframe = '2019' AND varname = 'healthystepsages0to18';")
-
-upload_data_healthysteps2 <- upload_data_healthysteps %>%
+                     WHERE timeframe = '",year,"' AND varname = 'healthystepsages0to18';")
+upload_data_healthysteps <- dbGetQuery(con,upload_data_healthysteps_sql) %>%
   rename(LocationId=locationid,
          Location=location,
          TimeFrame=timeframe,
@@ -729,8 +800,5 @@ upload_data_healthysteps2 <- upload_data_healthysteps %>%
 
 
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
-write.csv(upload_data_healthysteps2,file=paste0("./Output/economics/",state,"_",year,"_healthystepsages0to18.csv"),row.names=FALSE)
-
+write.csv(upload_data_healthysteps,file=paste0("./Output/economics/",state,"_",year,"_healthystepsages0to18.csv"),row.names=FALSE)
 ```
-
-
