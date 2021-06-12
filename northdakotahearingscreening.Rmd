@@ -43,7 +43,7 @@ library(readxl)
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 statename <- "North Dakota"
-year <- "2019"
+year <- "2020"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -62,89 +62,99 @@ regionids$region <- as.character(regionids$region)
 
 ```{r}
 #import the data for both indicators
-hearingdata <- read_excel(path=paste0("/Users/xannaburg/Documents/KidsCountData/Input/health/northdakota_",year,"_newbornscreeningdata.xlsx"),sheet='data')
+hearingdata <- read_excel(path=paste0("/Users/xannaburg/Documents/KidsCountData/Input/health/northdakota_",year,"_newbornscreeningdata.xlsx"),sheet=paste0(year),skip=6) %>%
+  
+  #rename columns
+  rename(location=`North Dakota Counties`,
+         totalbirths=`...14`,
+         totalscreened=`Number...15`,
+         percentscreened=`Percent of total births...16`,
+         totalfailed=`Number...17`,
+         percentfailed=`Percent of total screened...18`) %>%
+  select(c(location,totalbirths,totalscreened,percentscreened,totalfailed,percentfailed)) %>%
+  
+  #remove state and state planning regions
+  subset(location!='Total For ND Counties:') %>%
+  subset(location!='Region 1' & location != 'Region 2' & location !='Region 3' & location !='Region 4' & location!='Region 5' & location !='Region 6' & location !='Region 7' & location !='Region 8') %>%
+  subset(!is.na(location)) %>%
+  
+  mutate(totalscreened=as.numeric(paste(totalscreened)))
 ```
 
 
-## ################################################################# ##
-## NEWBORNS BORN AT A MEDICAL FACILITY RECEIVING A HEARING SCREENING ##
-## ################################################################# ##
 
 ## STEP 1: CLEAN THE DATA
 ```{r}
 ############
-#COUNTY DATA
-screening_county <- hearingdata %>%
-  subset(location!='Total For ND Counties:' & location!='Region 1' & 
-           location!='Region 2' & location!='Region 3' & location!='Region 4' &
-           location!='Region 5' & location!='Region 6' & location!='Region 7' &
-           location!='Region 8') %>%
-  select(c(location,totalscreened,percentscreened)) %>%
-  
-  #add in kids count variables
-  mutate(state='North Dakota') %>%
-  mutate(locationtype='County') %>%
-  mutate(timeframe=year) %>%
-  mutate(varname='newbornshearingscreeningfacility')
-
-
-###########
-#STATE DATA
-screening_state <- hearingdata %>%
-  subset(location=='Total For ND Counties:') %>%
-  select(c(location,totalscreened,percentscreened)) %>%
-  
-  #add in kids count variables
-  mutate(location='North Dakota') %>%
-  mutate(state='North Dakota') %>%
-  mutate(locationtype='State') %>%
-  mutate(timeframe=year) %>%
-  mutate(varname='newbornshearingscreeningfacility')
+#COUNTY TOTALS
+hearing_county <- hearingdata %>%
+  mutate(locationtype='County')
 
 ############
-#REGION DATA
-screening_region <- hearingdata %>%
-  subset(location=='Region 1' | 
-           location=='Region 2' | location=='Region 3' | location=='Region 4' |
-           location=='Region 5' | location=='Region 6' | location=='Region 7' |
-           location=='Region 8') %>%
-  select(c(location,totalscreened,percentscreened)) %>%
+#STATE TOTALS 
+hearing_state <- hearingdata %>%
+  mutate(location='North Dakota') %>%
+  group_by(location) %>%
+  summarise(totalbirths=sum(totalbirths),
+            totalscreened=sum(totalscreened),
+            totalfailed=sum(totalfailed)) %>%
+  ungroup %>%
+  mutate(percentscreened=totalscreened/totalbirths) %>%
+  mutate(percentfailed=totalfailed/totalscreened) %>%
+  mutate(locationtype='State')
+
+
+############
+#REGION TOTALS 
+hearing_region <- hearingdata %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise(totalbirths=sum(totalbirths),
+            totalscreened=sum(totalscreened),
+            totalfailed=sum(totalfailed)) %>%
+  ungroup %>%
+  rename(location=region) %>%
+  mutate(percentscreened=totalscreened/totalbirths) %>%
+  mutate(percentfailed=totalfailed/totalscreened) %>%
+  mutate(locationtype='Planning Region')
   
-  #rename region to KC designation
-  rename(region=location) %>%
-  mutate(location=case_when(
-    region=='Region 1' ~ 'Planning Region 1',
-    region=='Region 2' ~ 'Planning Region 2',
-    region=='Region 3' ~ 'Planning Region 3',
-    region=='Region 4' ~ 'Planning Region 4',
-    region=='Region 5' ~ 'Planning Region 5',
-    region=='Region 6' ~ 'Planning Region 6',
-    region=='Region 7' ~ 'Planning Region 7',
-    region=='Region 8' ~ 'Planning Region 8')) %>%
-  select(-c(region)) %>%
+
+###COMBINE ALL DATA
+hearing_all <- hearing_county %>%
+  bind_rows(hearing_state) %>%
+  bind_rows(hearing_region) %>%
   
   #add in kids count variables
   mutate(state='North Dakota') %>%
-  mutate(locationtype='Planning Region') %>%
   mutate(timeframe=year) %>%
-  mutate(varname='newbornshearingscreeningfacility')
-
-###########################################
-#COMBINE STATE, COUNTY, AND PLANNING REGION
-screening <- screening_county %>%
-  bind_rows(screening_state) %>%
-  bind_rows(screening_region) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
   
-  #convert from wide to long
+  #suppress if less than 6
+  mutate(totalscreened=replace(totalscreened,totalscreened<6,'<6')) %>%
+  mutate(percentscreened=replace(percentscreened,totalscreened=='<6','NA')) %>%
+  mutate(totalfailed=replace(totalfailed,totalfailed<6,'<6')) %>%
+  mutate(percentfailed=replace(percentfailed,totalfailed=='<6','NA')) 
+
+  
+
+##SEPARATE OUT VARIABLES
+screening <- hearing_all %>%
+  select(-c(totalbirths,totalfailed,percentfailed)) %>%
   rename(Number=totalscreened,
          Percent=percentscreened) %>%
-  mutate(Percent=as.character(paste(Percent))) %>%
-  pivot_longer(cols=c(Number,Percent),
-               names_to='dataformat',values_to='data') %>%
+  pivot_longer(cols=c(Number,Percent),names_to='dataformat',values_to='data') %>%
+   
+  mutate(varname='newbornshearingscreeningfacility')
   
-  #add in locationids
-  left_join(locationids,by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
+failed <- hearing_all %>%
+  select(-c(totalbirths,totalscreened,percentscreened)) %>%
+  rename(Number=totalfailed,
+         Percent=percentfailed) %>%
+  pivot_longer(cols=c(Number,Percent),names_to='dataformat',values_to='data') %>%
+   
+  mutate(varname='newbornshearingscreeningfail')
+
 
 
 
@@ -160,6 +170,13 @@ if (sum(is.na(screening$locationid))>=1) {
   'all locations match'
 }
 
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(failed$locationid))>=1) {
+  print(failed$location[is.na(failed$locationid)])
+} else if (sum(is.na(failed$locationid))==0) {
+  'all locations match'
+}
+
 # 2. Output cases where percent data is greater than 1
 temp_percheck <- screening %>%
   subset(dataformat=='Percent' & data>1 & is.na(data))
@@ -171,8 +188,19 @@ if (temp_rows==0) {
   print(temp_percheck)
 }
 
+temp_percheck2 <- failed %>%
+  subset(dataformat=='Percent' & data>1 & is.na(data))
+temp_rows2 <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows2==0) {
+  'no percents greater than 1'
+} else if (temp_rows2>=1) {
+  print(temp_percheck2)
+}
+
 # 3. Visually inspect output data
 View(screening)
+View(failed)
 ```
 
 ## STEP 2: ADD TO DATABASE
@@ -181,6 +209,7 @@ View(screening)
 #this code adds kids count data to MBPC postgres database
 #run postgres code (separate file) first
 dbWriteTable(con,'northdakota',screening,append=TRUE,row.names=FALSE)
+dbWriteTable(con,'northdakota',failed,append=TRUE,row.names=FALSE)
 ```
 
 ## STEP 3: OUTPUT DATASET FOR UPLOADING TO KC DATA CENTER
@@ -202,126 +231,6 @@ write.csv(upload_data,file=paste0("./Output/health/northdakota_",year,"_newborns
 
 ```
 
-
-
-## ############################################### ##
-## NEWBORNS WHO DID NOT PASS THE HEARING SCREENING ##
-## ############################################### ##
-
-## STEP 1: CLEAN THE DATA
-```{r}
-############
-#COUNTY DATA
-failed_county <- hearingdata %>%
-  subset(location!='Total For ND Counties:' & location!='Region 1' & 
-           location!='Region 2' & location!='Region 3' & location!='Region 4' &
-           location!='Region 5' & location!='Region 6' & location!='Region 7' &
-           location!='Region 8') %>%
-  select(c(location,totalfailed,percentfailed)) %>%
-  
-  #add in kids count variables
-  mutate(state='North Dakota') %>%
-  mutate(locationtype='County') %>%
-  mutate(timeframe=year) %>%
-  mutate(varname='newbornshearingscreeningfail')
-
-
-###########
-#STATE DATA
-failed_state <- hearingdata %>%
-  subset(location=='Total For ND Counties:') %>%
-  select(c(location,totalfailed,percentfailed)) %>%
-  
-  #add in kids count variables
-  mutate(location='North Dakota') %>%
-  mutate(state='North Dakota') %>%
-  mutate(locationtype='State') %>%
-  mutate(timeframe=year) %>%
-  mutate(varname='newbornshearingscreeningfail')
-
-############
-#REGION DATA
-failed_region <- hearingdata %>%
-  subset(location=='Region 1' | 
-           location=='Region 2' | location=='Region 3' | location=='Region 4' |
-           location=='Region 5' | location=='Region 6' | location=='Region 7' |
-           location=='Region 8') %>%
-  select(c(location,totalfailed,percentfailed)) %>%
-  
-  #rename region to KC designation
-  rename(region=location) %>%
-  mutate(location=case_when(
-    region=='Region 1' ~ 'Planning Region 1',
-    region=='Region 2' ~ 'Planning Region 2',
-    region=='Region 3' ~ 'Planning Region 3',
-    region=='Region 4' ~ 'Planning Region 4',
-    region=='Region 5' ~ 'Planning Region 5',
-    region=='Region 6' ~ 'Planning Region 6',
-    region=='Region 7' ~ 'Planning Region 7',
-    region=='Region 8' ~ 'Planning Region 8')) %>%
-  select(-c(region)) %>%
-  
-  #add in kids count variables
-  mutate(state='North Dakota') %>%
-  mutate(locationtype='Planning Region') %>%
-  mutate(timeframe=year) %>%
-  mutate(varname='newbornshearingscreeningfail')
-
-###########################################
-#COMBINE STATE, COUNTY, AND PLANNING REGION
-failed <- failed_county %>%
-  bind_rows(failed_state) %>%
-  bind_rows(failed_region) %>%
-  
-  #convert from wide to long
-  rename(Number=totalfailed,
-         Percent=percentfailed) %>%
-  mutate(Percent=as.character(paste(Percent))) %>%
-  pivot_longer(cols=c(Number,Percent),
-               names_to='dataformat',values_to='data') %>%
-  
-  #add in locationids
-  left_join(locationids,by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
-
-
-
-####################
-####################
-#DATA QUALITY CHECKS
-### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
-
-# 1. Print name of location that has a mismatched location ID
-if (sum(is.na(failed$locationid))>=1) {
-  print(failed$location[is.na(failed$locationid)])
-} else if (sum(is.na(failed$locationid))==0) {
-  'all locations match'
-}
-
-# 2. Output cases where percent data is greater than 1
-temp_percheck <- failed %>%
-  subset(dataformat=='Percent' & data>1 & is.na(data))
-temp_rows <- as.numeric(nrow(temp_percheck))
-
-if (temp_rows==0) {
-  'no percents greater than 1'
-} else if (temp_rows>=1) {
-  print(temp_percheck)
-}
-
-# 3. Visually inspect output data
-View(failed)
-```
-
-## STEP 2: ADD TO DATABASE
-```{r}
-#CHECK DATASET NAMED failed TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
-#this code adds kids count data to MBPC postgres database
-#run postgres code (separate file) first
-dbWriteTable(con,'northdakota',failed,append=TRUE,row.names=FALSE)
-```
-
-## STEP 3: OUTPUT DATASET FOR UPLOADING TO KC DATA CENTER
 ```{r}
 #########################
 ##OUTPUT DATA CENTER FILE
