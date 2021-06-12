@@ -131,9 +131,9 @@ hearing_all <- hearing_county %>%
   rename(locationid=LocationId) %>%
   
   #suppress if less than 6
-  mutate(totalscreened=replace(totalscreened,totalscreened<6,'<6')) %>%
+  mutate(totalscreened=replace(totalscreened,totalscreened<6 & totalscreened>0,'<6')) %>%
   mutate(percentscreened=replace(percentscreened,totalscreened=='<6','NA')) %>%
-  mutate(totalfailed=replace(totalfailed,totalfailed<6,'<6')) %>%
+  mutate(totalfailed=replace(totalfailed,totalfailed<6 & totalfailed>0,'<6')) %>%
   mutate(percentfailed=replace(percentfailed,totalfailed=='<6','NA')) 
 
   
