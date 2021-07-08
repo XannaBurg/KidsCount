@@ -1,0 +1,2370 @@
+---
+title: "North Dakota Education"
+author: "Xanna Burg"
+date: "June 2020"
+output: html_document
+---
+
+This code creates the indicators that represent the prior school year, as requested in Spring of the current year.
+
+## Indicator 1: Students who are homeless
+## Indicator 2: Average daily membership of public schools
+## Indicator 3: Average expenditures per student in public schools
+## Indicator 4: Four-year high school cohort graduation rate
+## Indicator 5: Grades 7 to 12 event drop-out rate
+## Indicator 6: Third graders who scored at or above proficient on statewide reading assessment (1-year totals)
+## Indicator 7: Third graders who scored at or above proficient on statewide reading assessment (3-year totals)
+
+
+**Created by:** Xanna Burg
+**Date:** June 2020
+**Updated by:**
+
+**Data Source:** North Dakota Department of Public Instruction
+**Purpose:** Import DPI data, clean data, and output dataset to upload to KIDS COUNT Data Center.
+
+**Data format:** Final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Category (character), Data (numeric: number, percentage), DataFormat (character: "number" or "percent"), LocationId (numeric: assigned for KIDS COUNT system)
+
+
+**To use this code for a new year:**
+* Update the year in the second code chunk for variable 'year'
+* Manually enter the statewide data (from PDF)
+* Check each dataset visually and through the report logs prior to commiting to the database.
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+library(stringr)
+```
+
+```{r}
+####UPDATE to reflect the current year data working with
+year <- '19-20'
+fullyear <- '2019/20' 
+#fiscal year is the spring of reference school year
+fiscalyear <- '2020'
+
+
+statefile <- 'northdakota'
+statename <- 'North Dakota'
+
+#input location ID file for ND
+locationids <- read.csv("./Input/ND KC Location IDs.csv")
+locationids$Location <- as.character(locationids$Location)
+
+#input region ID file for ND
+regionids <- read.csv("./Input/ND KC Region List.csv")
+regionids$county <- as.character(regionids$county)
+
+#import the lookup table for county name
+countyids <- read.csv("./Documentation/Indicator Documentation/North Dakota Data Requests/ND County Codes.csv")
+
+#input the lookup table for schools on reservations
+tribalschools <- read.csv("./Documentation/Indicator Documentation/North Dakota Data Requests/ND schools on reservations.csv",colClasses=c(id_nodash="character"))
+tribalschools$schoolname <- as.character(tribalschools$schoolname)
+tribalschools$id_dash <- as.character(paste((tribalschools$id_dash)))
+
+```
+
+
+
+## STUDENTS WHO ARE HOMELESS ##
+
+STEP 1: IMPORT AND CLEAN DATA
+```{r}
+#import data
+homeless_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Homeless_",year,".xlsx")) %>%
+  #rename columns removing year
+  rename(denominator=all_of(paste0("20",year," Denominator")),
+         numerator=all_of(paste0("20",year," Homeless")))
+
+
+############
+#COUNTY DATA
+homeless_county <- homeless_data %>%
+  
+  separate(EntityID,c('county','district'),sep="-") %>%
+  mutate(county=as.numeric(paste(county))) %>%
+  
+  #import county name
+  left_join(countyids,by=c("county"="ndcounty_number")) %>%
+
+  #sum by county
+  group_by(ndcounty_name) %>%
+  summarise(homeless_number=sum(numerator),
+            totalenroll=sum(denominator),
+            homeless_percent=sum(numerator)/sum(denominator)) %>%
+  ungroup %>%
+
+  #add in locationtype
+  rename(location=ndcounty_name) %>%
+  mutate(location=as.character(paste(location))) %>%
+  mutate(locationtype='County')
+
+###########
+#STATE DATA
+#start with  cleaned county data
+homeless_state <- homeless_county %>%
+  mutate(location='North Dakota') %>%
+  group_by(location) %>%
+  summarise(homeless_number_state=sum(homeless_number),
+      totalenroll_state=sum(totalenroll),
+      homeless_percent=sum(homeless_number)/sum(totalenroll)) %>%
+  ungroup %>%
+  rename(homeless_number=homeless_number_state,
+         totalenroll=totalenroll_state) %>%
+
+  #add in locationtype
+  mutate(locationtype='State')
+
+############
+#REGION DATA
+#start with cleaned county data
+homeless_region <- homeless_county %>%
+  
+  #add in regions
+  mutate(location=as.character(paste(location))) %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise(homeless_number_region=sum(homeless_number),
+      totalenroll_region=sum(totalenroll),
+      homeless_percent=sum(homeless_number)/sum(totalenroll)) %>%
+  ungroup %>%
+  rename(homeless_number=homeless_number_region,
+         totalenroll=totalenroll_region) %>%
+
+  
+  #add in locationtype
+  rename(location=region) %>%
+  mutate(location=as.character(paste(location))) %>%
+  mutate(locationtype='Planning Region')
+
+
+#################
+#TRIBAL AREA DATA
+#format tribal lookup table with county and dsitrict id only
+tribalschools_updated <- tribalschools %>%
+  separate(id_dash,c('county','district','school'),sep="-") %>%
+  distinct(county,district,.keep_all=TRUE)
+
+homeless_tribal <- homeless_data %>%
+  
+  separate(EntityID,c('county','district'),sep="-") %>%
+  
+  #import tribal name
+  left_join(tribalschools_updated,by=c('county'='county','district'='district')) %>%
+  subset(!is.na(tribalarea)) %>%
+
+
+  #sum by tribal area
+  group_by(tribalarea) %>%
+  summarise(homeless_number=sum(numerator),
+            totalenroll=sum(denominator),
+            homeless_percent=sum(numerator)/sum(denominator)) %>%
+  ungroup %>%
+  
+
+  #add in locationtype
+  rename(location=tribalarea) %>%
+  mutate(location=as.character(paste(location))) %>%
+  mutate(locationtype='Tribal Area')
+  
+  
+######################## 
+#combine all geographies
+homeless_all <- homeless_county %>%
+  bind_rows(homeless_state) %>%
+  bind_rows(homeless_region) %>%
+  bind_rows(homeless_tribal) %>%
+  
+  mutate(state='North Dakota') %>%
+  mutate(varname='studentshomeless') %>%
+  
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  mutate(timeframe=fullyear) %>%
+  
+  #create indicators to suppress data
+
+  #supress if denominator is less than 10
+  mutate(suppress_denominator=if_else(totalenroll<10 | is.na(totalenroll),1,0)) %>%
+ 
+  #suppress percentages of 0-1 if more than 300 in denominator
+  mutate(suppress_0to1_300=if_else(totalenroll>300 & homeless_percent<=.01,1,0)) %>%
+  #suppress percentages of 99-100 if more than 300 in denominator
+  mutate(suppress_99to100_300=if_else(totalenroll>300 & homeless_percent>=.99,1,0)) %>%
+
+  
+  #suppress percentages of 0-2 if between 101 to 300 in denominator
+  mutate(suppress_0to2_101=if_else((totalenroll>100 & totalenroll<=300) & 
+                                     homeless_percent<=0.02,1,0)) %>%
+  #suppress percentages of 98-100 if between 101 to 300 in denominator
+  mutate(suppress_98to100_101=if_else((totalenroll>100 & totalenroll<=300) & 
+                                     homeless_percent>=0.98,1,0)) %>%
+  
+  #suppress percentages of 0-5 if between 41 to 100 in denominator
+  mutate(suppress_0to5_41=if_else((totalenroll>40 & totalenroll<=100) & 
+                                     homeless_percent<=0.05,1,0)) %>%
+  #suppress percentages of 95-100 if between 41 to 100 in denominator
+  mutate(suppress_95to100_41=if_else((totalenroll>40 & totalenroll<=100) & 
+                                     homeless_percent>=0.95,1,0)) %>%
+  
+  #suppress percentages of 0-10 if between 21 to 40 in denominator
+  mutate(suppress_0to10_21=if_else((totalenroll>20 & totalenroll<=40) & 
+                                     homeless_percent<=0.10,1,0)) %>%
+  #suppress percentages of 90-100 if between 21 to 40 in denominator
+  mutate(suppress_90to100_21=if_else((totalenroll>20 & totalenroll<=40) & 
+                                     homeless_percent>=0.90,1,0)) %>%
+  
+  #suppress percentages of 0-20 if between 10 to 20 in denominator
+  mutate(suppress_0to20_10=if_else((totalenroll>=10 & totalenroll<=20) & 
+                                     homeless_percent<=0.20,1,0)) %>%
+  #suppress percentages of 80-100 if between 10 to 20 in denominator
+  mutate(suppress_80to100_10=if_else((totalenroll>=10 & totalenroll<=20) & 
+                                     homeless_percent>=0.80,1,0)) %>%
+  
+  #create updated percent and number based on suppression rules
+  mutate(homeless_percent=as.character(paste(homeless_percent))) %>%
+  mutate(homeless_percent_suppressed=case_when(
+    suppress_denominator==1 ~ 'NA',
+    suppress_0to1_300==1 ~ "<= 1%",
+    suppress_99to100_300==1 ~ ">= 99%",
+    suppress_0to2_101==1 ~ "<= 2%",
+    suppress_98to100_101==1 ~ ">= 98%",
+    suppress_0to5_41==1 ~ "<= 5%",
+    suppress_95to100_41==1 ~ ">= 95%",
+    suppress_0to10_21==1 ~ "<= 10%",
+    suppress_90to100_21==1 ~ ">= 90%",
+    suppress_0to20_10==1 ~ "<= 20%",
+    suppress_80to100_10==1 ~ ">= 80%",
+    suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
+      suppress_0to2_101==0 & suppress_98to100_101==0 & 
+      suppress_0to5_41==0 & suppress_95to100_41==0 & 
+      suppress_0to10_21==0 & suppress_90to100_21==0 & 
+      suppress_0to20_10==0 & suppress_80to100_10==0 ~ homeless_percent)) %>%
+  
+  mutate(homeless_number=as.character(paste(homeless_number))) %>%
+  mutate(homeless_number_suppressed=case_when(
+    suppress_denominator==1 | suppress_0to1_300==1 | suppress_99to100_300==1 | 
+    suppress_0to2_101==1 |  suppress_98to100_101==1 |  suppress_0to5_41==1 | 
+    suppress_95to100_41==1 | suppress_0to10_21==1 | suppress_90to100_21==1 | 
+    suppress_0to20_10==1 |   suppress_80to100_10==1 ~ 'NA',
+    suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
+      suppress_0to2_101==0 & suppress_98to100_101==0 & 
+      suppress_0to5_41==0 & suppress_95to100_41==0 & 
+      suppress_0to10_21==0 & suppress_90to100_21==0 & 
+      suppress_0to20_10==0 & suppress_80to100_10==0 ~ homeless_number)) %>%
+  
+  select(c(location,locationtype,locationid,state,timeframe,varname,homeless_number_suppressed,homeless_percent_suppressed)) %>%
+  
+  #change from wide to long
+  rename(Number=homeless_number_suppressed,
+         Percent=homeless_percent_suppressed) %>%
+  pivot_longer(cols=c(Number,Percent),names_to='dataformat',values_to='data')
+  
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(homeless_all$locationid))>=1) {
+  print(homeless_all$location[is.na(homeless_all$locationid)])
+} else if (sum(is.na(homeless_all$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- homeless_all %>%
+  subset(dataformat=='Percent' & data>1 & is.na(data))
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- homeless_all %>%
+  subset(locationtype=='County') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- homeless_all %>%
+#  subset(locationtype=='County') %>%
+#  arrange(data)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#homeless_all$data[homeless_all$location=='Billings'] <- NA
+
+
+# 4. Visually inspect output data
+View(homeless_all)
+
+```
+
+STEP 2: COMMIT TO DATABASE 
+```{r}
+#CHECK DATASET NAMED homeless_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,'northdakota',homeless_all,append=TRUE,row.names=FALSE)
+```
+
+STEP 3: OUTPUT DATASET FOR UPLOADING TO KC DATA CENTER
+```{r}
+#########################
+##OUTPUT DATA CENTER FILE
+
+datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",fullyear,"' AND varname='studentshomeless' AND (locationtype='State' OR locationtype='County' OR locationtype='Tribal Area');")
+
+upload_data <- dbGetQuery(con,datacenter_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_studentshomeless.csv"),row.names=FALSE)
+
+```
+
+
+
+
+
+## AVERAGE DAILY MEMBERSHIP OF PUBLIC SCHOOLS ##
+
+STEP 1: IMPORT THE FINANCIALS DATA
+```{r}
+#import data
+financials <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/FinancialData_",year,".csv"))
+
+
+############
+#COUNTY DATA
+adm_county <- financials %>%
+  subset(FY==fiscalyear) %>%
+  
+  #join county names
+  separate(Codist,into=c("county","district"),sep="-") %>%
+  mutate(county=as.numeric(paste(county))) %>%
+  left_join(countyids,by=c('county'='ndcounty_number')) %>%
+  
+  #change adm to numeric
+  mutate(ADMPK12=gsub(",","",ADMPK12)) %>%
+  mutate(ADMPK12=as.numeric(paste(ADMPK12))) %>%
+  
+  #group by and sum adm
+  group_by(ndcounty_name) %>%
+  summarise(data=sum(ADMPK12,na.rm=TRUE)) %>%
+  ungroup %>%
+  
+  rename(location=ndcounty_name) %>%
+  mutate(location=as.character(paste(location))) %>%
+  mutate(locationtype='County')
+
+############
+#STATE DATA
+adm_state <- adm_county %>%
+  
+ mutate(location='North Dakota') %>%
+  
+  #group by and sum adm
+  group_by(location) %>%
+  summarise(data=sum(data,na.rm=TRUE)) %>%
+  ungroup %>%
+  
+  mutate(locationtype='State') 
+
+############
+#REGION DATA
+adm_region <- adm_county %>%
+  
+  #merge in region ids
+  left_join(regionids,by=c('location'='county')) %>%
+  
+  #group by and sum adm
+  group_by(region) %>%
+  summarise(data=sum(data,na.rm=TRUE)) %>%
+  ungroup %>%
+  
+  rename(location=region) %>%
+  mutate(location=as.character(paste(location))) %>%
+  mutate(locationtype='Planning Region')
+
+
+############
+#TRIBAL DATA
+tribalschools_updated <- tribalschools %>%
+  separate(id_dash,into=c('codist','school'),sep=6) %>%
+  distinct(codist,.keep_all=TRUE)
+
+
+adm_tribal <- financials %>%
+  subset(FY==fiscalyear) %>%
+  
+  #join tribal names
+  mutate(Codist=as.character(paste(Codist))) %>%
+  left_join(tribalschools_updated,by=c('Codist'='codist')) %>%
+  subset(!is.na(tribalarea)) %>%
+  
+  #change adm to numeric
+  mutate(ADMPK12=gsub(",","",ADMPK12)) %>%
+  mutate(ADMPK12=as.numeric(paste(ADMPK12))) %>%
+  
+  #group by and sum adm
+  group_by(tribalarea) %>%
+  summarise(data=sum(ADMPK12,na.rm=TRUE)) %>%
+  ungroup %>%
+  
+  rename(location=tribalarea) %>%
+  mutate(location=as.character(paste(location))) %>%
+  mutate(locationtype='Tribal Area')
+
+
+######################## 
+#combine all geographies
+adm_all <- adm_county %>%
+  bind_rows(adm_state) %>%
+  bind_rows(adm_region) %>%
+  bind_rows(adm_tribal) %>%
+  
+  mutate(state='North Dakota') %>%
+  mutate(varname='avgdailystudentsperschool') %>%
+  mutate(timeframe=fullyear) %>%
+  
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  #create indicators to suppress data
+
+  #supress if denominator is less than 10
+  mutate(suppress_denominator=if_else(data<10 | is.na(data),1,0)) %>%
+ 
+  
+  mutate(data=as.character(paste(data))) %>%
+  mutate(data=case_when(
+    suppress_denominator==1  ~ 'NA',
+    suppress_denominator==0 ~ data)) %>%
+  
+  select(c(location,locationtype,locationid,state,timeframe,varname,data)) %>%
+
+  mutate(dataformat='Number')
+  
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(adm_all$locationid))>=1) {
+  print(adm_all$location[is.na(adm_all$locationid)])
+} else if (sum(is.na(adm_all$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Visually inspect output data
+View(adm_all)
+
+
+```
+
+STEP 2: COMMIT TO DATABASE 
+```{r}
+#CHECK DATASET NAMED adm_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,'northdakota',adm_all,append=TRUE,row.names=FALSE)
+```
+
+STEP 3: OUTPUT DATASET FOR UPLOADING TO KC DATA CENTER
+```{r}
+#########################
+##OUTPUT DATA CENTER FILE
+
+datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",fullyear,"' AND varname='avgdailystudentsperschool';")
+
+upload_data <- dbGetQuery(con,datacenter_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_avgdailystudentsperschool.csv"),row.names=FALSE)
+
+```
+
+
+
+
+
+## AVERAGE EXPENDITURES PER STUDENT IN PUBLIC SCHOOLS ##
+
+STEP 1: IMPORT THE FINANCIALS DATA
+```{r}
+#import data
+financials <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/FinancialData_",year,".csv"))
+
+############
+#COUNTY DATA
+expend_county <- financials %>%
+  subset(FY==fiscalyear) %>%
+  
+  #join county names
+  separate(Codist,into=c("county","district"),sep="-") %>%
+  mutate(county=as.numeric(paste(county))) %>%
+  left_join(countyids,by=c('county'='ndcounty_number')) %>%
+  
+  #change adm to numeric
+  mutate(ADMPK12=gsub(",","",ADMPK12)) %>%
+  mutate(ADMPK12=as.numeric(paste(ADMPK12))) %>%
+  
+  #change expenditure variables to numeric
+  mutate(SBTCH=gsub(",","",SBTCH)) %>%
+  mutate(SBTCH=as.numeric(paste(SBTCH))) %>%
+  
+  mutate(SBSUP=gsub(",","",SBSUP)) %>%
+  mutate(SBSUP=as.numeric(paste(SBSUP))) %>%
+  
+  mutate(OTHINS=gsub(",","",OTHINS)) %>%
+  mutate(OTHINS=as.numeric(paste(OTHINS))) %>%
+  
+  mutate(SADMIN=gsub(",","",SADMIN)) %>%
+  mutate(SADMIN=as.numeric(paste(SADMIN))) %>%
+  
+  mutate(GADMIN=gsub(",","",GADMIN)) %>%
+  mutate(GADMIN=as.numeric(paste(GADMIN))) %>%
+  
+  mutate(OMOP=gsub(",","",OMOP)) %>%
+  mutate(OMOP=as.numeric(paste(OMOP))) %>%
+  
+  #group by and sum adm
+  group_by(ndcounty_name) %>%
+  summarise(data=(sum(SBTCH,na.rm=TRUE)+sum(SBSUP,na.rm=TRUE)+sum(OTHINS,na.rm=TRUE)+sum(SADMIN,na.rm=TRUE)+sum(GADMIN,na.rm=TRUE)+sum(OMOP,na.rm=TRUE))/sum(ADMPK12,na.rm=TRUE)) %>%
+  ungroup %>%
+  
+  rename(location=ndcounty_name) %>%
+  mutate(location=as.character(paste(location))) %>%
+  mutate(locationtype='County')
+
+############
+#STATE DATA
+expend_state <- financials %>%
+  subset(FY==fiscalyear) %>%
+  
+  mutate(location='North Dakota') %>%
+  
+  #change adm to numeric
+  mutate(ADMPK12=gsub(",","",ADMPK12)) %>%
+  mutate(ADMPK12=as.numeric(paste(ADMPK12))) %>%
+  
+  #change expenditure variables to numeric
+  mutate(SBTCH=gsub(",","",SBTCH)) %>%
+  mutate(SBTCH=as.numeric(paste(SBTCH))) %>%
+  
+  mutate(SBSUP=gsub(",","",SBSUP)) %>%
+  mutate(SBSUP=as.numeric(paste(SBSUP))) %>%
+  
+  mutate(OTHINS=gsub(",","",OTHINS)) %>%
+  mutate(OTHINS=as.numeric(paste(OTHINS))) %>%
+  
+  mutate(SADMIN=gsub(",","",SADMIN)) %>%
+  mutate(SADMIN=as.numeric(paste(SADMIN))) %>%
+  
+  mutate(GADMIN=gsub(",","",GADMIN)) %>%
+  mutate(GADMIN=as.numeric(paste(GADMIN))) %>%
+  
+  mutate(OMOP=gsub(",","",OMOP)) %>%
+  mutate(OMOP=as.numeric(paste(OMOP))) %>%
+  
+  #group by and sum adm
+  group_by(location) %>%
+  summarise(data=(sum(SBTCH,na.rm=TRUE)+sum(SBSUP,na.rm=TRUE)+sum(OTHINS,na.rm=TRUE)+sum(SADMIN,na.rm=TRUE)+sum(GADMIN,na.rm=TRUE)+sum(OMOP,na.rm=TRUE))/sum(ADMPK12,na.rm=TRUE)) %>%
+  ungroup %>%
+  
+  mutate(locationtype='State')
+
+############
+#REGION DATA
+expend_region <- financials %>%
+  subset(FY==fiscalyear) %>%
+  
+  #join county names
+  separate(Codist,into=c("county","district"),sep="-") %>%
+  mutate(county=as.numeric(paste(county))) %>%
+  left_join(countyids,by=c('county'='ndcounty_number')) %>%
+  
+  #join region names
+  left_join(regionids,by=c('ndcounty_name'='county')) %>%
+  
+  #change adm to numeric
+  mutate(ADMPK12=gsub(",","",ADMPK12)) %>%
+  mutate(ADMPK12=as.numeric(paste(ADMPK12))) %>%
+  
+  #change expenditure variables to numeric
+  mutate(SBTCH=gsub(",","",SBTCH)) %>%
+  mutate(SBTCH=as.numeric(paste(SBTCH))) %>%
+  
+  mutate(SBSUP=gsub(",","",SBSUP)) %>%
+  mutate(SBSUP=as.numeric(paste(SBSUP))) %>%
+  
+  mutate(OTHINS=gsub(",","",OTHINS)) %>%
+  mutate(OTHINS=as.numeric(paste(OTHINS))) %>%
+  
+  mutate(SADMIN=gsub(",","",SADMIN)) %>%
+  mutate(SADMIN=as.numeric(paste(SADMIN))) %>%
+  
+  mutate(GADMIN=gsub(",","",GADMIN)) %>%
+  mutate(GADMIN=as.numeric(paste(GADMIN))) %>%
+  
+  mutate(OMOP=gsub(",","",OMOP)) %>%
+  mutate(OMOP=as.numeric(paste(OMOP))) %>%
+  
+  #group by and sum adm
+  group_by(region) %>%
+  summarise(data=(sum(SBTCH,na.rm=TRUE)+sum(SBSUP,na.rm=TRUE)+sum(OTHINS,na.rm=TRUE)+sum(SADMIN,na.rm=TRUE)+sum(GADMIN,na.rm=TRUE)+sum(OMOP,na.rm=TRUE))/sum(ADMPK12,na.rm=TRUE)) %>%
+  ungroup %>%
+  
+  rename(location=region) %>%
+  mutate(location=as.character(paste(location))) %>%
+  mutate(locationtype='Planning Region')
+
+
+############
+#TRIBAL DATA
+tribalschools_updated <- tribalschools %>%
+  separate(id_dash,into=c('codist','school'),sep=6) %>%
+  distinct(codist,.keep_all=TRUE)
+
+
+expend_tribal <- financials %>%
+  subset(FY==fiscalyear) %>%
+  
+  #join tribal names
+  mutate(Codist=as.character(paste(Codist))) %>%
+  left_join(tribalschools_updated,by=c('Codist'='codist')) %>%
+  subset(!is.na(tribalarea)) %>%
+  
+  #change adm to numeric
+  mutate(ADMPK12=gsub(",","",ADMPK12)) %>%
+  mutate(ADMPK12=as.numeric(paste(ADMPK12))) %>%
+  
+ #change expenditure variables to numeric
+  mutate(SBTCH=gsub(",","",SBTCH)) %>%
+  mutate(SBTCH=as.numeric(paste(SBTCH))) %>%
+  
+  mutate(SBSUP=gsub(",","",SBSUP)) %>%
+  mutate(SBSUP=as.numeric(paste(SBSUP))) %>%
+  
+  mutate(OTHINS=gsub(",","",OTHINS)) %>%
+  mutate(OTHINS=as.numeric(paste(OTHINS))) %>%
+  
+  mutate(SADMIN=gsub(",","",SADMIN)) %>%
+  mutate(SADMIN=as.numeric(paste(SADMIN))) %>%
+  
+  mutate(GADMIN=gsub(",","",GADMIN)) %>%
+  mutate(GADMIN=as.numeric(paste(GADMIN))) %>%
+  
+  mutate(OMOP=gsub(",","",OMOP)) %>%
+  mutate(OMOP=as.numeric(paste(OMOP))) %>%
+  
+  #group by and sum adm
+  group_by(tribalarea) %>%
+  summarise(data=(sum(SBTCH,na.rm=TRUE)+sum(SBSUP,na.rm=TRUE)+sum(OTHINS,na.rm=TRUE)+sum(SADMIN,na.rm=TRUE)+sum(GADMIN,na.rm=TRUE)+sum(OMOP,na.rm=TRUE))/sum(ADMPK12,na.rm=TRUE)) %>%
+  ungroup %>%
+  
+  rename(location=tribalarea) %>%
+  mutate(location=as.character(paste(location))) %>%
+  mutate(locationtype='Tribal Area')
+
+
+######################## 
+#combine all geographies
+expend_all <- expend_county %>%
+  bind_rows(expend_state) %>%
+  bind_rows(expend_region) %>%
+  bind_rows(expend_tribal) %>%
+  
+  mutate(state='North Dakota') %>%
+  mutate(varname='avgexpenditureperstudent') %>%
+  mutate(timeframe=fullyear) %>%
+  
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  #create indicators to suppress data
+
+  select(c(location,locationtype,locationid,state,timeframe,varname,data)) %>%
+
+  mutate(dataformat='Currency')
+  
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(expend_all$locationid))>=1) {
+  print(expend_all$location[is.na(expend_all$locationid)])
+} else if (sum(is.na(expend_all$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Visually inspect output data
+View(expend_all)
+
+
+```
+
+STEP 2: COMMIT TO DATABASE 
+```{r}
+#CHECK DATASET NAMED expend_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,'northdakota',expend_all,append=TRUE,row.names=FALSE)
+```
+
+STEP 3: OUTPUT DATASET FOR UPLOADING TO KC DATA CENTER
+```{r}
+#########################
+##OUTPUT DATA CENTER FILE
+
+datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",fullyear,"' AND varname='avgexpenditureperstudent';")
+
+upload_data <- dbGetQuery(con,datacenter_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_avgexpenditureperstudent.csv"),row.names=FALSE)
+
+```
+
+
+
+
+
+## FOUR-YEAR HIGH SCHOOL COHORT GRADUATION RATE ##
+STEP 1: IMPORT AND CLEAN DATA
+```{r}
+#import data
+grad_data <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Grad_Rates_",year,".xlsx"),guess_max = 1048576) %>%
+  rename(ontime_Count='On-Time Grads',
+         Total_Students='Cohort') %>%
+  subset(Race=='All')
+
+
+############
+#COUNTY DATA
+grad_county <- grad_data %>%
+  
+  subset(Entity_Level=='District') %>%
+  separate(col=Entity_ID,into=c('county','district'),sep=2) %>%
+  mutate(county=as.numeric(paste(county))) %>%
+  
+  #import county name
+  full_join(countyids,by=c("county"="ndcounty_number")) %>%
+
+  #sum by county
+  group_by(ndcounty_name) %>%
+  summarise(grad_number=sum(ontime_Count),
+            totalenroll=sum(Total_Students),
+            grad_percent=sum(ontime_Count)/sum(Total_Students)) %>%
+  ungroup %>%
+
+  #add in locationtype
+  rename(location=ndcounty_name) %>%
+  mutate(location=as.character(paste(location))) %>%
+  mutate(locationtype='County')
+
+###########
+#STATE DATA
+#start with  cleaned county data
+grad_state <- grad_county %>%
+  mutate(location='North Dakota') %>%
+  group_by(location) %>%
+  summarise(grad_number_state=sum(grad_number,na.rm=TRUE),
+            totalenroll_state=sum(totalenroll,na.rm=TRUE),
+            grad_percent=sum(grad_number,na.rm=TRUE)/sum(totalenroll,na.rm=TRUE)) %>%
+  ungroup %>%
+  rename(grad_number=grad_number_state,
+         totalenroll=totalenroll_state) %>%
+
+  #add in locationtype
+  mutate(locationtype='State')
+
+############
+#REGION DATA
+#start with cleaned county data
+grad_region <- grad_county %>%
+  
+  #add in regions
+  mutate(location=as.character(paste(location))) %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region) %>%
+  summarise(grad_number_region=sum(grad_number,na.rm=TRUE),
+            totalenroll_region=sum(totalenroll,na.rm=TRUE),
+            grad_percent=sum(grad_number,na.rm=TRUE)/sum(totalenroll,na.rm=TRUE)) %>%
+  ungroup %>%
+  rename(grad_number=grad_number_region,
+         totalenroll=totalenroll_region) %>%
+
+  #add in locationtype
+  rename(location=region) %>%
+  mutate(location=as.character(paste(location))) %>%
+  mutate(locationtype='Planning Region')
+
+
+#################
+#TRIBAL AREA DATA
+#subset tribal schools lookup table to just county and district
+tribalschools_updated <- tribalschools %>%
+  separate(col=id_nodash,into=c('first','last'),sep=5)
+
+grad_tribal <- grad_data %>%
+  
+  subset(Entity_Level=='District') %>%
+  
+  #import tribal name
+  left_join(tribalschools_updated,by=c('Entity_ID'='first')) %>%
+  subset(!is.na(tribalarea)) %>%
+
+  #sum by tribal area
+  group_by(tribalarea) %>%
+  summarise(grad_number=sum(ontime_Count),
+            totalenroll=sum(Total_Students),
+            grad_percent=sum(ontime_Count)/sum(Total_Students)) %>%
+  ungroup %>%
+
+  #add in locationtype
+  rename(location=tribalarea) %>%
+  mutate(location=as.character(paste(location))) %>%
+  mutate(locationtype='Tribal Area')
+  
+######################## 
+#combine all geographies
+grad_all <- grad_county %>%
+  bind_rows(grad_state) %>%
+  bind_rows(grad_region) %>%
+  bind_rows(grad_tribal) %>%
+  
+  mutate(state='North Dakota') %>%
+  mutate(varname='graduationrate4cohort') %>%
+  mutate(timeframe=fullyear) %>%
+  
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  #create indicators to suppress data
+
+  #supress if denominator is less than 10
+  mutate(suppress_denominator=if_else(totalenroll<10 | is.na(totalenroll),1,0)) %>%
+ 
+  #suppress percentages of 0-1 if more than 300 in denominator
+  mutate(suppress_0to1_300=if_else(totalenroll>300 & grad_percent<=.01,1,0)) %>%
+  #suppress percentages of 99-100 if more than 300 in denominator
+  mutate(suppress_99to100_300=if_else(totalenroll>300 & grad_percent>=.99,1,0)) %>%
+
+  
+  #suppress percentages of 0-2 if between 101 to 300 in denominator
+  mutate(suppress_0to2_101=if_else((totalenroll>100 & totalenroll<=300) & 
+                                     grad_percent<=0.02,1,0)) %>%
+  #suppress percentages of 98-100 if between 101 to 300 in denominator
+  mutate(suppress_98to100_101=if_else((totalenroll>100 & totalenroll<=300) & 
+                                     grad_percent>=0.98,1,0)) %>%
+  
+  #suppress percentages of 0-5 if between 41 to 100 in denominator
+  mutate(suppress_0to5_41=if_else((totalenroll>40 & totalenroll<=100) & 
+                                     grad_percent<=0.05,1,0)) %>%
+  #suppress percentages of 95-100 if between 41 to 100 in denominator
+  mutate(suppress_95to100_41=if_else((totalenroll>40 & totalenroll<=100) & 
+                                     grad_percent>=0.95,1,0)) %>%
+  
+  #suppress percentages of 0-10 if between 21 to 40 in denominator
+  mutate(suppress_0to10_21=if_else((totalenroll>20 & totalenroll<=40) & 
+                                     grad_percent<=0.10,1,0)) %>%
+  #suppress percentages of 90-100 if between 21 to 40 in denominator
+  mutate(suppress_90to100_21=if_else((totalenroll>20 & totalenroll<=40) & 
+                                     grad_percent>=0.90,1,0)) %>%
+  
+  #suppress percentages of 0-20 if between 10 to 20 in denominator
+  mutate(suppress_0to20_10=if_else((totalenroll>=10 & totalenroll<=20) & 
+                                     grad_percent<=0.20,1,0)) %>%
+  #suppress percentages of 80-100 if between 10 to 20 in denominator
+  mutate(suppress_80to100_10=if_else((totalenroll>=10 & totalenroll<=20) & 
+                                     grad_percent>=0.80,1,0)) %>%
+  
+  #create updated percent and number based on suppression rules
+  mutate(grad_percent=as.character(paste(grad_percent))) %>%
+  mutate(grad_percent_suppressed=case_when(
+    suppress_denominator==1 ~ 'NA',
+    suppress_0to1_300==1 ~ "<= 1%",
+    suppress_99to100_300==1 ~ ">= 99%",
+    suppress_0to2_101==1 ~ "<= 2%",
+    suppress_98to100_101==1 ~ ">= 98%",
+    suppress_0to5_41==1 ~ "<= 5%",
+    suppress_95to100_41==1 ~ ">= 95%",
+    suppress_0to10_21==1 ~ "<= 10%",
+    suppress_90to100_21==1 ~ ">= 90%",
+    suppress_0to20_10==1 ~ "<= 20%",
+    suppress_80to100_10==1 ~ ">= 80%",
+    suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
+      suppress_0to2_101==0 & suppress_98to100_101==0 & 
+      suppress_0to5_41==0 & suppress_95to100_41==0 & 
+      suppress_0to10_21==0 & suppress_90to100_21==0 & 
+      suppress_0to20_10==0 & suppress_80to100_10==0 ~ grad_percent)) %>%
+  
+  mutate(grad_number=as.character(paste(grad_number))) %>%
+  mutate(grad_number_suppressed=case_when(
+    suppress_denominator==1 | suppress_0to1_300==1 | suppress_99to100_300==1 | 
+    suppress_0to2_101==1 |  suppress_98to100_101==1 |  suppress_0to5_41==1 | 
+    suppress_95to100_41==1 | suppress_0to10_21==1 | suppress_90to100_21==1 | 
+    suppress_0to20_10==1 |   suppress_80to100_10==1 ~ 'NA',
+    suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
+      suppress_0to2_101==0 & suppress_98to100_101==0 & 
+      suppress_0to5_41==0 & suppress_95to100_41==0 & 
+      suppress_0to10_21==0 & suppress_90to100_21==0 & 
+      suppress_0to20_10==0 & suppress_80to100_10==0 ~ grad_number)) %>%
+  
+  select(c(location,locationtype,locationid,state,timeframe,varname,grad_percent_suppressed)) %>%
+  
+  rename(data=grad_percent_suppressed) %>%
+  mutate(dataformat='Percent')
+  
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(grad_all$locationid))>=1) {
+  print(grad_all$location[is.na(grad_all$locationid)])
+} else if (sum(is.na(grad_all$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- grad_all %>%
+  subset(dataformat=='Percent' & data>1 & is.na(data))
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- grad_all %>%
+  subset(locationtype=='County') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed at the overall county level'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- grad_all %>%
+#  subset(locationtype=='County') %>%
+#  arrange(data)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#grad_all$data[grad_all$location=='Billings'] <- NA
+
+
+
+#4. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using region totals
+temp_testsuppression_region <- grad_all %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  subset(data=='NA') %>%
+  select(location,region)
+
+View(temp_testsuppression_region)
+
+
+
+# 5. Visually inspect output data
+View(grad_all)
+
+```
+
+STEP 2: COMMIT TO DATABASE 
+```{r}
+#CHECK DATASET NAMED grad_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,'northdakota',grad_all,append=TRUE,row.names=FALSE)
+```
+
+STEP 3: OUTPUT DATASET FOR UPLOADING TO KC DATA CENTER
+```{r}
+#########################
+##OUTPUT DATA CENTER FILE
+
+datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",fullyear,"' AND varname='graduationrate4cohort';")
+
+upload_data <- dbGetQuery(con,datacenter_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_graduationrate4cohort.csv"),row.names=FALSE)
+
+```
+
+
+
+## FOUR-YEAR HIGH SCHOOL COHORT GRADUATION RATE BY RACE ##
+STEP 1: Import and Clean Data
+```{r}
+grad_data2 <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Grad_Rates_",year,".xlsx"),guess_max = 1048576) %>%
+  rename(ontime_Count='On-Time Grads',
+         Total_Students='Cohort') %>%
+
+
+  subset(Race=='Asian American' | Race=='Black' | 
+           Race=='Hispanic' | 
+           Race=='Native American' | 
+           Race=='Native Hawaiian or Pacific Islander' | 
+           Race=='White') %>%
+  rename(race=Race) %>%
+  mutate(race=replace(race,race=='Asian American','Asian')) 
+
+
+
+############
+#COUNTY DATA
+gradrace_county <- grad_data2 %>%
+  
+  #import county name
+  mutate(County=as.numeric(paste(County))) %>%
+  left_join(countyids,by=c("County"="ndcounty_number")) %>%
+  
+  #sum by county and race
+  group_by(ndcounty_name,race) %>%
+  summarise(summed_numerator=sum(ontime_Count),
+            summed_denominator=sum(Total_Students),
+            gradrate_percent=summed_numerator/summed_denominator,.groups='keep') %>%
+  ungroup %>% 
+  
+  #fix variable names
+  rename(location=ndcounty_name) %>%
+  
+  mutate(timeframe=fullyear) %>%
+  mutate(location=as.character(paste(location))) %>%
+  mutate(locationtype='County') 
+
+###########
+#STATE DATA
+#start with  cleaned county data
+gradrace_state <- gradrace_county %>%
+  mutate(location='North Dakota') %>%
+  group_by(location,timeframe,race) %>%
+  summarise(summed_numerator=sum(summed_numerator),
+            summed_denominator=sum(summed_denominator),
+            gradrate_percent=summed_numerator/summed_denominator,.groups='keep') %>%
+  ungroup %>%
+
+  #add in locationtype
+  mutate(locationtype='State')
+
+
+  
+######################## 
+#combine all geographies
+gradrace_all <- gradrace_county %>%
+  bind_rows(gradrace_state) %>%
+  
+  
+  #most counties aren't large enough to provide valid data, subset to the largest 10
+  subset(location=='North Dakota' | 
+           location=='Cass' | location=='Burleigh' | location=='Grand Forks' | 
+           location=='Ward' | location=='Williams' | location=='Stark' | 
+           location=='Morton' | location=='Richland' | 
+           location=='McKenzie') %>%
+  subset(locationtype=='State' | (locationtype=='County' & race!='Native Hawaiian or Pacific Islander')) %>%
+
+  mutate(state='North Dakota') %>%
+  mutate(varname='graduationrate4cohortbyrace') %>%
+  mutate(dataformat='Percent') %>%
+  
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+
+
+  #create indicators to suppress data
+
+  #supress if denominator is less than 10
+  mutate(suppress_denominator=if_else(summed_denominator<10 | is.na(summed_denominator),1,0)) %>%
+ 
+  #suppress percentages of 0-1 if more than 300 in denominator
+  mutate(suppress_0to1_300=if_else(summed_denominator>300 & gradrate_percent<=.01,1,0)) %>%
+  #suppress percentages of 99-100 if more than 300 in denominator
+  mutate(suppress_99to100_300=if_else(summed_denominator>300 & gradrate_percent>=.99,1,0)) %>%
+
+  
+  #suppress percentages of 0-2 if between 101 to 300 in denominator
+  mutate(suppress_0to2_101=if_else((summed_denominator>100 & summed_denominator<=300) & 
+                                     gradrate_percent<=0.02,1,0)) %>%
+  #suppress percentages of 98-100 if between 101 to 300 in denominator
+  mutate(suppress_98to100_101=if_else((summed_denominator>100 & summed_denominator<=300) & 
+                                     gradrate_percent>=0.98,1,0)) %>%
+  
+  #suppress percentages of 0-5 if between 41 to 100 in denominator
+  mutate(suppress_0to5_41=if_else((summed_denominator>40 & summed_denominator<=100) & 
+                                     gradrate_percent<=0.05,1,0)) %>%
+  #suppress percentages of 95-100 if between 41 to 100 in denominator
+  mutate(suppress_95to100_41=if_else((summed_denominator>40 & summed_denominator<=100) & 
+                                     gradrate_percent>=0.95,1,0)) %>%
+  
+  #suppress percentages of 0-10 if between 21 to 40 in denominator
+  mutate(suppress_0to10_21=if_else((summed_denominator>20 & summed_denominator<=40) & 
+                                     gradrate_percent<=0.10,1,0)) %>%
+  #suppress percentages of 90-100 if between 21 to 40 in denominator
+  mutate(suppress_90to100_21=if_else((summed_denominator>20 & summed_denominator<=40) & 
+                                     gradrate_percent>=0.90,1,0)) %>%
+  
+  #suppress percentages of 0-20 if between 10 to 20 in denominator
+  mutate(suppress_0to20_10=if_else((summed_denominator>=10 & summed_denominator<=20) & 
+                                     gradrate_percent<=0.20,1,0)) %>%
+  #suppress percentages of 80-100 if between 10 to 20 in denominator
+  mutate(suppress_80to100_10=if_else((summed_denominator>=10 & summed_denominator<=20) & 
+                                     gradrate_percent>=0.80,1,0)) %>%
+  
+  #create updated percent and number based on suppression rules
+  mutate(gradrate_percent=as.character(paste(gradrate_percent))) %>%
+  mutate(data=case_when(
+    suppress_denominator==1 ~ 'NA',
+    suppress_0to1_300==1 ~ "<= 1%",
+    suppress_99to100_300==1 ~ ">= 99%",
+    suppress_0to2_101==1 ~ "<= 2%",
+    suppress_98to100_101==1 ~ ">= 98%",
+    suppress_0to5_41==1 ~ "<= 5%",
+    suppress_95to100_41==1 ~ ">= 95%",
+    suppress_0to10_21==1 ~ "<= 10%",
+    suppress_90to100_21==1 ~ ">= 90%",
+    suppress_0to20_10==1 ~ "<= 20%",
+    suppress_80to100_10==1 ~ ">= 80%",
+    suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
+      suppress_0to2_101==0 & suppress_98to100_101==0 & 
+      suppress_0to5_41==0 & suppress_95to100_41==0 & 
+      suppress_0to10_21==0 & suppress_90to100_21==0 & 
+      suppress_0to20_10==0 & suppress_80to100_10==0 ~ gradrate_percent)) %>%
+  
+    select(c(location,locationtype,locationid,state,timeframe,varname,race,data,dataformat))
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(gradrace_all$locationid))>=1) {
+  print(gradrace_all$location[is.na(gradrace_all$locationid)])
+} else if (sum(is.na(gradrace_all$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- gradrace_all %>%
+  subset(dataformat=='Percent' & data>1 & is.na(data))
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- gradrace_all %>%
+  subset(locationtype=='County') %>%
+  subset(data=='NA')
+
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed at the overall county level'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- gradrace_county %>%
+#  arrange(data)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#gradrace_all$data[gradrace_all$location=='Billings'] <- 'NA'
+
+# 4. Visually inspect output data
+View(gradrace_all)
+```
+
+STEP 2: COMMIT TO DATABASE 
+```{r}
+#CHECK DATASET NAMED gradrace_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,'northdakota',gradrace_all,append=TRUE,row.names=FALSE)
+```
+
+STEP 3: OUTPUT DATASET FOR UPLOADING TO KC DATA CENTER
+```{r}
+#########################
+##OUTPUT DATA CENTER FILE
+
+datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, race, data FROM northdakota WHERE timeframe='",fullyear,"' AND varname='graduationrate4cohortbyrace';")
+
+upload_data <- dbGetQuery(con,datacenter_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         Race=race)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_graduationrate4cohortbyrace.csv"),row.names=FALSE)
+
+```
+
+
+
+## GRADES 7 TO 12 EVENT DROP-OUT RATE ##
+STEP 1: IMPORT AND CLEAN DATA
+```{r}
+#create academic year character for missing counties
+fiscalyear_minus1 <- as.character(as.numeric(fiscalyear)-1)
+academicyear <- paste0(fiscalyear_minus1,"-",fiscalyear)
+
+#import data
+dropout_data <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Dropout_Rates_7th-12th_",year,".xlsx"),guess_max = 1048576) 
+
+
+############
+#COUNTY DATA
+dropout_county <- dropout_data %>%
+  subset(Entity_Level=='Distict') %>%
+  separate(col=Entity_ID,into=c('county','district'),sep=2) %>%
+  mutate(county=as.numeric(paste(county))) %>%
+  
+  #import county name
+  full_join(countyids,by=c("county"="ndcounty_number")) %>%
+  #if a county isn't in the dataset, assign in a zero after full_join
+  mutate(UnDuplicated_Dropout_Count=replace(UnDuplicated_Dropout_Count,is.na(UnDuplicated_Dropout_Count),0)) %>%
+  mutate(UnDuplicated_Total_Students=replace(UnDuplicated_Total_Students,is.na(UnDuplicated_Total_Students),0)) %>%
+   mutate(Subgroup_Desc=replace(Subgroup_Desc,is.na(Subgroup_Desc),'All')) %>%
+  mutate(Academic_Year=replace(Academic_Year,is.na(Academic_Year),academicyear)) %>%
+
+  #sum by county
+  group_by(ndcounty_name,Academic_Year,Subgroup_Desc) %>%
+  summarise(dropout_number=sum(UnDuplicated_Dropout_Count),
+            totalenroll=sum(UnDuplicated_Total_Students),
+            dropout_percent=sum(UnDuplicated_Dropout_Count)/sum(UnDuplicated_Total_Students)) %>%
+  ungroup %>%
+
+  #add in locationtype
+  rename(location=ndcounty_name) %>%
+  mutate(location=as.character(paste(location))) %>%
+  mutate(locationtype='County')
+
+###########
+#STATE DATA
+#start with  cleaned county data
+dropout_state <- dropout_county %>%
+  mutate(location='North Dakota') %>%
+  group_by(location,Academic_Year,Subgroup_Desc) %>%
+  summarise(dropout_number_state=sum(dropout_number,na.rm=TRUE),
+            totalenroll_state=sum(totalenroll,na.rm=TRUE),
+            dropout_percent=sum(dropout_number,na.rm=TRUE)/sum(totalenroll,na.rm=TRUE)) %>%
+  ungroup %>%
+  rename(dropout_number=dropout_number_state,
+         totalenroll=totalenroll_state) %>%
+
+  #add in locationtype
+  mutate(locationtype='State')
+
+############
+#REGION DATA
+#start with cleaned county data
+dropout_region <- dropout_county %>%
+  
+  #add in regions
+  mutate(location=as.character(paste(location))) %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region,Academic_Year,Subgroup_Desc) %>%
+  summarise(dropout_number_region=sum(dropout_number,na.rm=TRUE),
+            totalenroll_region=sum(totalenroll,na.rm=TRUE),
+            dropout_percent=sum(dropout_number,na.rm=TRUE)/sum(totalenroll,na.rm=TRUE)) %>%
+  ungroup %>%
+  rename(dropout_number=dropout_number_region,
+         totalenroll=totalenroll_region) %>%
+
+  #add in locationtype
+  rename(location=region) %>%
+  mutate(location=as.character(paste(location))) %>%
+  mutate(locationtype='Planning Region')
+
+
+#################
+#TRIBAL AREA DATA
+#subset tribal schools lookup table to just county and district
+tribalschools_updated <- tribalschools %>%
+  separate(col=id_nodash,into=c('first','last'),sep=5)
+
+dropout_tribal <- dropout_data %>%
+  
+  subset(Entity_Level=='Distict') %>%
+  
+  #import tribal name
+  left_join(tribalschools_updated,by=c('Entity_ID'='first')) %>%
+  subset(!is.na(tribalarea)) %>%
+
+  #sum by tribal area
+  group_by(tribalarea,Academic_Year,Subgroup_Desc) %>%
+  summarise(dropout_number=sum(UnDuplicated_Dropout_Count),
+            totalenroll=sum(UnDuplicated_Total_Students),
+            dropout_percent=sum(UnDuplicated_Dropout_Count)/sum(UnDuplicated_Total_Students)) %>%
+  ungroup %>%
+
+  #add in locationtype
+  rename(location=tribalarea) %>%
+  mutate(location=as.character(paste(location))) %>%
+  mutate(locationtype='Tribal Area')
+  
+######################## 
+#combine all geographies
+dropout_all <- dropout_county %>%
+  bind_rows(dropout_state) %>%
+  bind_rows(dropout_region) %>%
+  bind_rows(dropout_tribal) %>%
+  
+  mutate(state='North Dakota') %>%
+  mutate(timeframe=fullyear) %>%
+
+  
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  #create indicators to suppress data
+
+  #supress if denominator is less than 10
+  mutate(suppress_denominator=if_else(totalenroll<10 | is.na(totalenroll),1,0)) %>%
+ 
+  #suppress percentages of 0-1 if more than 300 in denominator
+  mutate(suppress_0to1_300=if_else(totalenroll>300 & dropout_percent<=.01,1,0)) %>%
+  #suppress percentages of 99-100 if more than 300 in denominator
+  mutate(suppress_99to100_300=if_else(totalenroll>300 & dropout_percent>=.99,1,0)) %>%
+
+  
+  #suppress percentages of 0-2 if between 101 to 300 in denominator
+  mutate(suppress_0to2_101=if_else((totalenroll>100 & totalenroll<=300) & 
+                                     dropout_percent<=0.02,1,0)) %>%
+  #suppress percentages of 98-100 if between 101 to 300 in denominator
+  mutate(suppress_98to100_101=if_else((totalenroll>100 & totalenroll<=300) & 
+                                     dropout_percent>=0.98,1,0)) %>%
+  
+  #suppress percentages of 0-5 if between 41 to 100 in denominator
+  mutate(suppress_0to5_41=if_else((totalenroll>40 & totalenroll<=100) & 
+                                     dropout_percent<=0.05,1,0)) %>%
+  #suppress percentages of 95-100 if between 41 to 100 in denominator
+  mutate(suppress_95to100_41=if_else((totalenroll>40 & totalenroll<=100) & 
+                                     dropout_percent>=0.95,1,0)) %>%
+  
+  #suppress percentages of 0-10 if between 21 to 40 in denominator
+  mutate(suppress_0to10_21=if_else((totalenroll>20 & totalenroll<=40) & 
+                                     dropout_percent<=0.10,1,0)) %>%
+  #suppress percentages of 90-100 if between 21 to 40 in denominator
+  mutate(suppress_90to100_21=if_else((totalenroll>20 & totalenroll<=40) & 
+                                     dropout_percent>=0.90,1,0)) %>%
+  
+  #suppress percentages of 0-20 if between 10 to 20 in denominator
+  mutate(suppress_0to20_10=if_else((totalenroll>=10 & totalenroll<=20) & 
+                                     dropout_percent<=0.20,1,0)) %>%
+  #suppress percentages of 80-100 if between 10 to 20 in denominator
+  mutate(suppress_80to100_10=if_else((totalenroll>=10 & totalenroll<=20) & 
+                                     dropout_percent>=0.80,1,0)) %>%
+  
+  #create updated percent and number based on suppression rules
+  mutate(dropout_percent=as.character(paste(dropout_percent))) %>%
+  mutate(dropout_percent_suppressed=case_when(
+    suppress_denominator==1 ~ 'NA',
+    suppress_0to1_300==1 ~ "<= 1%",
+    suppress_99to100_300==1 ~ ">= 99%",
+    suppress_0to2_101==1 ~ "<= 2%",
+    suppress_98to100_101==1 ~ ">= 98%",
+    suppress_0to5_41==1 ~ "<= 5%",
+    suppress_95to100_41==1 ~ ">= 95%",
+    suppress_0to10_21==1 ~ "<= 10%",
+    suppress_90to100_21==1 ~ ">= 90%",
+    suppress_0to20_10==1 ~ "<= 20%",
+    suppress_80to100_10==1 ~ ">= 80%",
+    suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
+      suppress_0to2_101==0 & suppress_98to100_101==0 & 
+      suppress_0to5_41==0 & suppress_95to100_41==0 & 
+      suppress_0to10_21==0 & suppress_90to100_21==0 & 
+      suppress_0to20_10==0 & suppress_80to100_10==0 ~ dropout_percent)) %>%
+  
+  mutate(dropout_number=as.character(paste(dropout_number))) %>%
+  mutate(dropout_number_suppressed=case_when(
+    suppress_denominator==1 | suppress_0to1_300==1 | suppress_99to100_300==1 | 
+    suppress_0to2_101==1 |  suppress_98to100_101==1 |  suppress_0to5_41==1 | 
+    suppress_95to100_41==1 | suppress_0to10_21==1 | suppress_90to100_21==1 | 
+    suppress_0to20_10==1 |   suppress_80to100_10==1 ~ 'NA',
+    suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
+      suppress_0to2_101==0 & suppress_98to100_101==0 & 
+      suppress_0to5_41==0 & suppress_95to100_41==0 & 
+      suppress_0to10_21==0 & suppress_90to100_21==0 & 
+      suppress_0to20_10==0 & suppress_80to100_10==0 ~ dropout_number)) %>%
+  
+  select(c(location,locationtype,locationid,state,timeframe,dropout_percent_suppressed,Subgroup_Desc)) %>%
+  
+  rename(data=dropout_percent_suppressed) %>%
+  mutate(dataformat='Percent')
+
+
+#create dataset that includes all (non disaggregated data)
+dropout_overall <- dropout_all %>%
+  subset(Subgroup_Desc=='All') %>%
+  select(-c(Subgroup_Desc)) %>%
+  mutate(varname='grades7to12eventdropoutrate') 
+  
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(dropout_overall$locationid))>=1) {
+  print(dropout_overall$location[is.na(dropout_overall$locationid)])
+} else if (sum(is.na(dropout_overall$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- dropout_overall %>%
+  subset(dataformat=='Percent' & data>1 & is.na(data))
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- dropout_overall %>%
+  subset(locationtype=='County') %>%
+  subset(data=='NA')
+
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed at the overall county level'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- dropout_county %>%
+#  arrange(totalenroll)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#dropout_overall$data[dropout_overall$location=='Billings'] <- 'NA'
+
+
+
+#4. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using region totals
+temp_testsuppression_region <- dropout_overall %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  subset(data=='NA') %>%
+  select(location,region)
+
+View(temp_testsuppression_region)
+
+# 5. Visually inspect output data
+View(dropout_overall)
+
+```
+
+STEP 2: COMMIT TO DATABASE 
+```{r}
+#CHECK DATASET NAMED dropout_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,'northdakota',dropout_overall,append=TRUE,row.names=FALSE)
+```
+
+STEP 3: OUTPUT DATASET FOR UPLOADING TO KC DATA CENTER
+```{r}
+#########################
+##OUTPUT DATA CENTER FILE
+
+datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",fullyear,"' AND varname='grades7to12eventdropoutrate';")
+
+upload_data <- dbGetQuery(con,datacenter_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_grades7to12eventdropoutrate.csv"),row.names=FALSE)
+
+```
+
+
+
+## GRADES 7 TO 12 EVENT DROP-OUT RATE BY RACE ##
+STEP 1: format data
+```{r}
+
+#create dataset that includes disaggregated data
+dropout_race <- dropout_all %>%
+  subset(Subgroup_Desc!='All') %>%
+  rename(race=Subgroup_Desc) %>%
+  mutate(race=replace(race,race=='Asian American','Asian')) %>%
+  
+  #most counties aren't large enough to provide valid data, subset to the largest 10
+  subset(location=='North Dakota' | 
+           location=='Cass' | location=='Burleigh' | location=='Grand Forks' | 
+           location=='Ward' | location=='Williams' | location=='Stark' | 
+           location=='Morton' | location=='Richland' | 
+           location=='McKenzie') %>%
+  subset(locationtype=='State' | (locationtype=='County' & race!='Native Hawaiian or Pacific Islander')) %>%
+
+  mutate(state='North Dakota') %>%
+  mutate(varname='grades7to12eventdropoutratebyrace') %>%
+  mutate(dataformat='Percent') 
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(dropout_race$locationid))>=1) {
+  print(dropout_race$location[is.na(dropout_race$locationid)])
+} else if (sum(is.na(dropout_race$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- dropout_race %>%
+  subset(dataformat=='Percent' & data>1 & is.na(data))
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- dropout_race %>%
+  subset(locationtype=='County') %>%
+  subset(data=='NA')
+
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed at the overall county level'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- dropout_county %>%
+#  arrange(totalenroll)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#dropout_overall$data[dropout_overall$location=='Billings'] <- 'NA'
+
+
+
+# 4. Visually inspect output data
+View(dropout_race)
+
+```
+
+STEP 2: COMMIT TO DATABASE 
+```{r}
+#CHECK DATASET NAMED dropout_race TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,'northdakota',dropout_race,append=TRUE,row.names=FALSE)
+```
+
+STEP 3: OUTPUT DATASET FOR UPLOADING TO KC DATA CENTER
+```{r}
+#########################
+##OUTPUT DATA CENTER FILE
+
+datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, race, data FROM northdakota WHERE timeframe='",fullyear,"' AND varname='grades7to12eventdropoutratebyrace';")
+
+upload_data <- dbGetQuery(con,datacenter_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         Race=race)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_grades7to12eventdropoutratebyrace.csv"),row.names=FALSE)
+
+```
+
+
+
+
+
+
+## THIRD GRADERS WHO SCORED AT OR ABOVE PROFICIENT ON STATEWIDE READING ASSESSMENT (1-YEAR TOTALS) ##
+STEP 1: IMPORT AND CLEAN DATA
+```{r}
+#import data
+assessment_data <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",year,".xlsx"),guess_max = 1048576) %>%
+  
+  #subset for all students
+  subset(SubGroup_Desc=='All') %>%
+  subset(Subject=='Reading')
+
+
+############
+#COUNTY DATA
+assessment_county <- assessment_data %>%
+  
+  #import county name
+  mutate(County=as.numeric(paste(County))) %>%
+  left_join(countyids,by=c("County"="ndcounty_number")) %>%
+  
+  #calculate numerator and denominator
+  mutate(proficientstudents=Nbr_Students_Proficient+Nbr_Students_Advanced) %>%
+  mutate(denominator=Nbr_Students_Novice+Nbr_Students_Partially_Proficient+Nbr_Students_Proficient+Nbr_Students_Advanced) %>%
+  
+  #sum by county
+  group_by(ndcounty_name) %>%
+  summarise(summed_numerator=sum(proficientstudents),
+            summed_denominator=sum(denominator),
+            proficient_percent=summed_numerator/summed_denominator) %>%
+  ungroup %>% 
+  
+  #fix variable names
+  rename(location=ndcounty_name) %>%
+  
+  mutate(timeframe=fullyear) %>%
+  mutate(location=as.character(paste(location))) %>%
+  mutate(locationtype='County')
+
+###########
+#STATE DATA
+#start with  cleaned county data
+assessment_state <- assessment_county %>%
+  mutate(location='North Dakota') %>%
+  group_by(location,timeframe) %>%
+  summarise(summed_numerator=sum(summed_numerator),
+            summed_denominator=sum(summed_denominator),
+            proficient_percent=summed_numerator/summed_denominator) %>%
+  ungroup %>%
+
+  #add in locationtype
+  mutate(locationtype='State')
+
+
+  
+######################## 
+#combine all geographies
+assessment_all <- assessment_county %>%
+  bind_rows(assessment_state) %>%
+
+  mutate(state='North Dakota') %>%
+  mutate(varname='thirdgradestatereadingproficiency1year') %>%
+  mutate(dataformat='Percent') %>%
+  
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+
+
+  #create indicators to suppress data
+
+  #supress if denominator is less than 10
+  mutate(suppress_denominator=if_else(summed_denominator<10 | is.na(summed_denominator),1,0)) %>%
+ 
+  #suppress percentages of 0-1 if more than 300 in denominator
+  mutate(suppress_0to1_300=if_else(summed_denominator>300 & proficient_percent<=.01,1,0)) %>%
+  #suppress percentages of 99-100 if more than 300 in denominator
+  mutate(suppress_99to100_300=if_else(summed_denominator>300 & proficient_percent>=.99,1,0)) %>%
+
+  
+  #suppress percentages of 0-2 if between 101 to 300 in denominator
+  mutate(suppress_0to2_101=if_else((summed_denominator>100 & summed_denominator<=300) & 
+                                     proficient_percent<=0.02,1,0)) %>%
+  #suppress percentages of 98-100 if between 101 to 300 in denominator
+  mutate(suppress_98to100_101=if_else((summed_denominator>100 & summed_denominator<=300) & 
+                                     proficient_percent>=0.98,1,0)) %>%
+  
+  #suppress percentages of 0-5 if between 41 to 100 in denominator
+  mutate(suppress_0to5_41=if_else((summed_denominator>40 & summed_denominator<=100) & 
+                                     proficient_percent<=0.05,1,0)) %>%
+  #suppress percentages of 95-100 if between 41 to 100 in denominator
+  mutate(suppress_95to100_41=if_else((summed_denominator>40 & summed_denominator<=100) & 
+                                     proficient_percent>=0.95,1,0)) %>%
+  
+  #suppress percentages of 0-10 if between 21 to 40 in denominator
+  mutate(suppress_0to10_21=if_else((summed_denominator>20 & summed_denominator<=40) & 
+                                     proficient_percent<=0.10,1,0)) %>%
+  #suppress percentages of 90-100 if between 21 to 40 in denominator
+  mutate(suppress_90to100_21=if_else((summed_denominator>20 & summed_denominator<=40) & 
+                                     proficient_percent>=0.90,1,0)) %>%
+  
+  #suppress percentages of 0-20 if between 10 to 20 in denominator
+  mutate(suppress_0to20_10=if_else((summed_denominator>=10 & summed_denominator<=20) & 
+                                     proficient_percent<=0.20,1,0)) %>%
+  #suppress percentages of 80-100 if between 10 to 20 in denominator
+  mutate(suppress_80to100_10=if_else((summed_denominator>=10 & summed_denominator<=20) & 
+                                     proficient_percent>=0.80,1,0)) %>%
+  
+  #create updated percent and number based on suppression rules
+  mutate(proficient_percent=as.character(paste(proficient_percent))) %>%
+  mutate(data=case_when(
+    suppress_denominator==1 ~ 'NA',
+    suppress_0to1_300==1 ~ "<= 1%",
+    suppress_99to100_300==1 ~ ">= 99%",
+    suppress_0to2_101==1 ~ "<= 2%",
+    suppress_98to100_101==1 ~ ">= 98%",
+    suppress_0to5_41==1 ~ "<= 5%",
+    suppress_95to100_41==1 ~ ">= 95%",
+    suppress_0to10_21==1 ~ "<= 10%",
+    suppress_90to100_21==1 ~ ">= 90%",
+    suppress_0to20_10==1 ~ "<= 20%",
+    suppress_80to100_10==1 ~ ">= 80%",
+    suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
+      suppress_0to2_101==0 & suppress_98to100_101==0 & 
+      suppress_0to5_41==0 & suppress_95to100_41==0 & 
+      suppress_0to10_21==0 & suppress_90to100_21==0 & 
+      suppress_0to20_10==0 & suppress_80to100_10==0 ~ proficient_percent)) %>%
+  
+    select(c(location,locationtype,locationid,state,timeframe,varname,data,dataformat))
+  
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(assessment_all$locationid))>=1) {
+  print(assessment_all$location[is.na(assessment_all$locationid)])
+} else if (sum(is.na(assessment_all$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- assessment_all %>%
+  subset(dataformat=='Percent' & data>1 & is.na(data))
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- assessment_all %>%
+  subset(locationtype=='County') %>%
+  subset(data=='NA')
+
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed at the overall county level'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- assessment_county %>%
+#  arrange(totalenroll)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#assessment_all$data[assessment_all$location=='Billings'] <- 'NA'
+
+
+# 5. Visually inspect output data
+View(assessment_all)
+```
+
+STEP 2: COMMIT TO DATABASE 
+```{r}
+#CHECK DATASET NAMED assessment_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,'northdakota',assessment_all,append=TRUE,row.names=FALSE)
+```
+
+STEP 3: OUTPUT DATASET FOR UPLOADING TO KC DATA CENTER
+```{r}
+#########################
+##OUTPUT DATA CENTER FILE
+
+datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",fullyear,"' AND varname='thirdgradestatereadingproficiency1year';")
+
+upload_data <- dbGetQuery(con,datacenter_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_thirdgradestatereadingproficiency1year.csv"),row.names=FALSE)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+## THIRD GRADERS WHO SCORED AT OR ABOVE PROFICIENT ON STATEWIDE READING ASSESSMENT (3-YEAR TOTALS) ##
+STEP 1: IMPORT AND CLEAN DATA
+```{r}
+#DO NOT EDIT
+yearcomponent1 <- sub('-.*', '', year)
+yearcomponent2 <- as.character(as.numeric(paste(yearcomponent1))+1)
+yearcomponent3 <- as.character(as.numeric(paste(yearcomponent1))-1)
+yearcomponent4 <- as.character(as.numeric(paste(yearcomponent1))-2)
+full3year <- paste0("20",yearcomponent3,"-20",yearcomponent2)
+
+yearfile1 <- paste0(yearcomponent4,"-",yearcomponent3)
+yearfile2 <- paste0(yearcomponent3,"-",yearcomponent1)
+yearfile3 <- year
+
+
+
+#import data
+assessment_data1 <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",yearfile1,".xlsx"),guess_max = 1048576) %>%
+  
+  #subset for all students
+  subset(SubGroup_Desc=='All') %>%
+  subset(Subject=='Reading')
+
+assessment_data2 <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",yearfile2,".xlsx"),guess_max = 1048576) %>%
+  
+  #subset for all students
+  subset(SubGroup_Desc=='All') %>%
+  subset(Subject=='Reading')
+
+assessment_data3 <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",yearfile3,".xlsx"),guess_max = 1048576) %>%
+  
+  #subset for all students
+  subset(SubGroup_Desc=='All') %>%
+  subset(Subject=='Reading')
+
+assessment_data <- assessment_data1 %>%
+  bind_rows(assessment_data2) %>%
+  bind_rows(assessment_data3) 
+
+
+############
+#COUNTY DATA
+assessment_county <- assessment_data %>%
+  
+  #import county name
+  mutate(County=as.numeric(paste(County))) %>%
+  left_join(countyids,by=c("County"="ndcounty_number")) %>%
+  
+  #calculate numerator and denominator
+  mutate(proficientstudents=Nbr_Students_Proficient+Nbr_Students_Advanced) %>%
+  mutate(denominator=Nbr_Students_Novice+Nbr_Students_Partially_Proficient+Nbr_Students_Proficient+Nbr_Students_Advanced) %>%
+  
+  #sum by county
+  group_by(ndcounty_name) %>%
+  summarise(summed_numerator=sum(proficientstudents),
+            summed_denominator=sum(denominator),
+            proficient_percent=summed_numerator/summed_denominator) %>%
+  ungroup %>% 
+  
+  #fix variable names
+  rename(location=ndcounty_name) %>%
+  
+  mutate(timeframe=full3year) %>%
+  mutate(location=as.character(paste(location))) %>%
+  mutate(locationtype='County')
+
+###########
+#STATE DATA
+#start with  cleaned county data
+assessment_state <- assessment_county %>%
+  mutate(location='North Dakota') %>%
+  group_by(location,timeframe) %>%
+  summarise(summed_numerator=sum(summed_numerator),
+            summed_denominator=sum(summed_denominator),
+            proficient_percent=summed_numerator/summed_denominator) %>%
+  ungroup %>%
+
+  #add in locationtype
+  mutate(locationtype='State')
+
+
+  
+######################## 
+#combine all geographies
+assessment_all <- assessment_county %>%
+  bind_rows(assessment_state) %>%
+
+  mutate(state='North Dakota') %>%
+  mutate(varname='thirdgradestatereadingproficiency3year') %>%
+  mutate(dataformat='Percent') %>%
+  
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+
+
+  #create indicators to suppress data
+
+  #supress if denominator is less than 10
+  mutate(suppress_denominator=if_else(summed_denominator<10 | is.na(summed_denominator),1,0)) %>%
+ 
+  #suppress percentages of 0-1 if more than 300 in denominator
+  mutate(suppress_0to1_300=if_else(summed_denominator>300 & proficient_percent<=.01,1,0)) %>%
+  #suppress percentages of 99-100 if more than 300 in denominator
+  mutate(suppress_99to100_300=if_else(summed_denominator>300 & proficient_percent>=.99,1,0)) %>%
+
+  
+  #suppress percentages of 0-2 if between 101 to 300 in denominator
+  mutate(suppress_0to2_101=if_else((summed_denominator>100 & summed_denominator<=300) & 
+                                     proficient_percent<=0.02,1,0)) %>%
+  #suppress percentages of 98-100 if between 101 to 300 in denominator
+  mutate(suppress_98to100_101=if_else((summed_denominator>100 & summed_denominator<=300) & 
+                                     proficient_percent>=0.98,1,0)) %>%
+  
+  #suppress percentages of 0-5 if between 41 to 100 in denominator
+  mutate(suppress_0to5_41=if_else((summed_denominator>40 & summed_denominator<=100) & 
+                                     proficient_percent<=0.05,1,0)) %>%
+  #suppress percentages of 95-100 if between 41 to 100 in denominator
+  mutate(suppress_95to100_41=if_else((summed_denominator>40 & summed_denominator<=100) & 
+                                     proficient_percent>=0.95,1,0)) %>%
+  
+  #suppress percentages of 0-10 if between 21 to 40 in denominator
+  mutate(suppress_0to10_21=if_else((summed_denominator>20 & summed_denominator<=40) & 
+                                     proficient_percent<=0.10,1,0)) %>%
+  #suppress percentages of 90-100 if between 21 to 40 in denominator
+  mutate(suppress_90to100_21=if_else((summed_denominator>20 & summed_denominator<=40) & 
+                                     proficient_percent>=0.90,1,0)) %>%
+  
+  #suppress percentages of 0-20 if between 10 to 20 in denominator
+  mutate(suppress_0to20_10=if_else((summed_denominator>=10 & summed_denominator<=20) & 
+                                     proficient_percent<=0.20,1,0)) %>%
+  #suppress percentages of 80-100 if between 10 to 20 in denominator
+  mutate(suppress_80to100_10=if_else((summed_denominator>=10 & summed_denominator<=20) & 
+                                     proficient_percent>=0.80,1,0)) %>%
+  
+  #create updated percent and number based on suppression rules
+  mutate(proficient_percent=as.character(paste(proficient_percent))) %>%
+  mutate(data=case_when(
+    suppress_denominator==1 ~ 'NA',
+    suppress_0to1_300==1 ~ "<= 1%",
+    suppress_99to100_300==1 ~ ">= 99%",
+    suppress_0to2_101==1 ~ "<= 2%",
+    suppress_98to100_101==1 ~ ">= 98%",
+    suppress_0to5_41==1 ~ "<= 5%",
+    suppress_95to100_41==1 ~ ">= 95%",
+    suppress_0to10_21==1 ~ "<= 10%",
+    suppress_90to100_21==1 ~ ">= 90%",
+    suppress_0to20_10==1 ~ "<= 20%",
+    suppress_80to100_10==1 ~ ">= 80%",
+    suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
+      suppress_0to2_101==0 & suppress_98to100_101==0 & 
+      suppress_0to5_41==0 & suppress_95to100_41==0 & 
+      suppress_0to10_21==0 & suppress_90to100_21==0 & 
+      suppress_0to20_10==0 & suppress_80to100_10==0 ~ proficient_percent)) %>%
+  
+    select(c(location,locationtype,locationid,state,timeframe,varname,data,dataformat))
+  
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(assessment_all$locationid))>=1) {
+  print(assessment_all$location[is.na(assessment_all$locationid)])
+} else if (sum(is.na(assessment_all$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- assessment_all %>%
+  subset(dataformat=='Percent' & data>1 & is.na(data))
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+# 3. Visually inspect output data
+View(assessment_all)
+```
+
+STEP 2: COMMIT TO DATABASE 
+```{r}
+#CHECK DATASET NAMED assessment_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,'northdakota',assessment_all,append=TRUE,row.names=FALSE)
+```
+
+STEP 3: OUTPUT DATASET FOR UPLOADING TO KC DATA CENTER
+```{r}
+#########################
+##OUTPUT DATA CENTER FILE
+
+datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",full3year,"' AND varname='thirdgradestatereadingproficiency3year';")
+
+upload_data <- dbGetQuery(con,datacenter_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_thirdgradestatereadingproficiency3year.csv"),row.names=FALSE)
+
+```
+
+
+
+
+
+
+
+
+
+
+## THIRD GRADERS WHO SCORED AT OR ABOVE PROFICIENT ON STATEWIDE READING ASSESSMENT (1-YEAR TOTALS) BY RACE AND ETHNICITY ##
+STEP 1: IMPORT AND CLEAN DATA
+```{r}
+#import data
+assessment_data <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",year,".xlsx"),guess_max = 1048576) %>%
+  
+  #subset for reading
+  subset(Subject=='Reading') %>%
+  subset(SubGroup_Desc=='Asian American' | SubGroup_Desc=='Black' | 
+           SubGroup_Desc=='Hispanic' | 
+           SubGroup_Desc=='Native American' | 
+           SubGroup_Desc=='Native Hawaiian or Pacific Islander' | 
+           SubGroup_Desc=='White') %>%
+  rename(race=SubGroup_Desc) %>%
+  mutate(race=replace(race,race=='Asian American','Asian')) 
+
+
+############
+#COUNTY DATA
+assessment_county <- assessment_data %>%
+  
+  #import county name
+  mutate(County=as.numeric(paste(County))) %>%
+  left_join(countyids,by=c("County"="ndcounty_number")) %>%
+  
+  #calculate numerator and denominator
+  mutate(proficientstudents=Nbr_Students_Proficient+Nbr_Students_Advanced) %>%
+  mutate(denominator=Nbr_Students_Novice+Nbr_Students_Partially_Proficient+Nbr_Students_Proficient+Nbr_Students_Advanced) %>%
+  
+  #sum by county and race
+  group_by(ndcounty_name,race) %>%
+  summarise(summed_numerator=sum(proficientstudents),
+            summed_denominator=sum(denominator),
+            proficient_percent=summed_numerator/summed_denominator,.groups='keep') %>%
+  ungroup %>% 
+  
+  #fix variable names
+  rename(location=ndcounty_name) %>%
+  
+  mutate(timeframe=fullyear) %>%
+  mutate(location=as.character(paste(location))) %>%
+  mutate(locationtype='County') 
+
+###########
+#STATE DATA
+#start with  cleaned county data
+assessment_state <- assessment_county %>%
+  mutate(location='North Dakota') %>%
+  group_by(location,timeframe,race) %>%
+  summarise(summed_numerator=sum(summed_numerator),
+            summed_denominator=sum(summed_denominator),
+            proficient_percent=summed_numerator/summed_denominator,.groups='keep') %>%
+  ungroup %>%
+
+  #add in locationtype
+  mutate(locationtype='State')
+
+
+  
+######################## 
+#combine all geographies
+assessment_all <- assessment_county %>%
+  bind_rows(assessment_state) %>%
+  
+  
+  #most counties aren't large enough to provide valid data, subset to the largest 10
+  subset(location=='North Dakota' | 
+           location=='Cass' | location=='Burleigh' | location=='Grand Forks' | 
+           location=='Ward' | location=='Williams' | location=='Stark' | 
+           location=='Morton' | location=='Richland' | 
+           location=='McKenzie') %>%
+  subset(locationtype=='State' | (locationtype=='County' & race!='Native Hawaiian or Pacific Islander')) %>%
+
+  mutate(state='North Dakota') %>%
+  mutate(varname='thirdgradestatereadingproficiency1yearbyrace') %>%
+  mutate(dataformat='Percent') %>%
+  
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+
+
+  #create indicators to suppress data
+
+  #supress if denominator is less than 10
+  mutate(suppress_denominator=if_else(summed_denominator<10 | is.na(summed_denominator),1,0)) %>%
+ 
+  #suppress percentages of 0-1 if more than 300 in denominator
+  mutate(suppress_0to1_300=if_else(summed_denominator>300 & proficient_percent<=.01,1,0)) %>%
+  #suppress percentages of 99-100 if more than 300 in denominator
+  mutate(suppress_99to100_300=if_else(summed_denominator>300 & proficient_percent>=.99,1,0)) %>%
+
+  
+  #suppress percentages of 0-2 if between 101 to 300 in denominator
+  mutate(suppress_0to2_101=if_else((summed_denominator>100 & summed_denominator<=300) & 
+                                     proficient_percent<=0.02,1,0)) %>%
+  #suppress percentages of 98-100 if between 101 to 300 in denominator
+  mutate(suppress_98to100_101=if_else((summed_denominator>100 & summed_denominator<=300) & 
+                                     proficient_percent>=0.98,1,0)) %>%
+  
+  #suppress percentages of 0-5 if between 41 to 100 in denominator
+  mutate(suppress_0to5_41=if_else((summed_denominator>40 & summed_denominator<=100) & 
+                                     proficient_percent<=0.05,1,0)) %>%
+  #suppress percentages of 95-100 if between 41 to 100 in denominator
+  mutate(suppress_95to100_41=if_else((summed_denominator>40 & summed_denominator<=100) & 
+                                     proficient_percent>=0.95,1,0)) %>%
+  
+  #suppress percentages of 0-10 if between 21 to 40 in denominator
+  mutate(suppress_0to10_21=if_else((summed_denominator>20 & summed_denominator<=40) & 
+                                     proficient_percent<=0.10,1,0)) %>%
+  #suppress percentages of 90-100 if between 21 to 40 in denominator
+  mutate(suppress_90to100_21=if_else((summed_denominator>20 & summed_denominator<=40) & 
+                                     proficient_percent>=0.90,1,0)) %>%
+  
+  #suppress percentages of 0-20 if between 10 to 20 in denominator
+  mutate(suppress_0to20_10=if_else((summed_denominator>=10 & summed_denominator<=20) & 
+                                     proficient_percent<=0.20,1,0)) %>%
+  #suppress percentages of 80-100 if between 10 to 20 in denominator
+  mutate(suppress_80to100_10=if_else((summed_denominator>=10 & summed_denominator<=20) & 
+                                     proficient_percent>=0.80,1,0)) %>%
+  
+  #create updated percent and number based on suppression rules
+  mutate(proficient_percent=as.character(paste(proficient_percent))) %>%
+  mutate(data=case_when(
+    suppress_denominator==1 ~ 'NA',
+    suppress_0to1_300==1 ~ "<= 1%",
+    suppress_99to100_300==1 ~ ">= 99%",
+    suppress_0to2_101==1 ~ "<= 2%",
+    suppress_98to100_101==1 ~ ">= 98%",
+    suppress_0to5_41==1 ~ "<= 5%",
+    suppress_95to100_41==1 ~ ">= 95%",
+    suppress_0to10_21==1 ~ "<= 10%",
+    suppress_90to100_21==1 ~ ">= 90%",
+    suppress_0to20_10==1 ~ "<= 20%",
+    suppress_80to100_10==1 ~ ">= 80%",
+    suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
+      suppress_0to2_101==0 & suppress_98to100_101==0 & 
+      suppress_0to5_41==0 & suppress_95to100_41==0 & 
+      suppress_0to10_21==0 & suppress_90to100_21==0 & 
+      suppress_0to20_10==0 & suppress_80to100_10==0 ~ proficient_percent)) %>%
+  
+    select(c(location,locationtype,locationid,state,timeframe,varname,race,data,dataformat))
+  
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(assessment_all$locationid))>=1) {
+  print(assessment_all$location[is.na(assessment_all$locationid)])
+} else if (sum(is.na(assessment_all$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- assessment_all %>%
+  subset(dataformat=='Percent' & data>1 & is.na(data))
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- assessment_all %>%
+  subset(locationtype=='County') %>%
+  subset(data=='NA')
+
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed at the overall county level'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- assessment_county %>%
+#  arrange(totalenroll)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#assessment_all$data[assessment_all$location=='Billings'] <- 'NA'
+
+# 4. Visually inspect output data
+View(assessment_all)
+```
+
+STEP 2: COMMIT TO DATABASE 
+```{r}
+#CHECK DATASET NAMED assessment_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,'northdakota',assessment_all,append=TRUE,row.names=FALSE)
+```
+
+STEP 3: OUTPUT DATASET FOR UPLOADING TO KC DATA CENTER
+```{r}
+#########################
+##OUTPUT DATA CENTER FILE
+
+datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, race, data FROM northdakota WHERE timeframe='",fullyear,"' AND varname='thirdgradestatereadingproficiency1yearbyrace';")
+
+upload_data <- dbGetQuery(con,datacenter_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         Race=race)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_thirdgradestatereadingproficiency1yearbyrace.csv"),row.names=FALSE)
+
+```
+
+
+
+
+
