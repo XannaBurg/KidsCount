@@ -164,14 +164,14 @@ acs_tribal3 <- acs_tribal2 %>%
   select(c(AIANNHNAME,locationtype,DP05_0071E,DP05_0071PE,DP05_0071M,DP05_0071PM,
            DP05_0076E,DP05_0076PE,DP05_0076M,DP05_0076PM)) %>%
   rename(location=AIANNHNAME,
-         'EN Non-Hispanic'=DP05_0071E,
-         'MN Non-Hispanic'=DP05_0071M,
-         'EN Hispanic'=DP05_0076E,
-         'MN Hispanic'=DP05_0076M,
-         'EP Non-Hispanic'=DP05_0071PE,
-         'MP Non-Hispanic'=DP05_0071PM,
-         'EP Hispanic'=DP05_0076PE,
-         'MP Hispanic'=DP05_0076PM) %>%
+         'EN Hispanic'=DP05_0071E,
+         'MN Hispanic'=DP05_0071M,
+         'EN Non-Hispanic'=DP05_0076E,
+         'MN Non-Hispanic'=DP05_0076M,
+         'EP Hispanic'=DP05_0071PE,
+         'MP Hispanic'=DP05_0071PM,
+         'EP Non-Hispanic'=DP05_0076PE,
+         'MP Non-Hispanic'=DP05_0076PM) %>%
   
   #change from wide to long format
   pivot_longer(cols=c('EN Non-Hispanic','MN Non-Hispanic','EN Hispanic','MN Hispanic','EP Non-Hispanic','MP Non-Hispanic','EP Hispanic','MP Hispanic'),names_to='race',values_to='data') %>%
