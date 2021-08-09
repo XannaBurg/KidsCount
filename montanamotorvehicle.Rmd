@@ -32,9 +32,9 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '19'
+year <- '20'
 
-fullyear <- '2019' 
+fullyear <- '2020' 
 statefile <- 'montana'
 statename <- 'Montana'
 
@@ -62,22 +62,6 @@ crashes_county <- crashes %>%
   mutate(locationtype='County')
   
 
-###########################
-#STATE PLANNING REGION DATA
-crashes_region <- crashes_county %>%
-
-  #add in regions
-  mutate(location=replace(location, 
-                          statename=='Montana' & location=='Lewis and Clark', 
-                          'Lewis & Clark')) %>%
-  mutate(location=replace(location,statename=='Montana' & location=='Sweetgrass','Sweet Grass')) %>%
-  left_join(regionids,by=c('location'='county')) %>%
-  group_by(region) %>%
-  summarise(data=sum(data)) %>%
-  rename(location=region) %>%
-  mutate(location=as.character(paste(location))) %>%
-  mutate(locationtype='Planning Region') 
-  
 
 ###########
 #STATE DATA
@@ -92,7 +76,6 @@ crashes_state <- crashes_county %>%
 ##################################################
 #COMBINE COUNTY, STATE, AND STATE PLANNING REGIONS
 crashesdata <- crashes_county %>%
-  bind_rows(crashes_region) %>%
   bind_rows(crashes_state) %>%
   mutate(location=replace(location, 
                           statename=='Montana' & location=='Lewis and Clark', 
