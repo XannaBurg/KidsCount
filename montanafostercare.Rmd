@@ -5,6 +5,7 @@ output: html_document
 
 ## Indicator 1: Children ages 0 to 17 in foster care by county
 ## Indicator 2: Children ages 0 to 5 in foster care by county
+## Indicator 3: Average days a child is in state care before exiting
 
 
 **Created by:** Xanna Burg
@@ -33,8 +34,8 @@ library(naniar)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2019'
-year_short <- '19'
+year <- '2020'
+year_short <- '20'
 
 statefile <- 'montana'
 statename <- 'Montana'
@@ -63,10 +64,9 @@ fostercaredata_0to5 <- read_excel(path=paste0("./Input/safety/montana_",year_sho
 ```{r}
 fostercaredata_0to17_2 <- fostercaredata_0to17 %>% 
   
-  rename(location=`...1`,
-         children_2017=`CY 2017`,
-         children_2018=`CY 2018`,
-         children_2019=`CY 2019`) %>%
+  rename(location=`...1`) %>%
+  select(c(location,all_of(paste0("CY ",year)))) %>%
+  rename(data=all_of(paste0("CY ",year))) %>%
   
   #update locations
   mutate(location=replace(location,location=='State Total','Montana')) %>%
@@ -82,15 +82,8 @@ fostercaredata_0to17_2 <- fostercaredata_0to17 %>%
   
   left_join(locationids,by=c('location'='Location')) %>%
   rename(locationid=LocationId) %>%
-    
-  #pivot longer
-  pivot_longer(cols=c(children_2017,children_2018,children_2019),names_to='timeframe',values_to='data') %>%
+  mutate(timeframe=year) %>%  
   
-  #split category to include the date
-  mutate(timeframe=case_when(
-    timeframe=='children_2017' ~ '2017',
-    timeframe=='children_2018' ~ '2018',
-    timeframe=='children_2019' ~ '2019')) %>%
   
   #suppress if less than 4
   mutate(data=replace(data,data<4,NA))
@@ -249,10 +242,9 @@ write.csv(upload_data,file=paste0("./Output/safety/",statefile,"_",year,"_childr
 ```{r}
 fostercaredata_0to5_2 <- fostercaredata_0to5 %>% 
   
-  rename(location=`...1`,
-         children_2017=`CY 2017`,
-         children_2018=`CY 2018`,
-         children_2019=`CY 2019`) %>%
+  rename(location=`...1`) %>%
+  select(c(location,all_of(paste0("CY ",year)))) %>%
+  rename(data=all_of(paste0("CY ",year))) %>%
   
   #update locations
   mutate(location=replace(location,location=='State Total','Montana')) %>%
@@ -269,15 +261,8 @@ fostercaredata_0to5_2 <- fostercaredata_0to5 %>%
   left_join(locationids,by=c('location'='Location')) %>%
   rename(locationid=LocationId) %>%
     
-  #pivot longer
-  pivot_longer(cols=c(children_2017,children_2018,children_2019),names_to='timeframe',values_to='data') %>%
-  
-  #split category to include the date
-  mutate(timeframe=case_when(
-    timeframe=='children_2017' ~ '2017',
-    timeframe=='children_2018' ~ '2018',
-    timeframe=='children_2019' ~ '2019')) %>%
-  
+  mutate(timeframe=year) %>%
+
   #suppress if less than 4
   mutate(data=replace(data,data<4,NA))
   
@@ -424,5 +409,107 @@ upload_data <- dbGetQuery(con,upload_sql) %>%
 
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
 write.csv(upload_data,file=paste0("./Output/safety/",statefile,"_",year,"_childrenages0to5infostercare.csv"),row.names=FALSE)
+```
+
+
+
+
+
+
+
+## CREATE DATA FILE TO COPY TO EXCEL FOR HMHB
+```{r}
+excel0to17_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE varname='childrenages0to17infostercare';")
+
+excel0to17_county <- dbGetQuery(con,excel0to17_sql) %>%
+  pivot_wider(names_from='timeframe',values_from='data') %>%
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020')) %>%
+  select(c(`location`,`2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,`2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
+  subset(location != 'Montana') %>%
+  arrange(location)
+
+excel0to17_state <- dbGetQuery(con,excel0to17_sql) %>%
+  pivot_wider(names_from='timeframe',values_from='data') %>%
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020')) %>%
+  select(c(`location`,`2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,`2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
+  subset(location == 'Montana') %>%
+  arrange(location)
+
+excel0to17 <- excel0to17_county %>%
+  bind_rows(excel0to17_state)
+
+
+
+
+excel0to5_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE varname='childrenages0to5infostercare';")
+
+excel0to5_county <- dbGetQuery(con,excel0to5_sql) %>%
+  pivot_wider(names_from='timeframe',values_from='data') %>%
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020')) %>%
+  select(c(`location`,`2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,`2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
+  subset(location != 'Montana') %>%
+  arrange(location)
+
+excel0to5_state <- dbGetQuery(con,excel0to5_sql) %>%
+  pivot_wider(names_from='timeframe',values_from='data') %>%
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020')) %>%
+  select(c(`location`,`2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,`2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
+  subset(location == 'Montana') %>%
+  arrange(location)
+
+excel0to5 <- excel0to5_county %>%
+  bind_rows(excel0to5_state)
+  
+  
+write.csv(excel0to5,'./Output/safety/MT Foster Care Excel/mt_fostercare_tocopy_0to5.csv',row.names=FALSE)
+
+
+```
+
+
+
+## -- Average days a child is in state care before exiting -- ##
+## STEP 1: create the data file manually
+```{r}
+#edit the data only
+data <- 553
+
+#----
+location <- 'Montana'
+locationtype <- 'State'
+locationid <- '28'
+state <- 'Montana'
+timeframe <- all_of(year)
+dataformat <- 'Number'
+varname <- 'averagedaysachildisinstatecarebeforeexiting'
+
+
+fostercareexit <- data.frame(location,locationtype,locationid,state,timeframe,dataformat,varname,data)
+
+```
+
+## STEP 2: Add to KC database
+```{r}
+#CHECK DATASET NAMED fostercareexit TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',fostercareexit,append=TRUE,row.names=FALSE)
+
+```
+
+## STEP 3: OUTPUT FILE FOR KC
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",year,"' AND varname='averagedaysachildisinstatecarebeforeexiting';")
+
+upload_data <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("./Output/safety/",statefile,"_",year,"_averagedaysachildisinstatecarebeforeexiting.csv"),row.names=FALSE)
 ```
 
