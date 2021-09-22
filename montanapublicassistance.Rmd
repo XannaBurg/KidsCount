@@ -43,7 +43,7 @@ library(stringr)
 ```{r}
 
 ####UPDATE to reflect the current year data working with
-year <- '2020'
+year <- '2021'
 statename <- 'Montana'
 #input the number that matches Missoula CITY for Medicaid children
 missoulavalue <- ''
@@ -70,7 +70,7 @@ regionids$county <- as.character(regionids$county)
 #####STEP 1: READ IN DATA FROM DPHHS IN SEPTEMBER WHEN RECEIVE#####
 ```{r}
 #read in the data that was shared by DPHHS
-medicaid <- read_excel(path=paste0("./Input/health/montana_June ",year," Enrollment_MednCHIP County Table.xlsx"),sheet="To Date All Enrollment",skip=4) %>%
+medicaid <- read_excel(path=paste0("./Input/economics/montana_",year,"_tanfsnapmedicaid.xlsx"),sheet=paste0("Medicaid & HMK June ",year),skip=4) %>%
   rename(medicaidchildren='Medicaid\r\nChildren',
          chip='HMK Only',
          medicaidandchip='HMK &\r\nMedicaid') %>%
@@ -312,7 +312,7 @@ write.csv(upload_datacenter_medicaid_percent,file=paste0("./Output/health/",data
 
 ```{r}
 #read in the data that was shared by DPHHS
-snap <- read_excel(path=paste0("./Input/economics/montana_june_",year,"_tanfsnap.xlsx"),sheet=paste0("SNAP June ",year))
+snap <- read_excel(path=paste0("./Input/economics/montana_",year,"_tanfsnapmedicaid.xlsx"),sheet=paste0("SNAP June ",year))
   
 #create state data frame subsetting for Grand Total row
 snap_state <- snap %>%
@@ -433,7 +433,7 @@ write.csv(upload_datacenter_snap_number,file=paste0("./Output/economics/",databa
 #####STEP 1: READ IN DATA FROM DPHHS IN SEPTEMBER WHEN RECEIVE#####
 ```{r}
 #read in the data that was shared by DPHHS
-snap <- read_excel(path=paste0("./Input/economics/montana_june_",year,"_tanfsnap.xlsx"),sheet=paste0("SNAP June ",year))
+snap <- read_excel(path=paste0("./Input/economics/montana_",year,"_tanfsnapmedicaid.xlsx"),sheet=paste0("SNAP June ",year))
   
 #create state data frame subsetting for Grand Total row
 snap_state <- snap %>%
@@ -640,7 +640,7 @@ write.csv(upload_datacenter_snap_percent,file=paste0("./Output/economics/",datab
 
 ```{r}
 #read in the data that was shared by DPHHS
-snap <- read_excel(path=paste0("./Input/economics/montana_june_",year,"_tanfsnap.xlsx"),sheet=paste0("SNAP June ",year))
+snap <- read_excel(path=paste0("./Input/economics/montana_",year,"_tanfsnapmedicaid.xlsx"),sheet=paste0("SNAP June ",year))
   
 #create state data frame subsetting for Grand Total row
 snap_state <- snap %>%
@@ -758,7 +758,7 @@ write.csv(upload_datacenter_snap_benefit,file=paste0("./Output/economics/",datab
 
 ```{r}
 #read in the data that was shared by DPHHS
-snap <- read_excel(path=paste0("./Input/economics/montana_june_",year,"_tanfsnap.xlsx"),sheet=paste0("SNAP June ",year))
+snap <- read_excel(path=paste0("./Input/economics/montana_",year,"_tanfsnapmedicaid.xlsx"),sheet=paste0("SNAP June ",year))
   
 #create state data frame subsetting for Grand Total row
 snap_state <- snap %>%
@@ -877,7 +877,7 @@ write.csv(upload_datacenter_snap_indbenefit,file=paste0("./Output/economics/",da
 
 ```{r}
 #read in the data that was shared by DPHHS
-tanf <- read_excel(path=paste0("./Input/economics/montana_june_",year,"_tanfsnap.xlsx"),sheet=paste0("TANF June ",year))
+tanf <- read_excel(path=paste0("./Input/economics/montana_",year,"_tanfsnapmedicaid.xlsx"),sheet=paste0("TANF June ",year))
   
 #create state data frame subsetting for Grand Total row
 tanf_state <- tanf %>%
@@ -976,6 +976,8 @@ dbWriteTable(con,database_state,upload_tanf_rechouse,append=TRUE,row.names=FALSE
 
 uploadnumber_sql <- paste0("SELECT locationid, location, timeframe, category, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='tanfrecipientshouseholdsallages';")
 
+uploadnumber_sql <- paste0("SELECT locationid, location, timeframe, category, dataformat, data FROM ", database_state," WHERE (timeframe='2017' OR timeframe='2018' OR timeframe='2019' OR timeframe='2020' OR timeframe='2021') AND varname='tanfrecipientshouseholdsallages';")
+
 
 upload_datacenter_tanf_number <- dbGetQuery(con,uploadnumber_sql) %>%
   rename(LocationId=locationid,
@@ -1000,7 +1002,7 @@ write.csv(upload_datacenter_tanf_number,file=paste0("./Output/economics/",databa
 #####STEP 1: READ IN DATA FROM DPHHS IN SEPTEMBER WHEN RECEIVE#####
 ```{r}
 #read in the data that was shared by DPHHS
-tanf <- read_excel(path=paste0("./Input/economics/montana_june_",year,"_tanfsnap.xlsx"),sheet=paste0("TANF June ",year))
+tanf <- read_excel(path=paste0("./Input/economics/montana_",year,"_tanfsnapmedicaid.xlsx"),sheet=paste0("TANF June ",year))
   
 #create state data frame subsetting for Grand Total row
 tanf_state <- tanf %>%
