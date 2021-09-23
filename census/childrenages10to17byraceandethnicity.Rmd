@@ -40,7 +40,7 @@ library(sas7bdat)
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 statename <- "South Dakota"
-year <- "2019"
+year <- "2020"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -88,7 +88,7 @@ statecode <- as.numeric(unique(fips$state_code[fips$state_name==statename]))
 
 ## STEP 2: IMPORT AND CLEAN DATA FROM SAS FILE
 ```{r}
-fulldata <- read.sas7bdat(paste0("../Input/demographics/pcen_v2019_y1019.sas7bdat"))
+fulldata <- read.sas7bdat(paste0("../Input/demographics/pcen_v2020_y1020.sas7bdat"))
 ```
 
 
