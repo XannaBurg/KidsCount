@@ -38,8 +38,8 @@ library(sas7bdat)
 ```{r}
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
-statename <- "North Dakota"
-year <- "2019"
+statename <- "South Dakota"
+year <- "2020"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -87,7 +87,7 @@ statecode <- as.numeric(unique(fips$state_code[fips$state_name==statename]))
 
 ## STEP 2: IMPORT AND CLEAN DATA FROM SAS FILE
 ```{r}
-fulldata <- read.sas7bdat(paste0("../Input/demographics/pcen_v2019_y1019.sas7bdat"))
+fulldata <- read.sas7bdat(paste0("../Input/demographics/pcen_v2020_y1020.sas7bdat"))
 
 ############
 #COUNTY DATA
@@ -104,7 +104,7 @@ populationdata_county <- fulldata %>%
   mutate(county=gsub("\\s*\\w*$", "", county)) %>%
   
   #wide to long format
-  pivot_longer(cols=c(POP2010_JUL,POP2011,POP2012,POP2013,POP2014,POP2015,POP2016,POP2017,POP2018,POP2019),names_to='date',values_to='data') %>%
+  pivot_longer(cols=c(POP2010_JUL,POP2011,POP2012,POP2013,POP2014,POP2015,POP2016,POP2017,POP2018,POP2019,POP2020),names_to='date',values_to='data') %>%
   
   #sum across race and ethnicities
   group_by(county,date,age) %>%
@@ -122,7 +122,8 @@ populationdata_county <- fulldata %>%
     date=='POP2016' ~ '2016',
     date=='POP2017' ~ '2017',
     date=='POP2018' ~ '2018',
-    date=='POP2019' ~ '2019')) %>% 
+    date=='POP2019' ~ '2019',
+    date=='POP2020' ~'2020')) %>% 
   select(-c(date)) %>%
   rename(location=county,
          age_group=age) %>%
