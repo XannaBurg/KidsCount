@@ -40,9 +40,9 @@ library(sas7bdat)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2019'
+year <- '2020'
 
-fiveyear <- '2015-2019' 
+fiveyear <- '2016-2020' 
 statefile <- 'northdakota'
 statename <- 'North Dakota'
 
@@ -1020,7 +1020,7 @@ temp_checkregions <- birthdata_all %>%
   left_join(regionids,by=c('location'='county')) %>%
   
   #******ADD IN THE REGION HERE
-  subset(region=='Planning Region 4') %>%
+  subset(region=='Planning Region 5') %>%
   arrange(data)
 View(temp_checkregions)
 
@@ -1028,6 +1028,7 @@ View(temp_checkregions)
 #CHANGE TO THE CORRECT COUNTY NAME HERE
 #birthdata_all$data[birthdata_all$location=='McKenzie'] <- NA
 #birthdata_all$data[birthdata_all$location=='Walsh'] <- NA
+#birthdata_all$data[birthdata_all$location=='Sargent'] <- NA
 
 
 #Then check again
@@ -1297,13 +1298,13 @@ temp_checkregions <- birthdata_all %>%
   left_join(regionids,by=c('location'='county')) %>%
   
   #******ADD IN THE REGION HERE
-  subset(region=='Planning Region 5') %>%
+  subset(region=='Planning Region 4') %>%
   arrange(data)
 View(temp_checkregions)
 
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
-#birthdata_all$data[birthdata_all$location=='McKenzie'] <- NA
+#birthdata_all$data[birthdata_all$location=='Pembina'] <- NA
 #birthdata_all$data[birthdata_all$location=='Cavalier'] <- NA
 #birthdata_all$data[birthdata_all$location=='Sargent'] <- NA
 
@@ -1405,7 +1406,7 @@ fips$county_code=as.numeric(paste(fips$county_code))
 fips$state_code=as.numeric(paste(fips$state_code))
 
 # UPDATE SAS FILE FOR NEW YEAR 
-fullpopdata <- read.sas7bdat(paste0("./Input/demographics/pcen_v2019_y1019.sas7bdat"))
+fullpopdata <- read.sas7bdat(paste0("./Input/demographics/pcen_v2020_y1020.sas7bdat"))
 
 #subset population file for specifications
 popdata_county <- fullpopdata %>%
@@ -1837,13 +1838,13 @@ temp_checkregions <- teenbirthdata_all %>%
   left_join(regionids,by=c('location'='county')) %>%
   
   #******ADD IN THE REGION HERE
-  subset(region=='Planning Region 8') %>%
+  subset(region=='Planning Region 3') %>%
   arrange(data)
 View(temp_checkregions)
 
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
-#teenbirthdata_all$data[teenbirthdata_all$location=='Billings'] <- NA
+#teenbirthdata_all$data[teenbirthdata_all$location=='Towner'] <- NA
 
 
 
@@ -1903,7 +1904,7 @@ teenbirths_percent <- dbGetQuery(con,teenbirths_numbersql) %>%
   mutate(dataformat='Percent') %>%
   mutate(varname='teenbirthsages12to19')
 
-
+View(teenbirths_percent)
 ```
 
 ```{r}
@@ -2115,14 +2116,14 @@ temp_checkregions <- birthdata_all %>%
   left_join(regionids,by=c('location'='county')) %>%
   
   #******ADD IN THE REGION HERE
-  subset(region=='Planning Region 5') %>%
+  subset(region=='Planning Region 3') %>%
   arrange(data)
 View(temp_checkregions)
 
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
-#birthdata_all$data[birthdata_all$location=='McKenzie'] <- NA
-#birthdata_all$data[birthdata_all$location=='Cavalier'] <- NA
+#birthdata_all$data[birthdata_all$location=='Eddy'] <- NA
+#birthdata_all$data[birthdata_all$location=='Towner'] <- NA
 #birthdata_all$data[birthdata_all$location=='Sargent'] <- NA
 
 
