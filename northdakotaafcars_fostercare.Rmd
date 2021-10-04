@@ -40,7 +40,7 @@ library(gt)
 
 
 ```{r}
-year <- "2019"
+year <- "2020"
 statename <- 'North Dakota'
 
 #county and state names that match fips codes (from tidycensus package)
@@ -227,8 +227,8 @@ View(temp_checkregions)
 
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
-afcars_all$data[afcars_all$location=='Sargent'] <- NA
-afcars_all$data[afcars_all$location=='Pembina'] <- NA
+#afcars_all$data[afcars_all$location=='Sargent'] <- NA
+
   
 ```
 
