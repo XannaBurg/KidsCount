@@ -222,6 +222,7 @@ dbWriteTable(con,'montana',fostercare_percent,append=TRUE,row.names=FALSE)
 
 upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",year,"' AND varname='childrenages0to17infostercare';")
 
+
 upload_data <- dbGetQuery(con,upload_sql) %>%
   rename(LocationId=locationid,
          Location=location,
@@ -438,7 +439,7 @@ excel0to17_state <- dbGetQuery(con,excel0to17_sql) %>%
 excel0to17 <- excel0to17_county %>%
   bind_rows(excel0to17_state)
 
-
+write.csv(excel0to17,'./Output/safety/MT Foster Care Excel/mt_fostercare_tocopy_0to17.csv',row.names=FALSE)
 
 
 excel0to5_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE varname='childrenages0to5infostercare';")
