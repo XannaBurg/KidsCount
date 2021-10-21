@@ -42,8 +42,8 @@ library(stringr)
 ```{r}
 
 ####UPDATE to reflect the current year data working with
-year <- '2020'
-year_short <- '20'
+year <- '2021'
+year_short <- '21'
 statename <- 'South Dakota'
 
 
@@ -64,11 +64,12 @@ locationids$Location <- as.character(locationids$Location)
 
 ```{r}
 #import and clean the data
-snaphouseholds <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_publicassistance.xlsx"),sheet=paste0("SNAP_FY",year_short),skip=1) %>%
+snaphouseholds <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_publicassistance.xlsx"),sheet=paste0("SNAP_FY",year_short),skip=2) %>%
   
   rename(location=`...1`,
          data=Households) %>%
   mutate(location=replace(location,location=='State Totals','South Dakota')) %>%
+  subset(!is.na(data)) %>%
   
   #add in KC variables
   select(c(location,data)) %>%
@@ -165,6 +166,7 @@ snapparticipants <- read_excel(path=paste0("./Input/economics/southdakota_",year
   
   rename(location=all_of(paste0("FY",year_short))) %>%
   mutate(location=replace(location,location=='State','South Dakota')) %>%
+  subset(!is.na(Total)) %>%
   
   #lower case county names
   mutate(location=tolower(location)) %>%
@@ -988,6 +990,7 @@ snapna <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_publica
   
   rename(location=`...1`) %>%
   mutate(location=replace(location,location=='State Totals','South Dakota')) %>%
+  subset(!is.na(Households)) %>%
   
   #lower case county names
   mutate(location=tolower(location)) %>%
