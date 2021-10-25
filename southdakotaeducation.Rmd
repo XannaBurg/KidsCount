@@ -1183,12 +1183,15 @@ df_hsdata <- read_excel(path=paste0("./Input/education/southdakota_",year,"_educ
 #verify column names prior to assigning
 #The dataset isn't set up very nice in that there are three rows to uniquely identify each variable. Before using this data, need to verify the order of the columns as the order is how it is matched to the correct group.
 
+year1 <- substr(fullyear,1,4)
+year2 <- as.numeric(paste(year1))+1
+
 #rename columns
 df_hsdata2 <- df_hsdata %>%
   rename(completion_percentage=Percentage...10,
          graduation_percentage=Percentage...16) %>%
   subset(School=="All Schools") %>%
-  subset(`Academic Year`=='2019-2020') %>%
+  subset(`Academic Year`==paste0(year1,"-",year2)) %>%
   select(District, completion_percentage,graduation_percentage)
 
 
@@ -1336,8 +1339,8 @@ write.csv(upload_data_graduation,file=paste0("./Output/education/southdakota_",y
 ```{r}
 #MANUALLY INPUT THE RACE DATA USING THE REPORT CARD
 race <- c('American Indian/Alaska Native','Asian','Black or African American','Hispanic or Latino','White','All Races')
-graduation <- c()
-completion <- c()
+graduation <- c(.4497,.9171,.8421,.6667,.8980,.8288)
+completion <- c(.6282,.9330,.8910,.7625,.9429,.8986)
 
 df_graduation_race <- data.frame(race,graduation) %>%
   rename(data=graduation) %>%
