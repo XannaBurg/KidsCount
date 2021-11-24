@@ -50,8 +50,8 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2019'
-year_5 <- '2015-2019'
+year <- '2020'
+year_5 <- '2016-2020'
 statename <- 'South Dakota'
 
 
