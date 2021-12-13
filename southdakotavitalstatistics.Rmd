@@ -1719,13 +1719,13 @@ childdeaths <- read_excel(path=paste0("./Input/health/southdakota_",year_5,"_vit
   rename(location=`...2`) %>%
   select(-c(`...1`)) %>%
   #remove extra text and Unknown county
-  subset(!is.na(`1-14 AI Population 2015-2019`)) %>%
+  subset(!is.na(`Pop 1-14 AI`)) %>%
   mutate(location=replace(location,is.na(location),'South Dakota')) %>%
   subset(location!='Unknown') %>%
   
   rename(Number=`Deaths`,
          Rate=`Rate`) %>%
-  select(-c(`1-14 AI Population 2015-2019`)) %>%
+  select(-c(`Pop 1-14 AI`)) %>%
   
   #merge in county list to include missing counties
   full_join(countylist,by=c('location'='county')) %>%
@@ -1830,13 +1830,13 @@ teendeaths <- read_excel(path=paste0("./Input/health/southdakota_",year_5,"_vita
   rename(location=`...2`) %>%
   select(-c(`...1`)) %>%
   #remove extra text and Unknown county
-  subset(!is.na(`15-19 AI Population 2015-2019`)) %>%
+  subset(!is.na(`Pop 15-19 AI`)) %>%
   mutate(location=replace(location,is.na(location),'South Dakota')) %>%
   subset(location!='Unknown') %>%
   
   rename(Number=`Deaths`,
          Rate=`Rate`) %>%
-  select(-c(`15-19 AI Population 2015-2019`)) %>%
+  select(-c(`Pop 15-19 AI`)) %>%
   
   #merge in county list to include missing counties
   full_join(countylist,by=c('location'='county')) %>%
