@@ -32,7 +32,7 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2020'
+year <- '2021'
 statename <- 'South Dakota'
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -56,26 +56,27 @@ regionids$county <- as.character(regionids$county)
 ## STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #import the data
-importdata <- read.csv(paste0("./Input/safety/southdakota_",year,"_juvenileadmissionstodrugoralcoholprograms.csv")) 
+importdata <- read_excel(path=paste0("./Input/safety/southdakota_",year,"_juvenileadmissionstodrugoralcoholprograms.xlsx")) 
 
 
 #subset to only include totals
 drug_data <- importdata %>%
-  filter(str_detect(County,"Total")) %>%
+  rename(data=`Count of Youths Served`,
+         location=`CountyOfResidence`) %>%
+  select(c(data,location)) %>%
   
   #fix county names
-  mutate(location=str_remove_all(County," Total")) %>%
-  subset(location!='OUT OF STATE') %>%
-  mutate(location=replace(location,location=='Grand','SOUTH DAKOTA')) %>%
+  subset(location!='OUT-OF-STATE') %>%
+  mutate(location=replace(location,location=='TOTAL UNDUPLICATED','SOUTH DAKOTA')) %>%
   mutate(location=tolower(location)) %>%
   mutate(location=str_to_title(location)) %>%
+  mutate(location=replace(location,location=='Mccook','McCook')) %>%
+  subset(location!='Sioux') %>%
   
   #add in counties that are zero // not included in dataset
   full_join(countylist, by=c('location'='county')) %>%
   
   #reformat data
-  rename(data=PrimaryDrug) %>%
-  select(location,data) %>%
   mutate(data=replace(data,is.na(data),0)) %>%
   mutate(locationtype=if_else(location=='South Dakota','State','County')) %>%
   mutate(state='South Dakota',
@@ -122,14 +123,12 @@ dbWriteTable(con,database_state,drug_data,append=TRUE,row.names=FALSE)
 
 upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='juvenileadmissionstodrugoralcoholprograms';")
 
-
 upload_datacenter <- dbGetQuery(con,upload_sql) %>%
   rename(LocationId=locationid,
          Location=location,
          TimeFrame=timeframe,
          DataFormat=dataformat,
          Data=data)
-
 
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
 write.csv(upload_datacenter,file=paste0("./Output/safety/",database_state,"_",year,"_juvenileadmissionstodrugoralcoholprograms.csv"),row.names=FALSE)
