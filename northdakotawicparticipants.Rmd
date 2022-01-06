@@ -30,7 +30,7 @@ library(sas7bdat)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2020'
+year <- '2021'
 
 statefile <- 'northdakota'
 statename <- 'North Dakota'
