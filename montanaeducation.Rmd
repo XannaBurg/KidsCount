@@ -452,24 +452,25 @@ write.csv(upload_data_enrollment,file=paste0("./Output/education/",statefile,"_"
 specialed <- read_excel(path=paste0("./Input/education/montana_",year,"_specialeducation.xlsx"))
 
 #read in the enrollment dataset to calculate pre-K through 12 enrollment
-enrollment <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='Enrollment Counts')
+enrollment1 <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='County')
+enrollment2 <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='State')
 
 ##########################
 #CREATE THE COUNTY DATASET
 county_specialed <- specialed %>%
   
   #remove state totals
-  subset(County != 'State') %>%
+  subset(`County Name` != '') %>%
   
   #rename special ed count variable
   rename(specialedcount=paste0("SFY20",year," Child Count")) %>%
   
   #join enrollment data
-  left_join(enrollment,by=c('County'='CountyName')) %>%
+  left_join(enrollment1,by=c('County Name'='countyname')) %>%
   
   #calculate new columns and percent
-  rename(kthrough12='K-12 Enrollment Count',
-         prek='PreK Enrollment Count') %>%
+  rename(kthrough12='Total K12 Count',
+         prek='Total PK Count') %>%
   mutate(prek=as.numeric(prek)) %>%
   mutate(prek=replace(prek,is.na(prek),0)) %>%
   mutate(enrollmentprek12=kthrough12+prek) %>%
@@ -477,8 +478,8 @@ county_specialed <- specialed %>%
   mutate(percentspecialed=specialedcount/enrollmentprek12) %>%
   
   #rename to database
-  select(c(County,specialedcount,percentspecialed)) %>%
-  rename(location=County,
+  select(c(`County Name`,specialedcount,percentspecialed)) %>%
+  rename(location=`County Name`,
          Percent=percentspecialed,
          Number=specialedcount) %>%
   mutate(state=statename) %>%
@@ -494,10 +495,10 @@ county_specialed <- specialed %>%
 #CREATE THE STATE DATASET
 
 #create summary of statewide enrollment
-state_enrollment <- enrollment %>%
+state_enrollment <- enrollment2 %>%
   mutate(location='Montana') %>%
-  rename(kthrough12='K-12 Enrollment Count',
-         prek='PreK Enrollment Count') %>%
+  rename(kthrough12='Total K12 Count',
+         prek='Total PK Count') %>%
   mutate(prek=as.numeric(prek)) %>%
   mutate(prek=replace(prek,is.na(prek),0)) %>%
   group_by(location) %>%
@@ -508,7 +509,7 @@ state_enrollment <- enrollment %>%
 state_specialed <- specialed %>%
   
   #keep only state totals
-  subset(County=='State') %>%
+  subset(is.na(`County Name`)) %>%
   
   #rename special ed count variable
   rename(specialedcount=paste0("SFY20",year," Child Count")) %>%
@@ -1117,13 +1118,14 @@ write.csv(upload_data_pupilspending,file=paste0("./Output/education/",statefile,
 ##Need to input state estimate in code##
 ```{r}
 #read in the data
-testing1 <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='SBAC 2015') 
+testing1 <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata2.xlsx"),sheet='County 3rd Grade Proficiency') 
 
 ###################
 #CREATE COUNTY DATA
 county_testing1 <- testing1 %>%
-  rename(data='Proficient and Above Percent',
-         location=CountyName) %>% 
+  rename(data='Percent Proficient and Above ELA',
+         location=countyname) %>% 
+  subset(StateFy==paste0("20",year)) %>%
   select(c(location,data)) %>%
   #remove the asterisks and assign NA
   mutate(data=replace(data,data=='*',NA)) %>%
@@ -1138,7 +1140,7 @@ county_testing1 <- testing1 %>%
 
 ###################
 #CREATE STATE DATA
-state_data <- c(.xxxx)
+state_data <- c(.4359)
 state_testing1 <- data.frame(state_data) %>%
   mutate(state='Montana') %>%
   rename(data=state_data) %>%

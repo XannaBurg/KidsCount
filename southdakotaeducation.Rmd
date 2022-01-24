@@ -69,9 +69,9 @@ df_enrollment <- read_excel(path=xl_data_enroll, sheet='Pubdisgr',skip=3)
 
 #UPDATE THESE TWO VARIABLES PRIOR TO RUNNING THE CODE
 #RUN THE CODE IN THESE CHUNKS THROUGH FOR EACH OF THE INDICATORS
-columnname <- 'TOTAL KG-12'
+columnname <- 'PK'
 input_dataformat <- 'Number'
-variablename <- 'publicschoolk12enrollment'
+variablename <- 'prekenrollment'
 
 
 enrollment_district <- df_enrollment %>%
@@ -250,7 +250,7 @@ dbWriteTable(con,'southdakota',enrollment,append=TRUE,row.names=FALSE)
 
 **NON-PUBLIC SCHOOL ENROLLMENT GRADES PRE-K THROUGH 12**
 ```{r}
-state_data <- 15276
+state_data <- 15455
 #######
 
 #CALCULATE THE STATEWIDE DATA
@@ -303,8 +303,8 @@ tribalschools <- read.csv("./Documentation/Indicator Documentation/South Dakota 
 
 #requested dataset for enrollment and dropouts
 xl_data_enroll <- paste0("./Input/education/southdakota_",year,"_enrollmentdropout.xlsx")
-df_enrollment <- read_excel(path=xl_data_enroll, sheet='Drop1920SDPubRate',skip=4)
-df_enrollment_nonpublic <- read_excel(path=xl_data_enroll, sheet='Drop1920SDNPRate',skip=4)
+df_enrollment <- read_excel(path=xl_data_enroll, sheet='Drop2021SDPubRate',skip=4)
+df_enrollment_nonpublic <- read_excel(path=xl_data_enroll, sheet='Drop2021SDNPRate',skip=4)
 
 
 #UPDATE THESE TWO VARIABLES PRIOR TO RUNNING THE CODE
@@ -321,6 +321,7 @@ enrollment_district <- df_enrollment %>%
   select(c(fulllocation_name,data,districtid)) %>%
   
   #join with crosswalk to only include public schools matched to a tribal area
+  mutate(districtid=as.numeric(paste(districtid))) %>%
   inner_join(tribalschools,by=c('districtid'='school_specialednumber')) %>%
   select(-c(school,fulllocation_name,districtid,category)) %>%
   
@@ -383,13 +384,14 @@ df_digest <- read_excel(path=paste0("./Input/education/southdakota_",year,"_educ
 
 ####### UPDATE THESE VARIABLES PRIOR TO RUNNING THE CODE
 #verify column names prior to assigning, should be: 'Dropout Rate\r\n (%)' and 'Expenditure per ADM' and 'ACT Composite Score' and 'Fall Count of Home School Students' and 'Free & Reduced Lunch Eligibility Percentage'
+#in 20/21 home school varname is 'Fall ADM Count of Home School Students'
 #variable.names(df_digest)
 
-columnname <- 'ACT Composite Score'
+columnname <- 'Fall ADM Count of Home School Students'
 input_dataformat <- 'Number'
-variablename <- 'averageactcompositescore'
+variablename <- 'homeschoolk12enrollment'
 #pull state data from the school profile on the statistical digest
-state_data <- 21.8
+state_data <- 6677.35
 #######
 
 
