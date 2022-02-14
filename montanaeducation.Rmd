@@ -1086,6 +1086,9 @@ pupilspending <- pupilspending_county %>%
   left_join(locationids,by=c('location'='Location')) %>%
   rename(locationid=LocationId)
 
+
+
+View(pupilspending)
 ```
 
 ```{r}
