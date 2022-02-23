@@ -43,10 +43,10 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '19-20'
-fullyear <- '2019/20' 
+year <- '20-21'
+fullyear <- '2020/21' 
 #fiscal year is the spring of reference school year
-fiscalyear <- '2020'
+fiscalyear <- '2021'
 
 
 statefile <- 'northdakota'
@@ -76,11 +76,14 @@ tribalschools$id_dash <- as.character(paste((tribalschools$id_dash)))
 
 STEP 1: IMPORT AND CLEAN DATA
 ```{r}
+#reformat year for fixing column names
+year_periods <- paste0(substr(year,1,2),".",substr(year,4,5))
+
 #import data
-homeless_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Homeless_",year,".xlsx")) %>%
+homeless_data <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Homeless_",year,".csv")) %>%
   #rename columns removing year
-  rename(denominator=all_of(paste0("20",year," Denominator")),
-         numerator=all_of(paste0("20",year," Homeless")))
+  rename(denominator=all_of(paste0("X20",year_periods,".Denominator")),
+         numerator=all_of(paste0("X20",year_periods,".Homeless")))
 
 
 ############
@@ -782,8 +785,8 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_avgex
 STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #import data
-grad_data <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Grad_Rates_",year,".xlsx"),guess_max = 1048576) %>%
-  rename(ontime_Count='On-Time Grads',
+grad_data <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Grad_Rates_",year,".csv")) %>%
+  rename(ontime_Count='On.Time.Grads',
          Total_Students='Cohort') %>%
   subset(Race=='All')
 
@@ -793,11 +796,9 @@ grad_data <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND
 grad_county <- grad_data %>%
   
   subset(Entity_Level=='District') %>%
-  separate(col=Entity_ID,into=c('county','district'),sep=2) %>%
-  mutate(county=as.numeric(paste(county))) %>%
   
   #import county name
-  full_join(countyids,by=c("county"="ndcounty_number")) %>%
+  full_join(countyids,by=c("County"="ndcounty_number")) %>%
 
   #sum by county
   group_by(ndcounty_name) %>%
@@ -853,13 +854,18 @@ grad_region <- grad_county %>%
 #TRIBAL AREA DATA
 #subset tribal schools lookup table to just county and district
 tribalschools_updated <- tribalschools %>%
-  separate(col=id_nodash,into=c('first','last'),sep=5)
+  separate(col=id_nodash,into=c('first','last'),sep=5) %>%
+  mutate(first=replace(first,first=='03029','3029')) %>%
+  mutate(first=replace(first,first=='03016','3016')) %>%
+  mutate(first=replace(first,first=='03030','3030')) %>%
+  mutate(first=replace(first,first=='03900','3900'))
 
 grad_tribal <- grad_data %>%
   
   subset(Entity_Level=='District') %>%
   
   #import tribal name
+  mutate(Entity_ID=as.character(paste(Entity_ID))) %>%
   left_join(tribalschools_updated,by=c('Entity_ID'='first')) %>%
   subset(!is.na(tribalarea)) %>%
 
@@ -1033,6 +1039,19 @@ temp_testsuppression_region <- grad_all %>%
 View(temp_testsuppression_region)
 
 
+#if there is only one county, print the counties in ascending order
+#temp_check <- grad_all %>%
+ # subset(locationtype=='County') %>%
+#  left_join(regionids,by=c('location'='county')) %>%
+ # subset(region=='Planning Region 5') %>%
+  #arrange(data)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#grad_all$data[grad_all$location=='Sargent'] <- 'NA'
+
 
 # 5. Visually inspect output data
 View(grad_all)
@@ -1071,8 +1090,8 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_gradu
 ## FOUR-YEAR HIGH SCHOOL COHORT GRADUATION RATE BY RACE ##
 STEP 1: Import and Clean Data
 ```{r}
-grad_data2 <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Grad_Rates_",year,".xlsx"),guess_max = 1048576) %>%
-  rename(ontime_Count='On-Time Grads',
+grad_data2 <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Grad_Rates_",year,".csv")) %>%
+  rename(ontime_Count='On.Time.Grads',
          Total_Students='Cohort') %>%
 
 
@@ -1298,29 +1317,28 @@ fiscalyear_minus1 <- as.character(as.numeric(fiscalyear)-1)
 academicyear <- paste0(fiscalyear_minus1,"-",fiscalyear)
 
 #import data
-dropout_data <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Dropout_Rates_7th-12th_",year,".xlsx"),guess_max = 1048576) 
+dropout_data <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Dropout_Rates_7th-12th_",year,".csv")) 
 
 
 ############
 #COUNTY DATA
 dropout_county <- dropout_data %>%
-  subset(Entity_Level=='Distict') %>%
-  separate(col=Entity_ID,into=c('county','district'),sep=2) %>%
-  mutate(county=as.numeric(paste(county))) %>%
+  subset(Entity_Level=='District') %>%
+
   
   #import county name
-  full_join(countyids,by=c("county"="ndcounty_number")) %>%
+  full_join(countyids,by=c("County"="ndcounty_number")) %>%
   #if a county isn't in the dataset, assign in a zero after full_join
-  mutate(UnDuplicated_Dropout_Count=replace(UnDuplicated_Dropout_Count,is.na(UnDuplicated_Dropout_Count),0)) %>%
-  mutate(UnDuplicated_Total_Students=replace(UnDuplicated_Total_Students,is.na(UnDuplicated_Total_Students),0)) %>%
+  mutate(Dropout_Count=replace(Dropout_Count,is.na(Dropout_Count),0)) %>%
+  mutate(Total_Students=replace(Total_Students,is.na(Total_Students),0)) %>%
    mutate(Subgroup_Desc=replace(Subgroup_Desc,is.na(Subgroup_Desc),'All')) %>%
   mutate(Academic_Year=replace(Academic_Year,is.na(Academic_Year),academicyear)) %>%
 
   #sum by county
   group_by(ndcounty_name,Academic_Year,Subgroup_Desc) %>%
-  summarise(dropout_number=sum(UnDuplicated_Dropout_Count),
-            totalenroll=sum(UnDuplicated_Total_Students),
-            dropout_percent=sum(UnDuplicated_Dropout_Count)/sum(UnDuplicated_Total_Students)) %>%
+  summarise(dropout_number=sum(Dropout_Count),
+            totalenroll=sum(Total_Students),
+            dropout_percent=sum(Dropout_Count)/sum(Total_Students)) %>%
   ungroup %>%
 
   #add in locationtype
@@ -1368,23 +1386,21 @@ dropout_region <- dropout_county %>%
 
 #################
 #TRIBAL AREA DATA
-#subset tribal schools lookup table to just county and district
-tribalschools_updated <- tribalschools %>%
-  separate(col=id_nodash,into=c('first','last'),sep=5)
 
 dropout_tribal <- dropout_data %>%
   
-  subset(Entity_Level=='Distict') %>%
+  subset(Entity_Level=='District') %>%
   
   #import tribal name
+  mutate(Entity_ID=as.character(paste(Entity_ID))) %>%
   left_join(tribalschools_updated,by=c('Entity_ID'='first')) %>%
   subset(!is.na(tribalarea)) %>%
 
   #sum by tribal area
   group_by(tribalarea,Academic_Year,Subgroup_Desc) %>%
-  summarise(dropout_number=sum(UnDuplicated_Dropout_Count),
-            totalenroll=sum(UnDuplicated_Total_Students),
-            dropout_percent=sum(UnDuplicated_Dropout_Count)/sum(UnDuplicated_Total_Students)) %>%
+  summarise(dropout_number=sum(Dropout_Count),
+            totalenroll=sum(Total_Students),
+            dropout_percent=sum(Dropout_Count)/sum(Total_Students)) %>%
   ungroup %>%
 
   #add in locationtype
@@ -1552,6 +1568,13 @@ temp_testsuppression_region <- dropout_overall %>%
 
 View(temp_testsuppression_region)
 
+
+#temp_testsuppression_region2 <- dropout_overall %>%
+ # subset(locationtype=='County') %>%
+#  left_join(regionids,by=c('location'='county')) %>%
+#  subset(region=='Planning Region 8') 
+#View(temp_testsuppression_region2)
+
 # 5. Visually inspect output data
 View(dropout_overall)
 
@@ -1702,7 +1725,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_grade
 STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #import data
-assessment_data <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",year,".xlsx"),guess_max = 1048576) %>%
+assessment_data <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",year,".csv")) %>%
   
   #subset for all students
   subset(SubGroup_Desc=='All') %>%
@@ -1948,11 +1971,13 @@ assessment_data2 <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DE
   subset(SubGroup_Desc=='All') %>%
   subset(Subject=='Reading')
 
-assessment_data3 <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",yearfile3,".xlsx"),guess_max = 1048576) %>%
+assessment_data3 <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",yearfile3,".csv")) %>%
   
   #subset for all students
   subset(SubGroup_Desc=='All') %>%
-  subset(Subject=='Reading')
+  subset(Subject=='Reading') %>%
+  mutate(County=as.character(paste(County))) %>%
+  mutate(Entity_ID=as.character(paste(Entity_ID)))
 
 assessment_data <- assessment_data1 %>%
   bind_rows(assessment_data2) %>%
@@ -2144,7 +2169,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_third
 STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #import data
-assessment_data <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",year,".xlsx"),guess_max = 1048576) %>%
+assessment_data <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",year,".csv")) %>%
   
   #subset for reading
   subset(Subject=='Reading') %>%
