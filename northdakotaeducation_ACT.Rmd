@@ -36,6 +36,7 @@ library(tidyverse)
 library(tidycensus)
 library(censusapi)
 library(stringr)
+library(readxl)
 ```
 
 
@@ -43,7 +44,7 @@ library(stringr)
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 statename <- "North Dakota"
-year <- "2019"
+year <- "2021"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -66,16 +67,19 @@ countyids <- read.csv("./Documentation/Indicator Documentation/North Dakota Data
 ## AVERAGE ACT COMPOSITE SCORES ##
 ## ############################ ##
 ```{r}
-act_composite <- read.csv("/Users/xannaburg/Desktop/ND Education/ACT_Composite_HSgrads.csv")
+act_composite <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ACT_Data_",year,".xlsx"),sheet=paste0(year," Mean ACT Composite")) %>%
+  #remove year from column name
+  rename(compositeaverage=paste0(year," Composite Average"))
 
 ############
 #COUNTY DATA
 act_composite_county <- act_composite %>%
-  select(c(County,X2019.Composite.Avg)) %>%
+  mutate(County=as.numeric(paste(County))) %>%
   full_join(countyids,by=c('County'='ndcounty_number')) %>%
   select(-c(County)) %>%
   rename(location=ndcounty_name,
-         data=X2019.Composite.Avg) %>%
+         data=compositeaverage) %>%
+  subset(location!='Grand Total') %>%
   mutate(locationtype='County') %>%
   mutate(state='North Dakota') %>%
   mutate(timeframe=year) %>%
@@ -157,7 +161,7 @@ write.csv(upload_data,file=paste0("./Output/education/",database_state,"_",year,
 ## STEP 1: IMPORT THE DATA AND CREATE NUMERATORS AND DENOMINATORS
 ```{r}
 #import the ACT data where each row is a student
-act_allstudents <- read.csv("/Users/xannaburg/Desktop/ND Education/ACT_AllSubjects.csv") %>%
+act_allstudents <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ACT_Data_",year,".xlsx"),sheet=paste0(year," ACT by Subject")) %>%
   subset(SchoolYear==year) 
 
 #create English values
@@ -220,6 +224,7 @@ actbenchmarks <- english %>%
   left_join(allsubjects,by=c('County'='County')) %>%
   
   #merge in county name
+  mutate(County=as.numeric(paste(County))) %>%
   full_join(countyids,by=c('County'='ndcounty_number')) %>%
   rename(location=ndcounty_name)
 
@@ -434,7 +439,8 @@ actbenchmarks_combined <- english_cleaned %>%
   mutate(varname='highschoolgraduatesmeetingACTcollegebenchmarkscores') %>%
   
   left_join(locationids,by=c('location'='Location')) %>%
-  rename(locationid=LocationId) 
+  rename(locationid=LocationId) %>%
+  arrange(location)
 
 
 
