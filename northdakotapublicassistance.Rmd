@@ -40,8 +40,8 @@ library(readxl)
 
 ```{r}
 #UPDATE to reflect the current year data working with
-year <- '2020'
-fiscalyear <- 'FY20'
+year <- '2021'
+fiscalyear <- 'FY21'
 state <- 'northdakota'
 
 
@@ -111,7 +111,13 @@ snapages0to18 <- df_snap2 %>%
   bind_rows(df_snap_state) %>%
   bind_rows(df_snap_regions) %>%
   left_join(locationids,by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
+  rename(locationid=LocationId) %>%
+  
+  #remove counties that are part of service unit and data matches service location
+  mutate(data=replace(data,location=='Mercer',NA)) %>%
+  mutate(data=replace(data,location=='McLean',NA)) %>%
+  mutate(data=replace(data,location=='Oliver',NA)) %>%
+  mutate(data=replace(data,location=='Sheridan',NA)) 
 
 ####################
 ####################
@@ -261,7 +267,13 @@ tanfages0to19 <- df_tanf2 %>%
   bind_rows(df_tanf_state) %>%
   bind_rows(df_tanf_regions) %>%
   left_join(locationids,by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
+  rename(locationid=LocationId) %>%
+  
+  #remove counties that are part of service unit and data matches service location
+  mutate(data=replace(data,location=='Mercer',NA)) %>%
+  mutate(data=replace(data,location=='McLean',NA)) %>%
+  mutate(data=replace(data,location=='Oliver',NA)) %>%
+  mutate(data=replace(data,location=='Sheridan',NA)) 
   
   
 ####################
@@ -415,7 +427,13 @@ ccapages0to13 <- df_ccap2 %>%
   bind_rows(df_ccap_state) %>%
   bind_rows(df_ccap_regions) %>%
   left_join(locationids,by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
+  rename(locationid=LocationId) %>%
+  
+  #remove counties that are part of service unit and data matches service location
+  mutate(data=replace(data,location=='Mercer',NA)) %>%
+  mutate(data=replace(data,location=='McLean',NA)) %>%
+  mutate(data=replace(data,location=='Oliver',NA)) %>%
+  mutate(data=replace(data,location=='Sheridan',NA)) 
   
  
 ####################
@@ -561,7 +579,13 @@ medicaidages0to20 <- df_medicaid2 %>%
   bind_rows(df_medicaid_state) %>%
   bind_rows(df_medicaid_regions) %>%
   left_join(locationids,by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
+  rename(locationid=LocationId) %>%
+  
+  #remove counties that are part of service unit and data matches service location
+  mutate(data=replace(data,location=='Mercer',NA)) %>%
+  mutate(data=replace(data,location=='McLean',NA)) %>%
+  mutate(data=replace(data,location=='Oliver',NA)) %>%
+  mutate(data=replace(data,location=='Sheridan',NA)) 
   
  
 ####################
@@ -692,7 +716,7 @@ df_healthysteps2 <- df_healthysteps %>%
 #create state summary
 df_healthysteps_state <- df_healthysteps2 %>%
   group_by(state,timeframe,dataformat,varname) %>%
-  summarise(data=sum(data),.groups='keep') %>%
+  summarise(data=sum(data,na.rm=TRUE),.groups='keep') %>%
   mutate(location='North Dakota',
          locationtype='State') 
 
@@ -712,7 +736,13 @@ healthystepsages0to18 <- df_healthysteps2 %>%
   bind_rows(df_healthysteps_state) %>%
   bind_rows(df_healthysteps_regions) %>%
   left_join(locationids,by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
+  rename(locationid=LocationId) %>%
+  
+  #remove counties that are part of service unit and data matches service location
+  mutate(data=replace(data,location=='Mercer',NA)) %>%
+  mutate(data=replace(data,location=='McLean',NA)) %>%
+  mutate(data=replace(data,location=='Oliver',NA)) %>%
+  mutate(data=replace(data,location=='Sheridan',NA)) 
   
  
 ####################
