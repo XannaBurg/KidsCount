@@ -38,7 +38,7 @@ fips <- fips_codes
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 #this matches the current state fiscal year data for child care data
-year <- "2020" 
+year <- "2021" 
 
 
 ## - DO NOT EDIT - ##
@@ -338,7 +338,7 @@ childpop_sql <- paste0("SELECT location, timeframe, age_group, data FROM ", data
 childpop_data <- dbGetQuery(con,childpop_sql) %>%
   mutate(age_group=as.numeric(paste(age_group)),
          data=as.numeric(paste(data))) %>%
-  subset(age_group<=2) %>%
+  subset(age_group<2) %>%
   group_by(location) %>%
   summarise(children_0to2=sum(data),.groups='keep') %>%
   ungroup
