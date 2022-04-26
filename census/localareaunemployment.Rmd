@@ -190,7 +190,7 @@ blsdata_formatted <- blsdata %>%
 
 ```{r}
 # ***** UPDATE THE YEAR TO THE CURRENT YEAR ***** 
-year <- '2020'
+year <- '2021'
 
 
 year_numeric <- as.numeric(paste(year))
