@@ -35,7 +35,7 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2019'
+year <- '2021'
 statename <- 'South Dakota'
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -62,94 +62,29 @@ regionids$county <- as.character(regionids$county)
 ## STEP 1: IMPORT AND CLEAN THE DATA
 ```{r}
 #import the data
-wicdata <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_wic.xlsx"),sheet='Counties') %>%
-  rename(location='South Dakota Average (Enrolled)')
+wicdata <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_wic.xlsx"),sheet='2021 Monthly by County ') 
+
+wicdata_state <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_wic.xlsx"),sheet='State Avg Month Enrollment') 
 
 ###########
 #STATE DATA
-wic_state <- wicdata %>%
-  subset(location=='Total All Regions (Statewide)') %>%
-  pivot_longer(cols=c('2017','2018','2019'),names_to='timeframe',values_to='data') %>%
+wic_state <- wicdata_state %>%
+  mutate(timeframe=lubridate::year(Month)) %>%
+  subset(timeframe==year) %>%
+  group_by(timeframe) %>%
+  summarise(data=mean(Enrollment)) %>%
   mutate(locationtype='State') %>%
   mutate(location='South Dakota')
 
 ############
 #COUNTY DATA
 wic_county <- wicdata %>%
-  #clean up county totals and county names
-  mutate(county=case_when(
-    location=='Butte Total' ~ 'Butte',
-    location=='Dewey Total' ~ 'Dewey',
-    location=='Lawrence Total' ~ 'Lawrence',
-    location=='Meade Total' ~ 'Meade',
-    location=='Perkins Total' ~ 'Perkins',
-    location=='Brule Total' ~ 'Brule',
-    location=='Gregory Total' ~ 'Gregory',
-    location=='Jackson Total' ~ 'Jackson',
-    location=='Lyman Total' ~ 'Lyman',
-    location=='Edmunds Total' ~ 'Edmunds',
-    location=='McPherson Total' ~ 'McPherson',
-    location=='Charles Mix Total' ~ 'Charles Mix',
-    location=='Hutchinson Total' ~ 'Hutchinson',
-    location=='Turner Total' ~ 'Turner',
-    location=='Oglala Sioux  Total' ~ 'Oglala Lakota',
-    
-    location=='Custer (Custer)' ~ 'Custer',
-    location=='Fall River (Hot Springs)' ~ 'Fall River',
-    location=='Harding (Buffalo)' ~ 'Harding',
-    location=='Ziebach (Dupree)' ~ 'Ziebach',
-    location=='Buffalo (Ft. Thompson)' ~ 'Buffalo',
-    location=='Haakon (Philip)' ~ 'Haakon',
-    location=='Hughes (Pierre)' ~ 'Hughes',
-    location=='Jones (Murdo)' ~ 'Jones',
-    location=='Stanley (Ft. Pierre)' ~ 'Stanley',
-    location=='Tripp (Winner)' ~ 'Tripp',
-    location=='Bennett (Martin)' ~ 'Bennett',
-    location=='Hand (Miller)' ~ 'Hand',
-    location=='Hyde (Highmore)' ~ 'Hyde',
-    location=='Beadle (Huron)' ~ 'Beadle',
-    location=='Brown (Aberdeen)' ~ 'Brown',
-    location=='Corson (McLaughlin)' ~ 'Corson',
-    location=='Faulk (Faulkton)' ~ 'Faulk',
-    location=='Marshall (Britton)' ~ 'Marshall',
-    location=='Spink (Redfield)' ~ 'Spink',
-    location=='Walworth (Mobridge)' ~ 'Walworth',
-    location=='Potter (Gettysburg)' ~ 'Potter',
-    location=='Brookings (Brookings)' ~ 'Brookings',
-    location=='Codington (Watertown)' ~ 'Codington',
-    location=='Clark (Clark)' ~ 'Clark',
-    location=='Day (Webster)' ~ 'Day',
-    location=='Duel (Clear Lake)' ~ 'Deuel',
-    location=='Grant (Milbank)' ~ 'Grant',
-    location=='Hamlin (Hayti)' ~ 'Hamlin',
-    location=='Kingsbury (DeSmet)' ~ 'Kingsbury',
-    location=='Lake (Madison)' ~ 'Lake',
-    location=='Moody (Flandreau)' ~ 'Moody',
-    location=='Roberts (Sisseton)' ~ 'Roberts',
-    location=='Miner (Howard)' ~ 'Miner',
-    location=='Clay (Vermillion)' ~ 'Clay',
-    location=='Lincoln (Canton)' ~ 'Lincoln',
-    location=='Minnehaha (Sioux Falls)' ~ 'Minnehaha',
-    location=='Union (Elk Point)' ~ 'Union',
-    location=='Yankton (Yankton)' ~ 'Yankton',
-    location=='Aurora (Plankinton)' ~ 'Aurora',
-    location=='Bon Homme (Tyndall)' ~ 'Bon Homme',
-    location=='Douglas (Armour)' ~ 'Douglas',
-    location=='Davison (Mitchell)' ~ 'Davison',
-    location=='Hanson (Alexandria)' ~ 'Hanson',
-    location=='Jerauld (Wessington Springs)' ~ 'Jerauld',
-    location=='McCook (Salem)' ~ 'McCook',
-    location=='Sanborn (Woonsocket)' ~ 'Sanborn',
-    location=='Pennington (Rapid City)' ~ 'Pennington')) %>%
-  subset(!is.na(county)) %>%
-  arrange(county) %>%
-  
-  select(-c(location)) %>%
-  
-  full_join(countylist,by=c('county'='county')) %>%
-  rename(location=county) %>%
-  pivot_longer(cols=c('2017','2018','2019'),names_to='timeframe',values_to='data') %>%
-  mutate(locationtype='County')
+  full_join(countylist,by=c('Clinic County'='county')) %>%
+  rename(location=`Clinic County`) %>%
+  group_by(location) %>%
+  summarise(data=mean(`Enrollment Count`)) %>%
+  mutate(locationtype='County') %>%
+  mutate(timeframe=as.numeric(year))
 
 
 #COMBINE STATE AND COUNTY
@@ -212,10 +147,16 @@ write.csv(upload_datacenter,file=paste0("./Output/economics/",database_state,"_"
 
 ## STEP 1: IMPORT AND CLEAN THE DATA
 ```{r}
-wicracedata <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_wic.xlsx"),sheet='Race') %>%
+wicracedata <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_wic.xlsx"),sheet='AIAN Enrollment') %>%
   
-  subset(`Average Participation for American Indian or Alaskan Native`=='Statewide') %>%
-  select(-c(`Average Participation for American Indian or Alaskan Native`)) %>%
+  mutate(timeframe=lubridate::year(`Month of Reporting Month Date`)) %>%
+  mutate(month=lubridate::month(`Month of Reporting Month Date`)) %>%
+  subset(timeframe==year) %>%
+  group_by(month,timeframe) %>%
+  summarise(monthlysum=sum(`Enrollment Count`)) %>%
+  ungroup %>%
+  group_by(timeframe) %>%
+  summarise(data=mean(monthlysum)) %>%
   
   mutate(location='South Dakota',
          locationtype='State',
@@ -223,13 +164,10 @@ wicracedata <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_wi
          dataformat='Number',
          varname='wicaveragemonthlyenrollmentnativeamerican',
          race='American Indian') %>%
-  
-  pivot_longer(cols=c(`2017`,`2018`,`2019`),names_to='timeframe',values_to='data') %>%
-  left_join(locationids,by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
+  mutate(timeframe=as.character(paste(timeframe)))
 
 #query overall participation to calculate a percent
-wic_sql <- paste0("SELECT locationid, location, timeframe, data FROM southdakota WHERE varname='wicaveragemonthlyenrollment' AND locationtype='State';")
+wic_sql <- paste0("SELECT locationid, location, timeframe, data FROM southdakota WHERE varname='wicaveragemonthlyenrollment' AND locationtype='State' AND timeframe='",year,"';")
 
 wicracedata_percent <- dbGetQuery(con,wic_sql) %>%
   rename(totalparticipants=data) %>%
