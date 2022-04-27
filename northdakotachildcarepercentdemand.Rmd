@@ -38,7 +38,7 @@ fips <- fips_codes
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 #this matches the current state fiscal year data for child care data
-year <- "2020" 
+year <- "2022" 
 
 
 ## - DO NOT EDIT - ##
@@ -496,7 +496,7 @@ upload_datacenter1 <- dbGetQuery(con,upload_sql1) %>%
 write.csv(upload_datacenter1,file=paste0("./Output/education/",database_state,"_",year,"_percentofallchildrenages0to13servedbyececapacity.csv"),row.names=FALSE)
 
 #using population * working parents percent
-upload_sql2 <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='percentofchildrenages0to13withparentsworkingservedbyececapacity' AND dataformat='Percent';")
+upload_sql2 <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='percentofchildrenages0to13withparentsworkingservedbyececapacity_oldmethodology' AND dataformat='Percent';")
 
 upload_datacenter2 <- dbGetQuery(con,upload_sql2) %>%
   rename(LocationId=locationid,
