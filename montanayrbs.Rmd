@@ -45,7 +45,7 @@ library(readxl)
 
 ```{r}
 #UPDATE to reflect the current year data working with
-year <- '2019'
+year <- '2021'
 statefile <- 'montana'
 statename <- 'Montana'
 ```
@@ -62,6 +62,7 @@ df_AItotal <- read_excel(path=xl_data, sheet='AI Total')
 df_white <- read_excel(path=xl_data, sheet='White Total')
 df_hispanic <- read_excel(path=xl_data, sheet='Hispanic total')
 df_multiple <- read_excel(path=xl_data, sheet='Multiple race total')
+df_black <- read_excel(path=xl_data, sheet='Black total')
 
 
 #input location ID file for MT
@@ -82,6 +83,7 @@ cigarette <-  df_allstudents %>%
   bind_rows(df_white) %>%
   bind_rows(df_hispanic) %>%
   bind_rows(df_multiple) %>%
+  bind_rows(df_black) %>%
   select(c(locationid,location,race,year,dataformat,cigarette)) %>%
   mutate(locationtype='State') %>%
   mutate(state='Montana') %>%
@@ -90,7 +92,7 @@ cigarette <-  df_allstudents %>%
   mutate(varname='yrbs_cigarettesmokingamonghighschoolstudents') %>%
   subset(timeframe==as.numeric(year))
 
-
+View(cigarette)
 ```
 
 ```{r}
@@ -105,9 +107,7 @@ dbWriteTable(con,'montana',cigarette,append=TRUE,row.names=FALSE)
 
 #UPDATE THE YEAR IN THE SQL QUERY
 
-upload_data_cigarette <- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data,race
-                     FROM montana
-                     WHERE timeframe = '2019' AND varname = 'yrbs_cigarettesmokingamonghighschoolstudents';")
+upload_data_cigarette <- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montana WHERE timeframe = '",year,"' AND varname = 'yrbs_cigarettesmokingamonghighschoolstudents';"))
 
 upload_data_cigarette2 <- upload_data_cigarette %>%
   rename(LocationId=locationid,
@@ -134,6 +134,7 @@ smokeless <-  df_allstudents %>%
   bind_rows(df_white) %>%
   bind_rows(df_hispanic) %>%
   bind_rows(df_multiple) %>%
+  bind_rows(df_black) %>%
   select(c(locationid,location,race,year,dataformat,smokeless)) %>%
   mutate(locationtype='State') %>%
   mutate(state='Montana') %>%
@@ -142,6 +143,7 @@ smokeless <-  df_allstudents %>%
   mutate(varname='yrbs_smokelesstobaccoamonghighschoolstudents') %>%
   subset(timeframe==as.numeric(year))
 
+View(smokeless)
 ```
 
 ```{r}
@@ -156,9 +158,9 @@ dbWriteTable(con,'montana',smokeless,append=TRUE,row.names=FALSE)
 
 #UPDATE THE YEAR IN THE SQL QUERY
 
-upload_data_smokeless<- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data,race
+upload_data_smokeless<- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race
                      FROM montana
-                     WHERE timeframe = '2019' AND varname = 'yrbs_smokelesstobaccoamonghighschoolstudents';")
+                     WHERE timeframe = '",year,"' AND varname = 'yrbs_smokelesstobaccoamonghighschoolstudents';"))
 
 upload_data_smokeless2 <- upload_data_smokeless %>%
   rename(LocationId=locationid,
@@ -186,6 +188,7 @@ alcohol <- df_allstudents %>%
   bind_rows(df_white) %>%
   bind_rows(df_hispanic) %>%
   bind_rows(df_multiple) %>%
+  bind_rows(df_black) %>%
   select(c(locationid,location,race,year,dataformat,alcohol)) %>%
   mutate(locationtype='State') %>%
   mutate(state='Montana') %>%
@@ -194,6 +197,7 @@ alcohol <- df_allstudents %>%
   mutate(varname='yrbs_alcoholuseamonghighschoolstudents') %>%
   subset(timeframe==as.numeric(year))
 
+View(alcohol)
 ```
 
 ```{r}
@@ -208,9 +212,9 @@ dbWriteTable(con,'montana',alcohol,append=TRUE,row.names=FALSE)
 
 #UPDATE THE YEAR IN THE SQL QUERY
 
-upload_data_alcohol<- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data,race
+upload_data_alcohol<- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race
                      FROM montana
-                     WHERE timeframe = '2019' AND varname = 'yrbs_alcoholuseamonghighschoolstudents';")
+                     WHERE timeframe = '",year,"' AND varname = 'yrbs_alcoholuseamonghighschoolstudents';"))
 
 upload_data_alcohol2 <- upload_data_alcohol %>%
   rename(LocationId=locationid,
@@ -239,6 +243,7 @@ marijuana <- df_allstudents %>%
   bind_rows(df_white) %>%
   bind_rows(df_hispanic) %>%
   bind_rows(df_multiple) %>%
+  bind_rows(df_black) %>%
   select(c(locationid,location,race,year,dataformat,marijuana)) %>%
   mutate(locationtype='State') %>%
   mutate(state='Montana') %>%
@@ -247,6 +252,7 @@ marijuana <- df_allstudents %>%
   mutate(varname='yrbs_marijuanauseamonghighschoolstudents') %>%
   subset(timeframe==as.numeric(year))
 
+View(marijuana)
 ```
 
 ```{r}
@@ -261,9 +267,9 @@ dbWriteTable(con,'montana',marijuana,append=TRUE,row.names=FALSE)
 
 #UPDATE THE YEAR IN THE SQL QUERY
 
-upload_data_marijuana<- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data,race
+upload_data_marijuana<- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race
                      FROM montana
-                     WHERE timeframe = '2019' AND varname = 'yrbs_marijuanauseamonghighschoolstudents';")
+                     WHERE timeframe = '",year,"' AND varname = 'yrbs_marijuanauseamonghighschoolstudents';"))
 
 upload_data_marijuana2 <- upload_data_marijuana %>%
   rename(LocationId=locationid,
@@ -290,6 +296,7 @@ suicide <- df_allstudents %>%
   bind_rows(df_white) %>%
   bind_rows(df_hispanic) %>%
   bind_rows(df_multiple) %>%
+  bind_rows(df_black) %>%
   select(c(locationid,location,race,year,dataformat,suicide)) %>%
   mutate(locationtype='State') %>%
   mutate(state='Montana') %>%
@@ -298,6 +305,7 @@ suicide <- df_allstudents %>%
   mutate(varname='yrbs_suicideattemptsamonghighschoolstudents') %>%
   subset(timeframe==as.numeric(year))
 
+View(suicide)
 ```
 
 ```{r}
@@ -312,9 +320,9 @@ dbWriteTable(con,'montana',suicide,append=TRUE,row.names=FALSE)
 
 #UPDATE THE YEAR IN THE SQL QUERY
 
-upload_data_suicide <- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data,race
+upload_data_suicide <- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race
                      FROM montana
-                     WHERE timeframe = '2019' AND varname = 'yrbs_suicideattemptsamonghighschoolstudents';")
+                     WHERE timeframe = '",year,"' AND varname = 'yrbs_suicideattemptsamonghighschoolstudents';"))
 
 upload_data_suicide2 <- upload_data_suicide %>%
   rename(LocationId=locationid,
@@ -341,6 +349,7 @@ noseatbelt <- df_allstudents %>%
   bind_rows(df_white) %>%
   bind_rows(df_hispanic) %>%
   bind_rows(df_multiple) %>%
+  bind_rows(df_black) %>%
   select(c(locationid,location,race,year,dataformat,noseatbelt)) %>%
   mutate(locationtype='State') %>%
   mutate(state='Montana') %>%
@@ -349,6 +358,7 @@ noseatbelt <- df_allstudents %>%
   mutate(varname='yrbs_noseatbeltamonghighschoolstudents') %>%
   subset(timeframe==as.numeric(year))
 
+View(noseatbelt)
 ```
 
 ```{r}
@@ -363,9 +373,9 @@ dbWriteTable(con,'montana',noseatbelt,append=TRUE,row.names=FALSE)
 
 #UPDATE THE YEAR IN THE SQL QUERY
 
-upload_data_noseatbelt <- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data,race
+upload_data_noseatbelt <- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race
                      FROM montana
-                     WHERE timeframe = '2019' AND  varname = 'yrbs_noseatbeltamonghighschoolstudents';")
+                     WHERE timeframe = '",year,"' AND  varname = 'yrbs_noseatbeltamonghighschoolstudents';"))
 
 upload_data_noseatbelt2 <- upload_data_noseatbelt %>%
   rename(LocationId=locationid,
@@ -393,6 +403,7 @@ drinkdrive <- df_allstudents %>%
   bind_rows(df_white) %>%
   bind_rows(df_hispanic) %>%
   bind_rows(df_multiple) %>%
+  bind_rows(df_black) %>%
   select(c(locationid,location,race,year,dataformat,drinkdrive)) %>%
   mutate(locationtype='State') %>%
   mutate(state='Montana') %>%
@@ -401,6 +412,7 @@ drinkdrive <- df_allstudents %>%
   mutate(varname='yrbs_drinkdriveamonghighschoolstudents') %>% 
   subset(timeframe==as.numeric(year))
 
+View(drinkdrive)
 ```
 
 ```{r}
@@ -415,9 +427,9 @@ dbWriteTable(con,'montana',drinkdrive,append=TRUE,row.names=FALSE)
 
 #UPDATE THE YEAR IN THE SQL QUERY
 
-upload_data_drinkdrive <- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data,race
+upload_data_drinkdrive <- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race
                      FROM montana
-                     WHERE timeframe = '2019' AND varname = 'yrbs_drinkdriveamonghighschoolstudents';")
+                     WHERE timeframe = '",year,"' AND varname = 'yrbs_drinkdriveamonghighschoolstudents';"))
 
 upload_data_drinkdrive2 <- upload_data_drinkdrive %>%
   rename(LocationId=locationid,
@@ -444,6 +456,7 @@ hopeless <- df_allstudents %>%
   bind_rows(df_white) %>%
   bind_rows(df_hispanic) %>%
   bind_rows(df_multiple) %>%
+  bind_rows(df_black) %>%
   select(c(locationid,location,race,year,dataformat,hopeless)) %>%
   mutate(locationtype='State') %>%
   mutate(state='Montana') %>%
@@ -452,6 +465,7 @@ hopeless <- df_allstudents %>%
   mutate(varname='yrbs_sadhopelessamonghighschoolstudents') %>%
   subset(timeframe==as.numeric(year))
 
+View(hopeless)
 ```
 
 ```{r}
@@ -459,6 +473,31 @@ hopeless <- df_allstudents %>%
 dbWriteTable(con,'montana',hopeless,append=TRUE,row.names=FALSE)
 
 ```
+```{r}
+#write query from database to get needed format for KC data center
+#PERCENT - yrbs_sadhopelessamonghighschoolstudents
+
+#UPDATE THE YEAR IN THE SQL QUERY
+
+upload_data_sadhopeless <- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race
+                     FROM montana
+                     WHERE timeframe = '",year,"' AND varname = 'yrbs_sadhopelessamonghighschoolstudents';"))
+
+upload_data_sadhopeless2 <- upload_data_sadhopeless %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         Race=race) 
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_sadhopeless2,file=paste0("./Output/safety/",statefile,"_",year,"_yrbs_sadhopelessamonghighschoolstudents.csv"),row.names=FALSE)
+
+
+```
+
 
 
 **BULLIED AT SCHOOL**
@@ -470,6 +509,7 @@ bullied <- df_allstudents %>%
   bind_rows(df_white) %>%
   bind_rows(df_hispanic) %>%
   bind_rows(df_multiple) %>%
+  bind_rows(df_black) %>%
   select(c(locationid,location,race,year,dataformat,bullying)) %>%
   mutate(locationtype='State') %>%
   mutate(state='Montana') %>%
@@ -478,6 +518,7 @@ bullied <- df_allstudents %>%
   mutate(varname='yrbs_schoolbullyingamonghighschoolstudents') %>%
   subset(timeframe==as.numeric(year))
 
+View(bullied)
 ```
 
 ```{r}
@@ -492,9 +533,9 @@ dbWriteTable(con,'montana',bullied,append=TRUE,row.names=FALSE)
 
 #UPDATE THE YEAR IN THE SQL QUERY
 
-upload_data_bullied <- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data,race
+upload_data_bullied <- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race
                      FROM montana
-                     WHERE timeframe = '2019' AND varname = 'yrbs_schoolbullyingamonghighschoolstudents';")
+                     WHERE timeframe = '",year,"' AND varname = 'yrbs_schoolbullyingamonghighschoolstudents';"))
 
 upload_data_bullied2 <- upload_data_bullied %>%
   rename(LocationId=locationid,
@@ -522,15 +563,16 @@ ecigarette <- df_allstudents %>%
   bind_rows(df_white) %>%
   bind_rows(df_hispanic) %>%
   bind_rows(df_multiple) %>%
+  bind_rows(df_black) %>%
   select(c(locationid,location,race,year,dataformat,ecigarette)) %>%
   mutate(locationtype='State') %>%
   mutate(state='Montana') %>%
   rename(timeframe=year) %>%
   rename(data=ecigarette) %>%
   mutate(varname='yrbs_electronicvaporuseamonghighschoolstudents') %>%
-  subset(timeframe>=2015)
   subset(timeframe==as.numeric(year))
 
+View(ecigarette)
 ```
 
 ```{r}
@@ -545,9 +587,9 @@ dbWriteTable(con,'montana',ecigarette,append=TRUE,row.names=FALSE)
 
 #UPDATE THE YEAR IN THE SQL QUERY
 
-upload_data_ecigarette <- dbGetQuery(con,"SELECT locationid,location,timeframe,dataformat,data,race
+upload_data_ecigarette <- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race
                      FROM montana
-                     WHERE timeframe = '2019' AND varname = 'yrbs_electronicvaporuseamonghighschoolstudents';")
+                     WHERE timeframe = '",year,"' AND varname = 'yrbs_electronicvaporuseamonghighschoolstudents';"))
 
 upload_data_ecigarette2 <- upload_data_ecigarette %>%
   rename(LocationId=locationid,
