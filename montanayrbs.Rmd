@@ -71,6 +71,143 @@ locationids <- read.csv("./Input/MT KC Location IDs.csv")
 ```
 
 
+##Before running the current year, if any information was added from the prior year for Multiple Race, that needs to be updated too##
+```{r}
+year_prior <- as.character(as.numeric(year)-2)
+
+
+#delete the old rows of data
+dbGetQuery(con,paste0("DELETE FROM montana WHERE (varname='yrbs_sadhopelessamonghighschoolstudents' AND race='Multiple Race students' AND timeframe='",year_prior,"');"))
+
+dbGetQuery(con,paste0("DELETE FROM montana WHERE (varname='yrbs_suicideattemptsamonghighschoolstudents' AND race='Multiple Race students' AND timeframe='",year_prior,"');"))
+
+dbGetQuery(con,paste0("DELETE FROM montana WHERE (varname='yrbs_schoolbullyingamonghighschoolstudents' AND race='Multiple Race students' AND timeframe='",year_prior,"');"))
+
+dbGetQuery(con,paste0("DELETE FROM montana WHERE (varname='yrbs_cigarettesmokingamonghighschoolstudents' AND race='Multiple Race students' AND timeframe='",year_prior,"');"))
+
+dbGetQuery(con,paste0("DELETE FROM montana WHERE (varname='yrbs_smokelesstobaccoamonghighschoolstudents' AND race='Multiple Race students' AND timeframe='",year_prior,"');"))
+
+dbGetQuery(con,paste0("DELETE FROM montana WHERE (varname='yrbs_alcoholuseamonghighschoolstudents' AND race='Multiple Race students' AND timeframe='",year_prior,"');"))
+
+dbGetQuery(con,paste0("DELETE FROM montana WHERE (varname='yrbs_marijuanauseamonghighschoolstudents' AND race='Multiple Race students' AND timeframe='",year_prior,"');"))
+
+dbGetQuery(con,paste0("DELETE FROM montana WHERE (varname='yrbs_electronicvaporuseamonghighschoolstudents' AND race='Multiple Race students' AND timeframe='",year_prior,"');"))
+
+dbGetQuery(con,paste0("DELETE FROM montana WHERE (varname='yrbs_drinkdriveamonghighschoolstudents' AND race='Multiple Race students' AND timeframe='",year_prior,"');"))
+
+dbGetQuery(con,paste0("DELETE FROM montana WHERE (varname='yrbs_noseatbeltamonghighschoolstudents' AND race='Multiple Race students' AND timeframe='",year_prior,"');"))
+
+
+#get the replacement data from the excel file
+cigarette_mr <-  df_multiple %>%
+  select(c(locationid,location,race,year,dataformat,cigarette)) %>%
+  mutate(locationtype='State') %>%
+  mutate(state='Montana') %>%
+  rename(timeframe=year) %>%
+  rename(data=cigarette) %>%
+  mutate(varname='yrbs_cigarettesmokingamonghighschoolstudents') %>%
+  subset(timeframe==as.numeric(year_prior))
+
+smokeless_mr <-  df_multiple %>%
+  select(c(locationid,location,race,year,dataformat,smokeless)) %>%
+  mutate(locationtype='State') %>%
+  mutate(state='Montana') %>%
+  rename(timeframe=year) %>%
+  rename(data=smokeless) %>%
+  mutate(varname='yrbs_smokelesstobaccoamonghighschoolstudents') %>%
+  subset(timeframe==as.numeric(year_prior))
+  
+  alcohol_mr <- df_multiple %>%
+    select(c(locationid,location,race,year,dataformat,alcohol)) %>%
+  mutate(locationtype='State') %>%
+  mutate(state='Montana') %>%
+  rename(timeframe=year) %>%
+  rename(data=alcohol) %>%
+  mutate(varname='yrbs_alcoholuseamonghighschoolstudents') %>%
+  subset(timeframe==as.numeric(year_prior))
+  
+  marijuana_mr <- df_multiple %>%
+  select(c(locationid,location,race,year,dataformat,marijuana)) %>%
+  mutate(locationtype='State') %>%
+  mutate(state='Montana') %>%
+  rename(timeframe=year) %>%
+  rename(data=marijuana) %>%
+  mutate(varname='yrbs_marijuanauseamonghighschoolstudents') %>%
+  subset(timeframe==as.numeric(year_prior))
+  
+  suicide_mr <- df_multiple %>%
+  select(c(locationid,location,race,year,dataformat,suicide)) %>%
+  mutate(locationtype='State') %>%
+  mutate(state='Montana') %>%
+  rename(timeframe=year) %>%
+  rename(data=suicide) %>%
+  mutate(varname='yrbs_suicideattemptsamonghighschoolstudents') %>%
+  subset(timeframe==as.numeric(year_prior))
+  
+  noseatbelt_mr <- df_multiple %>%
+  select(c(locationid,location,race,year,dataformat,noseatbelt)) %>%
+  mutate(locationtype='State') %>%
+  mutate(state='Montana') %>%
+  rename(timeframe=year) %>%
+  rename(data=noseatbelt) %>%
+  mutate(varname='yrbs_noseatbeltamonghighschoolstudents') %>%
+  subset(timeframe==as.numeric(year_prior))
+  
+  drinkdrive_mr <- df_multiple %>%
+  select(c(locationid,location,race,year,dataformat,drinkdrive)) %>%
+  mutate(locationtype='State') %>%
+  mutate(state='Montana') %>%
+  rename(timeframe=year) %>%
+  rename(data=drinkdrive) %>%
+  mutate(varname='yrbs_drinkdriveamonghighschoolstudents') %>% 
+  subset(timeframe==as.numeric(year_prior))
+  
+  hopeless_mr <- df_multiple %>%
+  select(c(locationid,location,race,year,dataformat,hopeless)) %>%
+  mutate(locationtype='State') %>%
+  mutate(state='Montana') %>%
+  rename(timeframe=year) %>%
+  rename(data=hopeless) %>%
+  mutate(varname='yrbs_sadhopelessamonghighschoolstudents') %>%
+  subset(timeframe==as.numeric(year_prior))
+  
+  bullied_mr <- df_multiple %>%
+  select(c(locationid,location,race,year,dataformat,bullying)) %>%
+  mutate(locationtype='State') %>%
+  mutate(state='Montana') %>%
+  rename(timeframe=year) %>%
+  rename(data=bullying) %>%
+  mutate(varname='yrbs_schoolbullyingamonghighschoolstudents') %>%
+  subset(timeframe==as.numeric(year_prior))
+  
+  ecigarette_mr <- df_multiple %>%
+  select(c(locationid,location,race,year,dataformat,ecigarette)) %>%
+  mutate(locationtype='State') %>%
+  mutate(state='Montana') %>%
+  rename(timeframe=year) %>%
+  rename(data=ecigarette) %>%
+  mutate(varname='yrbs_electronicvaporuseamonghighschoolstudents') %>%
+  subset(timeframe==as.numeric(year_prior))
+
+```
+
+```{r}
+#add to database 
+dbWriteTable(con,'montana',cigarette_mr,append=TRUE,row.names=FALSE)
+dbWriteTable(con,'montana',smokeless_mr,append=TRUE,row.names=FALSE)
+dbWriteTable(con,'montana',alcohol_mr,append=TRUE,row.names=FALSE)
+dbWriteTable(con,'montana',marijuana_mr,append=TRUE,row.names=FALSE)
+dbWriteTable(con,'montana',suicide_mr,append=TRUE,row.names=FALSE)
+dbWriteTable(con,'montana',noseatbelt_mr,append=TRUE,row.names=FALSE)
+dbWriteTable(con,'montana',drinkdrive_mr,append=TRUE,row.names=FALSE)
+dbWriteTable(con,'montana',hopeless_mr,append=TRUE,row.names=FALSE)
+dbWriteTable(con,'montana',bullied_mr,append=TRUE,row.names=FALSE)
+dbWriteTable(con,'montana',ecigarette_mr,append=TRUE,row.names=FALSE)
+
+```
+
+#the updated data, if there is any can be pulled as an entire new dataset with all years from the output code.
+
 
 **CIGARETTE USE**
 
@@ -166,7 +303,7 @@ upload_data_smokeless<- dbGetQuery(con,paste0("SELECT locationid,location,timefr
                      WHERE timeframe = '",year,"' AND varname = 'yrbs_smokelesstobaccoamonghighschoolstudents';"))
 
 #all years
-#upload_data_smokeless<- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montanaWHERE varname = 'yrbs_smokelesstobaccoamonghighschoolstudents';"))
+#upload_data_smokeless<- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montana WHERE varname = 'yrbs_smokelesstobaccoamonghighschoolstudents';"))
 
 upload_data_smokeless2 <- upload_data_smokeless %>%
   rename(LocationId=locationid,
