@@ -436,6 +436,10 @@ countydata_all <- countydata1 %>%
   bind_rows(countydata12) %>%
   bind_rows(countydata13) %>%
   bind_rows(countydata14) %>%
+  bind_rows(countydata3_byrace) %>%
+  bind_rows(countydata5_byrace) %>%
+  bind_rows(countydata10_byrace) %>%
+  bind_rows(countydata13_byrace) %>%
 
   
   #create separate column names for data types
