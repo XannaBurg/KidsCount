@@ -112,7 +112,7 @@ countydata3_byrace <- data.frame(race,data) %>%
          date_description='Combined Five Calendar Years',
          data_source='American Community Survey Table C27001A-I, 5-Year Estimates',
          data_notes='Data by race is not directly comparable to 1-year data provided for children without health insurance estimates. Use the Overall category to compare to the 5-year estimate for all races.',
-         data_mostrecent=1,
+         date_mostrecent=1,
          dataformat='Percent') %>%
   mutate(data=as.character(paste(data)))
 #####---------------------------------#####
@@ -197,7 +197,7 @@ countydata5_byrace <- data.frame(race,data) %>%
          date_description='Combined Five Calendar Years',
          data_source='Centers for Disease Control and Prevention, National Center for Health Statistics, Natality on CDC Wonder Online Database',
          data_notes='Early prenatal care is seeing a health care provider before the 13th week of pregnancy (during first trimester).',
-         data_mostrecent=1,
+         date_mostrecent=1,
          dataformat='Percent') %>%
   mutate(data=as.character(paste(data)))
 #####---------------------------------#####
@@ -302,7 +302,7 @@ countydata10_byrace <- data.frame(race,data) %>%
          date_description='School Year',
          data_source='Montana Office of Public Instruction',
          data_notes='ata is not reported if the number of students enrolled in the cohort is less than 6.',
-         data_mostrecent=1,
+         date_mostrecent=1,
          dataformat='Percent') %>%
   mutate(data=as.character(paste(data)))
 #####---------------------------------#####
@@ -398,7 +398,7 @@ countydata13_byrace <- data.frame(race,data) %>%
          date_description='Combined Five Calendar Years',
          data_source='American Community Survey Table B17001A-I, 5-Year Estimates',
          data_notes='Data by race is not directly comparable to 1-year data provided for children living in poverty estimates. Use the Overall category to compare to the 5-year estimate for all races.',
-         data_mostrecent=1,
+         date_mostrecent=1,
          dataformat='Percent') %>%
   mutate(data=as.character(paste(data)))
 #####---------------------------------#####
