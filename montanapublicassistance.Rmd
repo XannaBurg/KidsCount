@@ -210,6 +210,7 @@ upload_datacenter_medicaid_number <- dbGetQuery(con,uploadnumber_sql) %>%
 
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
 write.csv(upload_datacenter_medicaid_number,file=paste0("./Output/health/",database_state,"_",year,"_medicaidages0to18_number.csv"),row.names=FALSE)
+
 ```
 
 
