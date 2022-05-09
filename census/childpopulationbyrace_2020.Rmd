@@ -60,7 +60,7 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 ```{r}
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
-statename <- "South Dakota"
+statename <- "Montana"
 year <- "2020"
 
 
@@ -192,10 +192,10 @@ pop_county <- read.csv('../Input/demographics/CC-EST2020-ALLDATA.csv') %>%
          varname='childpopulationbyrace') %>%
   
   mutate(location=replace(location, 
-                          statename=='Montana' & location=='Lewis and Clark', 
+                          state=='Montana' & location=='Lewis and Clark', 
                           'Lewis & Clark')) %>%
   mutate(location=replace(location, 
-                          statename=='South Dakota' & location=='Shannon', 
+                          state=='South Dakota' & location=='Shannon', 
                           'Oglala Lakota')) 
     
     
@@ -341,7 +341,14 @@ totalpop_county <- read.csv('../Input/demographics/CC-EST2020-ALLDATA.csv') %>%
   summarise(totalpop=sum(TOT_POP)) %>%
   ungroup %>%
 
-  rename(location=county)
+  rename(location=county) %>%
+  
+    mutate(location=replace(location, 
+                          location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  mutate(location=replace(location, 
+                          location=='Shannon', 
+                          'Oglala Lakota')) 
 
 
 totalpop_state <- totalpop_county %>%
