@@ -469,7 +469,7 @@ write.csv(countydata_all2,file=paste0("./Output/datarequests/montana_countyprofi
 ## NORTH DAKOTA ##
 ```{r}
 #UPDATE THE YEAR TO MATCH THE CURRENT YEAR
-year_current <- '2020'
+year_current <- '2021'
 
 #------- DO NOT EDIT -------#
 year_minus1 <- as.character(as.numeric(year_current)-1)
@@ -545,6 +545,24 @@ countydata3 <- dbGetQuery(con,countydata3_sql) %>%
   mutate(dataformat='Percent')
 
 
+#####-----MANUALLY INPUT THIS DATA BY RACE-----#####
+#####CHILDREN WITHOUT HEALTH INSURANCE BY RACE
+race <- c("Overall","American Indian/Alaska Native","White","2+ Races or Other")
+data <- c(.073,.191,.059,.087)
+countydata3_byrace <- data.frame(race,data) %>%
+  mutate(location='North Dakota',
+         timeframe='2016-2020',
+         varname='Children Without Health Insurance by Race',
+         age_group='Ages 0 to 18',
+         date_description='Combined Five Calendar Years',
+         data_source='American Community Survey Table C27001A-I, 5-Year Estimates',
+         data_notes='Data by race is not directly comparable to 1-year data provided for children without health insurance estimates. Use the Overall category to compare to the 5-year estimate for all races.',
+         date_mostrecent=1,
+         dataformat='Percent') %>%
+  mutate(data=as.character(paste(data)))
+#####---------------------------------#####
+
+
 #####CHILDREN ENROLLED IN MEDICAID OR CHIP
 countydata4_sql <- paste0("SELECT location, timeframe, data FROM northdakota WHERE (locationtype='County' OR locationtype='State') AND (varname='medicaidages0to20' OR varname='healthystepsages0to18') AND dataformat='Number' AND (timeframe='",year_minus1,"' OR timeframe='",year_minus2,"');")
 
@@ -580,6 +598,24 @@ countydata5 <- dbGetQuery(con,countydata5_sql) %>%
   mutate(dataformat='Percent')
 
 
+#####-----MANUALLY INPUT THIS DATA BY RACE-----#####
+#####WOMEN WHO RECEIVE EARLY PRENATAL CARE
+race <- c("Overall","American Indian/Alaska Native","Asian","Black","White","2+ Races or Other")
+data <- c(.760,.385,.654,.533,.827,.661)
+countydata5_byrace <- data.frame(race,data) %>%
+  mutate(location='North Dakota',
+         timeframe='2016-2020',
+         varname='Women Who Receive Early Prenatal Care by Race',
+         age_group='Age 0',
+         date_description='Combined Five Calendar Years',
+         data_source='Centers for Disease Control and Prevention, National Center for Health Statistics, Natality on CDC Wonder Online Database',
+         data_notes='Early prenatal care is seeing a health care provider before the 13th week of pregnancy (during first trimester).',
+         date_mostrecent=1,
+         dataformat='Percent') %>%
+  mutate(data=as.character(paste(data)))
+#####---------------------------------#####
+
+
 #####NUMBER UNDER AGE 6
 countydata6_sql <- paste0("SELECT location, timeframe, age_group, data FROM northdakota WHERE (locationtype='County' OR locationtype='State') AND varname='childpopulationbysingleyearofage' AND dataformat='Number' AND vintageyear='",year_minus1,"' AND (timeframe='",year_minus1,"' OR timeframe='",year_minus2,"');")
 
@@ -604,7 +640,7 @@ countydata6 <- dbGetQuery(con,countydata6_sql) %>%
 
   
 #####CHILD CARE CAPACITY
-countydata7_sql <- paste0("SELECT location, timeframe, data FROM northdakota WHERE (locationtype='County' OR locationtype='State') AND varname='childcarecapacitybytype' AND dataformat='Number' AND (timeframe='",year_current,"' OR timeframe='",year_minus1,"');")
+countydata7_sql <- paste0("SELECT location, timeframe, data FROM northdakota WHERE (locationtype='County' OR locationtype='State') AND varname='childcarecapacitybytype' AND dataformat='Number' AND (timeframe='",year_minus1,"' OR timeframe='",year_minus2,"');")
 
 countydata7 <- dbGetQuery(con,countydata7_sql) %>%
   mutate(data=as.numeric(paste(data))) %>%
@@ -618,13 +654,13 @@ countydata7 <- dbGetQuery(con,countydata7_sql) %>%
     mutate(data_source='North Dakota Department of Human Services') %>%
   mutate(data_notes='Child care facilities included in capacity are both those that are licensed and those that completed a voluntary registration (standard compliance certification, in-home, registered tribal, and approved relative).') %>%
   mutate(date_mostrecent=case_when(
-    timeframe==all_of(year_current) ~ 1,
-    timeframe==all_of(year_minus1) ~0)) %>%
+    timeframe==all_of(year_minus1) ~ 1,
+    timeframe==all_of(year_minus2) ~0)) %>%
   mutate(dataformat='Number')
 
 
 #####CHILDREN NEEDING CARE SERVED BY CAPACITY
-countydata8_sql <- paste0("SELECT location, timeframe, data FROM northdakota WHERE (locationtype='County' OR locationtype='State') AND varname='childcarecapacitybytype' AND dataformat='Percent' AND (timeframe='",year_current,"' OR timeframe='",year_minus1,"');")
+countydata8_sql <- paste0("SELECT location, timeframe, data FROM northdakota WHERE (locationtype='County' OR locationtype='State') AND varname='percentofchildrenages0to13withparentsworkingservedbyececapacity_oldmethodology' AND dataformat='Percent' AND (timeframe='",year_minus1,"' OR timeframe='",year_minus2,"');")
 
 countydata8 <- dbGetQuery(con,countydata8_sql) %>%
   mutate(data=as.numeric(paste(data))) %>%
@@ -639,8 +675,8 @@ countydata8 <- dbGetQuery(con,countydata8_sql) %>%
   mutate(data_source='North Dakota Department of Human Services and U.S. Census Bureau, American Community Survey 5-Year Estimates, Table B23008') %>%
   mutate(data_notes='Child care facilities included in capacity are both those that are licensed and those that completed a voluntary registration (standard compliance certification, in-home, registered tribal, and approved relative). It is not expected this percentage will be 100% as not all working families need child care.') %>%
   mutate(date_mostrecent=case_when(
-    timeframe==all_of(year_current) ~ 1,
-    timeframe==all_of(year_minus1) ~0)) %>%
+    timeframe==all_of(year_minus1) ~ 1,
+    timeframe==all_of(year_minus2) ~0)) %>%
   mutate(dataformat='Percent')
 
 
@@ -709,6 +745,24 @@ countydata10 <- dbGetQuery(con,countydata10_sql) %>%
   select(-c(data_truncated,data_truncated2,data_truncated_final,less10_indicator))
 
 
+#####-----MANUALLY INPUT THIS DATA BY RACE-----#####
+#####GRADUATION RATE BY RACE
+race <- c("Overall","American Indian/Alaska Native","Black","Latinx","White","Asian","Native Hawaiian or Pacific Islander")
+data <- c(.890,.727,.822,.783,.922,.897,.750)
+countydata10_byrace <- data.frame(race,data) %>%
+  mutate(location='North Dakota',
+         timeframe='2019/20',
+         varname='Four-Year Cohort Graduation Rate by Race',
+         age_group='9-12 grades',
+         date_description='School Year',
+         data_source='North Dakota Department of Public Instruction',
+         data_notes='Data is not reported if the number of students enrolled in the cohort is less than 10.',
+         date_mostrecent=1,
+         dataformat='Percent') %>%
+  mutate(data=as.character(paste(data)))
+#####---------------------------------#####
+
+
 #####3RD GRADE STUDENTS WHO SCORED PROFICIENT IN READING
 countydata11_sql <- paste0("SELECT location, timeframe, data FROM northdakota WHERE (locationtype='County' OR locationtype='State') AND (varname='thirdgradestatereadingproficiency1year' OR varname='thirdgradestatereadingproficiency3year') AND dataformat='Percent' AND (timeframe='",schoolyear_minus1,"' OR timeframe='",schoolyear_minus2,"' OR timeframe='",threeyear_minus1,"' OR timeframe='",threeyear_minus2,"');")
 
@@ -719,12 +773,13 @@ reading_currentyear <- dbGetQuery(con,countydata11_sql) %>%
   #create new variable using mixture of 1 and 3 year
   rename(oneyear=all_of(schoolyear_minus1),
          threeyear=all_of(threeyear_minus1)) %>%
+  mutate(oneyear=replace(oneyear,is.na(oneyear),"NA")) %>%
   mutate(data=case_when(
-    !is.na(oneyear) ~ oneyear,
-    is.na(oneyear) ~ threeyear)) %>%
+    oneyear != 'NA' ~ oneyear,
+    oneyear=='NA' ~ threeyear)) %>%
   mutate(timeframe=case_when(
-    !is.na(oneyear) ~ schoolyear_minus1,
-    is.na(oneyear) ~ threeyear_minus1)) %>%
+    oneyear != 'NA' ~ schoolyear_minus1,
+    oneyear=='NA' ~ threeyear_minus1)) %>%
   select(c(location,timeframe,data)) %>%
   mutate(date_mostrecent=1)
 
@@ -735,12 +790,13 @@ reading_prioryear <- dbGetQuery(con,countydata11_sql) %>%
   #create new variable using mixture of 1 and 3 year
   rename(oneyear=all_of(schoolyear_minus2),
          threeyear=all_of(threeyear_minus2)) %>%
+  mutate(oneyear=replace(oneyear,is.na(oneyear),"NA")) %>%
   mutate(data=case_when(
-    !is.na(oneyear) ~ oneyear,
-    is.na(oneyear) ~ threeyear)) %>%
+    oneyear != 'NA' ~ oneyear,
+    oneyear=='NA' ~ threeyear)) %>%
   mutate(timeframe=case_when(
-    !is.na(oneyear) ~ schoolyear_minus2,
-    is.na(oneyear) ~ threeyear_minus2)) %>%
+    oneyear != 'NA' ~ schoolyear_minus2,
+     oneyear=='NA' ~ threeyear_minus2)) %>%
   select(c(location,timeframe,data)) %>%
   mutate(date_mostrecent=0)
 
@@ -769,6 +825,23 @@ countydata11 <- reading_currentyear %>%
   mutate(data=ifelse(is.na(data_truncated_final),data,data_truncated_final)) %>%
   select(-c(data_truncated,data_truncated2,data_truncated_final,less10_indicator))
 
+
+#####-----MANUALLY INPUT THIS DATA BY RACE-----#####
+#####THIRD GRAD READING BY RACE
+race <- c("Overall","American Indian/Alaska Native","Black","Latinx","White","Asian","Native Hawaiian or Pacific Islander")
+data <- c(.476,.257,.327,.366,.526,.511,.514)
+countydata11_byrace <- data.frame(race,data) %>%
+  mutate(location='North Dakota',
+         timeframe='2019/20',
+         varname='3rd Grade Students Who Scored Proficient in Reading by Race',
+         age_group='3rd graders',
+         date_description='School Year',
+         data_source='North Dakota Department of Public Instruction',
+         data_notes='Data is not reported if the number of students taking the assessment is less than 10 or if the percentage apprached zero or 100.',
+         date_mostrecent=1,
+         dataformat='Percent') %>%
+  mutate(data=as.character(paste(data)))
+#####---------------------------------#####
 
 
 #####CHILDREN WITH ALL PARENTS WORKING
@@ -799,6 +872,24 @@ countydata13 <- dbGetQuery(con,countydata13_sql) %>%
     timeframe==all_of(year_minus2) ~ 1,
     timeframe==all_of(year_minus3) ~0)) %>%
   mutate(dataformat='Percent')
+
+
+#####-----MANUALLY INPUT THIS DATA BY RACE-----#####
+#####CHILDREN LIVING IN POVERTY
+race <- c("Overall","American Indian/Alaska Native","White","2+ Races or Other","Black")
+data <- c(.111,.385,.064,.148,.389)
+countydata13_byrace <- data.frame(race,data) %>%
+  mutate(location='North Dakota',
+         timeframe='2016-2020',
+         varname='Children Living in Poverty by Race',
+         age_group='Ages 0 to 17',
+         date_description='Combined Five Calendar Years',
+         data_source='American Community Survey Table B17001A-I, 5-Year Estimates',
+         data_notes='Data by race is not directly comparable to 1-year data provided for children living in poverty estimates. Use the Overall category to compare to the 5-year estimate for all races.',
+         date_mostrecent=1,
+         dataformat='Percent') %>%
+  mutate(data=as.character(paste(data)))
+#####---------------------------------#####
 
 
 #####CHILD FOOD INSECURITY
@@ -832,6 +923,11 @@ countydata_all <- countydata1 %>%
   bind_rows(countydata12) %>%
   bind_rows(countydata13) %>%
   bind_rows(countydata14) %>%
+  bind_rows(countydata3_byrace) %>%
+  bind_rows(countydata5_byrace) %>%
+  bind_rows(countydata10_byrace) %>%
+  bind_rows(countydata11_byrace) %>%
+  bind_rows(countydata13_byrace) %>%
 
   
   #create separate column names for data types
