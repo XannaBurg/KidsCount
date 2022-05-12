@@ -876,8 +876,8 @@ countydata13 <- dbGetQuery(con,countydata13_sql) %>%
 
 #####-----MANUALLY INPUT THIS DATA BY RACE-----#####
 #####CHILDREN LIVING IN POVERTY
-race <- c("Overall","American Indian/Alaska Native","White","2+ Races or Other","Black")
-data <- c(.111,.385,.064,.148,.389)
+race <- c("Overall","American Indian/Alaska Native","White","2+ Races or Other","Black","Asian")
+data <- c(.111,.385,.064,.148,.389,.194)
 countydata13_byrace <- data.frame(race,data) %>%
   mutate(location='North Dakota',
          timeframe='2016-2020',
