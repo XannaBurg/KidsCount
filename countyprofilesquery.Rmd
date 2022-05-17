@@ -476,6 +476,7 @@ year_minus1 <- as.character(as.numeric(year_current)-1)
 year_minus2 <- as.character(as.numeric(year_current)-2)
 year_minus3 <- as.character(as.numeric(year_current)-3)
 year_minus4 <- as.character(as.numeric(year_current)-4)
+year_minus5 <- as.character(as.numeric(year_current)-5)
 year_minus6 <- as.character(as.numeric(year_current)-6)
 year_minus7 <- as.character(as.numeric(year_current)-7)
 schoolyear_current <- as.character(paste0(as.numeric(year_current)-1,"/",str_sub(year_current,-2)))
@@ -484,6 +485,7 @@ schoolyear_minus2 <- as.character(paste0(as.numeric(year_current)-3,"/",as.numer
 schoolyear_minus3 <- as.character(paste0(as.numeric(year_current)-4,"/",as.numeric(str_sub(year_current,-2))-3))
 threeyear_minus1 <- as.character(paste0(year_minus3,"-",year_minus1))
 threeyear_minus2 <- as.character(paste0(year_minus4,"-",year_minus2))
+threeyear_minus3 <- as.character(paste0(year_minus5,"-",year_minus3))
 twoyear_currentyear <- as.character(paste0(year_minus1,"-",year_current))
 twoyear_minus1 <- as.character(paste0(year_minus2,"-",year_minus1))
 fiveyear_minus2 <- as.character(paste0(year_minus6,"-",year_minus2))
@@ -764,26 +766,9 @@ countydata10_byrace <- data.frame(race,data) %>%
 
 
 #####3RD GRADE STUDENTS WHO SCORED PROFICIENT IN READING
-countydata11_sql <- paste0("SELECT location, timeframe, data FROM northdakota WHERE (locationtype='County' OR locationtype='State') AND (varname='thirdgradestatereadingproficiency1year' OR varname='thirdgradestatereadingproficiency3year') AND dataformat='Percent' AND (timeframe='",schoolyear_minus1,"' OR timeframe='",schoolyear_minus2,"' OR timeframe='",threeyear_minus1,"' OR timeframe='",threeyear_minus2,"');")
+countydata11_sql <- paste0("SELECT location, timeframe, data FROM northdakota WHERE (locationtype='County' OR locationtype='State') AND (varname='thirdgradestatereadingproficiency1year' OR varname='thirdgradestatereadingproficiency3year') AND dataformat='Percent' AND (timeframe='",schoolyear_minus2,"' OR timeframe='",schoolyear_minus3,"' OR timeframe='",threeyear_minus2,"' OR timeframe='",threeyear_minus3,"');")
 
 reading_currentyear <- dbGetQuery(con,countydata11_sql) %>%
-  subset(timeframe==schoolyear_minus1 | timeframe==threeyear_minus1) %>%
-  pivot_wider(id_cols=c('location'),names_from=timeframe,values_from=data) %>%
-  
-  #create new variable using mixture of 1 and 3 year
-  rename(oneyear=all_of(schoolyear_minus1),
-         threeyear=all_of(threeyear_minus1)) %>%
-  mutate(oneyear=replace(oneyear,is.na(oneyear),"NA")) %>%
-  mutate(data=case_when(
-    oneyear != 'NA' ~ oneyear,
-    oneyear=='NA' ~ threeyear)) %>%
-  mutate(timeframe=case_when(
-    oneyear != 'NA' ~ schoolyear_minus1,
-    oneyear=='NA' ~ threeyear_minus1)) %>%
-  select(c(location,timeframe,data)) %>%
-  mutate(date_mostrecent=1)
-
-reading_prioryear <- dbGetQuery(con,countydata11_sql) %>%
   subset(timeframe==schoolyear_minus2 | timeframe==threeyear_minus2) %>%
   pivot_wider(id_cols=c('location'),names_from=timeframe,values_from=data) %>%
   
@@ -796,7 +781,24 @@ reading_prioryear <- dbGetQuery(con,countydata11_sql) %>%
     oneyear=='NA' ~ threeyear)) %>%
   mutate(timeframe=case_when(
     oneyear != 'NA' ~ schoolyear_minus2,
-     oneyear=='NA' ~ threeyear_minus2)) %>%
+    oneyear=='NA' ~ threeyear_minus2)) %>%
+  select(c(location,timeframe,data)) %>%
+  mutate(date_mostrecent=1)
+
+reading_prioryear <- dbGetQuery(con,countydata11_sql) %>%
+  subset(timeframe==schoolyear_minus3 | timeframe==threeyear_minus3) %>%
+  pivot_wider(id_cols=c('location'),names_from=timeframe,values_from=data) %>%
+  
+  #create new variable using mixture of 1 and 3 year
+  rename(oneyear=all_of(schoolyear_minus3),
+         threeyear=all_of(threeyear_minus3)) %>%
+  mutate(oneyear=replace(oneyear,is.na(oneyear),"NA")) %>%
+  mutate(data=case_when(
+    oneyear != 'NA' ~ oneyear,
+    oneyear=='NA' ~ threeyear)) %>%
+  mutate(timeframe=case_when(
+    oneyear != 'NA' ~ schoolyear_minus3,
+     oneyear=='NA' ~ threeyear_minus3)) %>%
   select(c(location,timeframe,data)) %>%
   mutate(date_mostrecent=0)
 
@@ -829,10 +831,10 @@ countydata11 <- reading_currentyear %>%
 #####-----MANUALLY INPUT THIS DATA BY RACE-----#####
 #####THIRD GRAD READING BY RACE
 race <- c("Overall","American Indian/Alaska Native","Black","Latinx","White","Asian","Native Hawaiian or Pacific Islander")
-data <- c(.476,.257,.327,.366,.526,.511,.514)
+data <- c(.48,.25,.34,.37,.52,.55,.50)
 countydata11_byrace <- data.frame(race,data) %>%
   mutate(location='North Dakota',
-         timeframe='2019/20',
+         timeframe='2018/19',
          varname='3rd Grade Students Who Scored Proficient in Reading by Race',
          age_group='3rd graders',
          date_description='School Year',
