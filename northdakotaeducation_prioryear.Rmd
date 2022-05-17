@@ -1107,7 +1107,9 @@ grad_data2 <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Educa
 
 ############
 #COUNTY DATA
-gradrace_county <- grad_data2 %>%
+gradrace_county2 <- grad_data2 %>%
+  
+  subset(Entity_Level=='District') %>%
   
   #import county name
   mutate(County=as.numeric(paste(County))) %>%
@@ -1726,6 +1728,7 @@ STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #import data
 assessment_data <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",year,".csv")) %>%
+
   
   #subset for all students
   subset(SubGroup_Desc=='All') %>%
@@ -1739,6 +1742,8 @@ assessment_county <- assessment_data %>%
   #import county name
   mutate(County=as.numeric(paste(County))) %>%
   left_join(countyids,by=c("County"="ndcounty_number")) %>%
+  select(-c(FAY_Nbr_Students_Novice,FAY_Nbr_Students_Partially_Proficient,FAY_Nbr_Students_Proficient,FAY_Nbr_Students_Advanced)) %>%
+  distinct() %>%
   
   #calculate numerator and denominator
   mutate(proficientstudents=Nbr_Students_Proficient+Nbr_Students_Advanced) %>%
@@ -1971,7 +1976,7 @@ assessment_data2 <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DE
   subset(SubGroup_Desc=='All') %>%
   subset(Subject=='Reading')
 
-assessment_data3 <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",yearfile3,".csv")) %>%
+assessment_data3 <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",yearfile3,".xlsx")) %>%
   
   #subset for all students
   subset(SubGroup_Desc=='All') %>%
@@ -1991,6 +1996,9 @@ assessment_county <- assessment_data %>%
   #import county name
   mutate(County=as.numeric(paste(County))) %>%
   left_join(countyids,by=c("County"="ndcounty_number")) %>%
+  
+  select(-c(FAY_Nbr_Students_Novice,FAY_Nbr_Students_Partially_Proficient,FAY_Nbr_Students_Proficient,FAY_Nbr_Students_Advanced)) %>%
+  distinct() %>%
   
   #calculate numerator and denominator
   mutate(proficientstudents=Nbr_Students_Proficient+Nbr_Students_Advanced) %>%
@@ -2144,6 +2152,7 @@ STEP 3: OUTPUT DATASET FOR UPLOADING TO KC DATA CENTER
 
 datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",full3year,"' AND varname='thirdgradestatereadingproficiency3year';")
 
+
 upload_data <- dbGetQuery(con,datacenter_sql) %>%
   rename(LocationId=locationid,
          Location=location,
@@ -2170,6 +2179,7 @@ STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #import data
 assessment_data <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",year,".csv")) %>%
+
   
   #subset for reading
   subset(Subject=='Reading') %>%
@@ -2189,6 +2199,9 @@ assessment_county <- assessment_data %>%
   #import county name
   mutate(County=as.numeric(paste(County))) %>%
   left_join(countyids,by=c("County"="ndcounty_number")) %>%
+  
+  select(-c(FAY_Nbr_Students_Novice,FAY_Nbr_Students_Partially_Proficient,FAY_Nbr_Students_Proficient,FAY_Nbr_Students_Advanced)) %>%
+  distinct() %>%
   
   #calculate numerator and denominator
   mutate(proficientstudents=Nbr_Students_Proficient+Nbr_Students_Advanced) %>%
@@ -2393,3 +2406,437 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_third
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## FOUR-YEAR HIGH SCHOOL COHORT GRADUATION RATE BY RACE AND RURAL/URBAN ##
+STEP 1: Import and Clean Data
+```{r}
+ruralurban <- read_excel(path="/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Rural_Urban_Status.xlsx")
+
+ruralurban2 <- ruralurban %>%
+  distinct(District_Name,.keep_all = TRUE)
+
+#10 districts have multipe urban/rural depending on school, need to choose one for whole district
+#this code is used to check that the distinct function picked the majority Rural_Urban match
+#Bismark 1, Dickinson 1, Fargo 1, Grand Forks 1, Jamestown 1, Minot 1, Pingree-Buchanan 10
+# West Fargo 6, Williams County 8, Williston 1
+#temp <- ruralurban %>%
+ # subset(District_Name=='Williston 1')
+#summarytools::freq(temp$Rural_or_Urban)
+#temp2 <- ruralurban2 %>%
+ # subset(District_Name=='Williston 1')
+#View(temp2)
+
+
+grad_data2 <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Grad_Rates_",year,".csv")) %>%
+  rename(ontime_Count='On.Time.Grads',
+         Total_Students='Cohort') %>%
+  
+    subset(Entity_Level=='District') %>%
+
+
+  subset(Race=='Asian American' | Race=='Black' | 
+           Race=='Hispanic' | 
+           Race=='Native American' | 
+           Race=='Native Hawaiian or Pacific Islander' | 
+           Race=='White') %>%
+  rename(race=Race) %>%
+  mutate(race=replace(race,race=='Asian American','Asian')) %>%
+  
+  #join rural urban status
+  left_join(ruralurban2,by=c('Entity_Name'='District_Name'))
+
+
+gradrace_rural_urban2 <- grad_data2 %>%
+  
+  mutate(combo_geo=case_when(
+    Rural_or_Urban=='Rural: Distant' | Rural_or_Urban=='Rural: Fringe' | Rural_or_Urban=='Rural: Remote' ~ 'Rural',
+    TRUE ~ 'Non-Rural')) %>%
+  
+  mutate(race2=case_when(
+    race=="Black" | race=='Asian' | race=='Native Hawaiian or Pacific Islander' ~ "Other Race",
+TRUE ~ race)) %>%
+  
+  group_by(combo_geo,race2) %>%
+  summarise(summed_numerator=sum(ontime_Count),
+            summed_denominator=sum(Total_Students),
+            gradrate_percent=summed_numerator/summed_denominator,.groups='keep') %>%
+  ungroup 
+
+
+
+
+
+write.csv(gradrace_rural_urban2,file=paste0("./Output/education/northdakota_gradratesbyraceandurbanrural.csv"),row.names=FALSE)
+  
+
+
+gradrace_rural_urban_freq <- grad_data2 %>%
+  
+  mutate(combo_geo=case_when(
+    Rural_or_Urban=='Rural: Distant' | Rural_or_Urban=='Rural: Fringe' | Rural_or_Urban=='Rural: Remote' ~ 'Rural',
+    TRUE ~ 'Non-Rural')) 
+summarytools::freq(gradrace_rural_urban_freq$combo_geo)
+
+
+
+
+
+
+
+
+############
+#COUNTY DATA
+gradrace_county <- grad_data2 %>%
+  
+  #import county name
+  mutate(County=as.numeric(paste(County))) %>%
+  left_join(countyids,by=c("County"="ndcounty_number")) %>%
+  
+  #sum by county and race
+  group_by(ndcounty_name,race) %>%
+  summarise(summed_numerator=sum(ontime_Count),
+            summed_denominator=sum(Total_Students),
+            gradrate_percent=summed_numerator/summed_denominator,.groups='keep') %>%
+  ungroup %>% 
+  
+  #fix variable names
+  rename(location=ndcounty_name) %>%
+  
+  mutate(timeframe=fullyear) %>%
+  mutate(location=as.character(paste(location))) %>%
+  mutate(locationtype='County') 
+
+###########
+#STATE DATA
+#start with  cleaned county data
+gradrace_state <- gradrace_county %>%
+  mutate(location='North Dakota') %>%
+  group_by(location,timeframe,race) %>%
+  summarise(summed_numerator=sum(summed_numerator),
+            summed_denominator=sum(summed_denominator),
+            gradrate_percent=summed_numerator/summed_denominator,.groups='keep') %>%
+  ungroup %>%
+
+  #add in locationtype
+  mutate(locationtype='State')
+
+
+  
+######################## 
+#combine all geographies
+gradrace_all <- gradrace_county %>%
+  bind_rows(gradrace_state) %>%
+  
+  
+  #most counties aren't large enough to provide valid data, subset to the largest 10
+  subset(location=='North Dakota' | 
+           location=='Cass' | location=='Burleigh' | location=='Grand Forks' | 
+           location=='Ward' | location=='Williams' | location=='Stark' | 
+           location=='Morton' | location=='Richland' | 
+           location=='McKenzie') %>%
+  subset(locationtype=='State' | (locationtype=='County' & race!='Native Hawaiian or Pacific Islander')) %>%
+
+  mutate(state='North Dakota') %>%
+  mutate(varname='graduationrate4cohortbyrace') %>%
+  mutate(dataformat='Percent') %>%
+  
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+
+
+  #create indicators to suppress data
+
+  #supress if denominator is less than 10
+  mutate(suppress_denominator=if_else(summed_denominator<10 | is.na(summed_denominator),1,0)) %>%
+ 
+  #suppress percentages of 0-1 if more than 300 in denominator
+  mutate(suppress_0to1_300=if_else(summed_denominator>300 & gradrate_percent<=.01,1,0)) %>%
+  #suppress percentages of 99-100 if more than 300 in denominator
+  mutate(suppress_99to100_300=if_else(summed_denominator>300 & gradrate_percent>=.99,1,0)) %>%
+
+  
+  #suppress percentages of 0-2 if between 101 to 300 in denominator
+  mutate(suppress_0to2_101=if_else((summed_denominator>100 & summed_denominator<=300) & 
+                                     gradrate_percent<=0.02,1,0)) %>%
+  #suppress percentages of 98-100 if between 101 to 300 in denominator
+  mutate(suppress_98to100_101=if_else((summed_denominator>100 & summed_denominator<=300) & 
+                                     gradrate_percent>=0.98,1,0)) %>%
+  
+  #suppress percentages of 0-5 if between 41 to 100 in denominator
+  mutate(suppress_0to5_41=if_else((summed_denominator>40 & summed_denominator<=100) & 
+                                     gradrate_percent<=0.05,1,0)) %>%
+  #suppress percentages of 95-100 if between 41 to 100 in denominator
+  mutate(suppress_95to100_41=if_else((summed_denominator>40 & summed_denominator<=100) & 
+                                     gradrate_percent>=0.95,1,0)) %>%
+  
+  #suppress percentages of 0-10 if between 21 to 40 in denominator
+  mutate(suppress_0to10_21=if_else((summed_denominator>20 & summed_denominator<=40) & 
+                                     gradrate_percent<=0.10,1,0)) %>%
+  #suppress percentages of 90-100 if between 21 to 40 in denominator
+  mutate(suppress_90to100_21=if_else((summed_denominator>20 & summed_denominator<=40) & 
+                                     gradrate_percent>=0.90,1,0)) %>%
+  
+  #suppress percentages of 0-20 if between 10 to 20 in denominator
+  mutate(suppress_0to20_10=if_else((summed_denominator>=10 & summed_denominator<=20) & 
+                                     gradrate_percent<=0.20,1,0)) %>%
+  #suppress percentages of 80-100 if between 10 to 20 in denominator
+  mutate(suppress_80to100_10=if_else((summed_denominator>=10 & summed_denominator<=20) & 
+                                     gradrate_percent>=0.80,1,0)) %>%
+  
+  #create updated percent and number based on suppression rules
+  mutate(gradrate_percent=as.character(paste(gradrate_percent))) %>%
+  mutate(data=case_when(
+    suppress_denominator==1 ~ 'NA',
+    suppress_0to1_300==1 ~ "<= 1%",
+    suppress_99to100_300==1 ~ ">= 99%",
+    suppress_0to2_101==1 ~ "<= 2%",
+    suppress_98to100_101==1 ~ ">= 98%",
+    suppress_0to5_41==1 ~ "<= 5%",
+    suppress_95to100_41==1 ~ ">= 95%",
+    suppress_0to10_21==1 ~ "<= 10%",
+    suppress_90to100_21==1 ~ ">= 90%",
+    suppress_0to20_10==1 ~ "<= 20%",
+    suppress_80to100_10==1 ~ ">= 80%",
+    suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
+      suppress_0to2_101==0 & suppress_98to100_101==0 & 
+      suppress_0to5_41==0 & suppress_95to100_41==0 & 
+      suppress_0to10_21==0 & suppress_90to100_21==0 & 
+      suppress_0to20_10==0 & suppress_80to100_10==0 ~ gradrate_percent)) %>%
+  
+    select(c(location,locationtype,locationid,state,timeframe,varname,race,data,dataformat))
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(gradrace_all$locationid))>=1) {
+  print(gradrace_all$location[is.na(gradrace_all$locationid)])
+} else if (sum(is.na(gradrace_all$locationid))==0) {
+  'all locations match'
+}
+
+# 2. Output cases where percent data is greater than 1
+temp_percheck <- gradrace_all %>%
+  subset(dataformat=='Percent' & data>1 & is.na(data))
+temp_rows <- as.numeric(nrow(temp_percheck))
+
+if (temp_rows==0) {
+  'no percents greater than 1'
+} else if (temp_rows>=1) {
+  print(temp_percheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- gradrace_all %>%
+  subset(locationtype=='County') %>%
+  subset(data=='NA')
+
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed at the overall county level'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- gradrace_county %>%
+#  arrange(data)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#gradrace_all$data[gradrace_all$location=='Billings'] <- 'NA'
+
+# 4. Visually inspect output data
+View(gradrace_all)
+```
+
+STEP 2: COMMIT TO DATABASE 
+```{r}
+#CHECK DATASET NAMED gradrace_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,'northdakota',gradrace_all,append=TRUE,row.names=FALSE)
+```
+
+STEP 3: OUTPUT DATASET FOR UPLOADING TO KC DATA CENTER
+```{r}
+#########################
+##OUTPUT DATA CENTER FILE
+
+datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, race, data FROM northdakota WHERE timeframe='",fullyear,"' AND varname='graduationrate4cohortbyrace';")
+
+upload_data <- dbGetQuery(con,datacenter_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         Race=race)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_graduationrate4cohortbyrace.csv"),row.names=FALSE)
+
+```
+
+
+
+
+
+
+
+```{r}
+
+grad_data_total <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Grad_Rates_",year,".csv")) %>%
+  subset(Entity_Level=='District') %>%
+  subset(Race=='All') %>%
+  select(c(Entity_ID,Cohort)) %>%
+  rename(totalstudents=Cohort)
+
+grad_data_white <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Grad_Rates_",year,".csv")) %>%
+  subset(Entity_Level=='District') %>%
+  subset(Race=='White') %>%
+  select(c(Entity_ID,Cohort)) %>%
+  rename(totalwhite=Cohort)
+
+grad_data <- grad_data_total %>%
+  full_join(grad_data_white,by=c('Entity_ID'='Entity_ID')) %>%
+  mutate(totalwhite=replace(totalwhite,is.na(totalwhite),0)) %>%
+  mutate(totalnonwhite=totalstudents-totalwhite) %>%
+  mutate(percent_nonwhite=totalnonwhite/totalstudents) %>%
+  select(c(Entity_ID,percent_nonwhite)) %>%
+  mutate(highest_quartile_nonwhite=case_when(
+    percent_nonwhite>.2 ~ 'Highest 25 percent',
+    TRUE ~ 'Bottom 75 percent'))
+  
+  
+financials <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/FinancialData_",year,".csv")) %>%
+  subset(FY=='2021') %>%
+  subset(!is.na(FY)) %>%
+  separate(Codist,into=c("county","district"),sep="-") %>%
+  mutate(county=as.numeric(paste(county))) %>%
+  mutate(Entity_ID=paste0(county,district)) %>%
+  
+    #change adm to numeric
+  mutate(ADMPK12=gsub(",","",ADMPK12)) %>%
+  mutate(ADMPK12=as.numeric(paste(ADMPK12))) %>%
+  
+  #change expenditure variables to numeric
+  mutate(SBTCH=gsub(",","",SBTCH)) %>%
+  mutate(SBTCH=as.numeric(paste(SBTCH))) %>%
+  
+  mutate(SBSUP=gsub(",","",SBSUP)) %>%
+  mutate(SBSUP=as.numeric(paste(SBSUP))) %>%
+  
+  mutate(OTHINS=gsub(",","",OTHINS)) %>%
+  mutate(OTHINS=as.numeric(paste(OTHINS))) %>%
+  
+  mutate(SADMIN=gsub(",","",SADMIN)) %>%
+  mutate(SADMIN=as.numeric(paste(SADMIN))) %>%
+  
+  mutate(GADMIN=gsub(",","",GADMIN)) %>%
+  mutate(GADMIN=as.numeric(paste(GADMIN))) %>%
+  
+  mutate(OMOP=gsub(",","",OMOP)) %>%
+  mutate(OMOP=as.numeric(paste(OMOP))) %>%
+  
+  #group by and sum adm
+  group_by(Entity_ID) %>%
+  summarise(average_expenditure=(sum(SBTCH,na.rm=TRUE)+sum(SBSUP,na.rm=TRUE)+sum(OTHINS,na.rm=TRUE)+sum(SADMIN,na.rm=TRUE)+sum(GADMIN,na.rm=TRUE)+sum(OMOP,na.rm=TRUE))/sum(ADMPK12,na.rm=TRUE)) %>%
+  ungroup %>%
+  
+  mutate(Entity_ID=as.numeric(paste(Entity_ID))) %>%
+  right_join(grad_data)
+  
+avg_expenditure_by <- financials %>%
+  group_by(highest_quartile_nonwhite) %>%
+  summarise(avg_expenditure_by=mean(average_expenditure))
+
+
+
+
+
+frl <- read_excel("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Enrollment_19-20.xlsx") %>%
+  rename(lunchstatus='Lunch Status') %>%
+  mutate(frl_indicator=case_when(
+    lunchstatus == 'Not Eligible' ~ 0,
+    lunchstatus == 'F/R Lunch' ~ 1)) %>%
+   mutate(enroll_indicator=case_when(
+    !is.na(GradeName) ~ 1)) %>%
+
+  #sum by district
+  group_by(DistrictStateIssuedID) %>%
+  summarise(frl_number=sum(frl_indicator),
+            totalenroll=sum(enroll_indicator)) %>%
+  ungroup %>%
+  
+  #create percent
+  mutate(frl_percent=frl_number/totalenroll) %>%
+  select(DistrictStateIssuedID,frl_percent) %>%
+  mutate(highest_quartile_frl=case_when(
+    frl_percent>.42 ~ 'Highest Poverty',
+    TRUE ~ 'Lower Poverty'))
+  
+
+
+
+financials <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/FinancialData_",year,".csv")) %>%
+  subset(FY=='2021') %>%
+  subset(!is.na(FY)) %>%
+  
+   #change adm to numeric
+  mutate(ADMPK12=gsub(",","",ADMPK12)) %>%
+  mutate(ADMPK12=as.numeric(paste(ADMPK12))) %>%
+  
+  #change expenditure variables to numeric
+  mutate(SBTCH=gsub(",","",SBTCH)) %>%
+  mutate(SBTCH=as.numeric(paste(SBTCH))) %>%
+  
+  mutate(SBSUP=gsub(",","",SBSUP)) %>%
+  mutate(SBSUP=as.numeric(paste(SBSUP))) %>%
+  
+  mutate(OTHINS=gsub(",","",OTHINS)) %>%
+  mutate(OTHINS=as.numeric(paste(OTHINS))) %>%
+  
+  mutate(SADMIN=gsub(",","",SADMIN)) %>%
+  mutate(SADMIN=as.numeric(paste(SADMIN))) %>%
+  
+  mutate(GADMIN=gsub(",","",GADMIN)) %>%
+  mutate(GADMIN=as.numeric(paste(GADMIN))) %>%
+  
+  mutate(OMOP=gsub(",","",OMOP)) %>%
+  mutate(OMOP=as.numeric(paste(OMOP))) %>%
+  
+  #group by and sum adm
+  group_by(Codist) %>%
+  summarise(average_expenditure=(sum(SBTCH,na.rm=TRUE)+sum(SBSUP,na.rm=TRUE)+sum(OTHINS,na.rm=TRUE)+sum(SADMIN,na.rm=TRUE)+sum(GADMIN,na.rm=TRUE)+sum(OMOP,na.rm=TRUE))/sum(ADMPK12,na.rm=TRUE)) %>%
+  ungroup %>%
+  
+  left_join(frl,by=c('Codist'='DistrictStateIssuedID'))
+
+avg_expenditure_by <- financials %>%
+  group_by(highest_quartile_frl) %>%
+  summarise(avg_expenditure_by=mean(average_expenditure))
+```
