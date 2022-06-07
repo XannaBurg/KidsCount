@@ -466,6 +466,7 @@ county_specialed <- specialed %>%
   rename(specialedcount=paste0("SFY20",year," Child Count")) %>%
   
   #join enrollment data
+  mutate(`County Name`=replace(`County Name`,`County Name`=='Lewis and Clark','Lewis & Clark')) %>%
   left_join(enrollment1,by=c('County Name'='County Name')) %>%
   
   #calculate new columns and percent
