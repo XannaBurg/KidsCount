@@ -44,9 +44,9 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '21'
+year <- '22'
 
-fullyear <- '2020/21' 
+fullyear <- '2021/22' 
 threeyear <- '2017-2019'
 statefile <- 'montana'
 statename <- 'Montana'
@@ -73,8 +73,8 @@ df_enrollment <- read_excel(path=paste0("./Input/education/montana_",year,"_educ
 ###################
 #CREATE COUNTY DATA
 county_enrollment <- df_enrollment %>%
-  rename(location=countyname,
-         data='Total K12 Count') %>%
+  rename(location=`County Name`,
+         data='County K12 Enrollment Count') %>%
   select(c(location,data)) %>%
   #format to database
   mutate(timeframe=fullyear) %>%
@@ -154,8 +154,8 @@ write.csv(upload_data_enrollment,file=paste0("./Output/education/",statefile,"_"
 **TOTAL SCHOOL ENROLLMENT GRADES K THROUGH 12 BY TYPE (PUBLIC, PRIVATE, AND HOME SCHOOL)**
 ```{r}
 #read in the data
-df_homeschool <- read_excel(path=paste0("./Input/education/montana_",year,"_nonpublic.xls"), sheet='Total Home S By CO')
-df_privateschool <- read_excel(path=paste0("./Input/education/montana_",year,"_nonpublic.xls"), sheet='Total Private By CO 2021',skip=1)
+df_homeschool <- read_excel(path=paste0("./Input/education/montana_",year,"_nonpublic.xls"), sheet='Total HomeSchool By CO 2022')
+df_privateschool <- read_excel(path=paste0("./Input/education/montana_",year,"_nonpublic.xls"), sheet='Total Private By CO 2022',skip=1)
 
 #################
 #################
@@ -466,11 +466,11 @@ county_specialed <- specialed %>%
   rename(specialedcount=paste0("SFY20",year," Child Count")) %>%
   
   #join enrollment data
-  left_join(enrollment1,by=c('County Name'='countyname')) %>%
+  left_join(enrollment1,by=c('County Name'='County Name')) %>%
   
   #calculate new columns and percent
-  rename(kthrough12='Total K12 Count',
-         prek='Total PK Count') %>%
+  rename(kthrough12='County K12 Enrollment Count',
+         prek='County PK EnrollmentCount') %>%
   mutate(prek=as.numeric(prek)) %>%
   mutate(prek=replace(prek,is.na(prek),0)) %>%
   mutate(enrollmentprek12=kthrough12+prek) %>%
@@ -497,8 +497,8 @@ county_specialed <- specialed %>%
 #create summary of statewide enrollment
 state_enrollment <- enrollment2 %>%
   mutate(location='Montana') %>%
-  rename(kthrough12='Total K12 Count',
-         prek='Total PK Count') %>%
+  rename(kthrough12='State K12 Enrollment Count',
+         prek='State PK EnrollmentCount') %>%
   mutate(prek=as.numeric(prek)) %>%
   mutate(prek=replace(prek,is.na(prek),0)) %>%
   group_by(location) %>%
@@ -605,14 +605,14 @@ write.csv(upload_datacenter_specialed,file=paste0("./Output/education/",statefil
 **ELIGIBLE RECIPIENTS OF FREE OR REDUCED PRICE LUNCH**
 ```{r}
 #read in the data
-frl <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='Enrollment Counts')
+frl <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='County')
 
 ###################
 #CREATE COUNTY DATA
 county_lunch <- frl %>%
-  rename(k12enrollment='K-12 Enrollment Count',
-         frl='K-12 FRL Enrollment Count',
-         location=CountyName) %>% 
+  rename(k12enrollment='County K12 Enrollment Count',
+         frl='County  K12 FRL Enrollment Count',
+         location=`County Name`) %>% 
   mutate(Number=frl) %>%
   #calculate percent using K-12 enrollment
   mutate(Percent=frl/k12enrollment) %>%
@@ -629,8 +629,8 @@ county_lunch <- frl %>%
 #CREATE STATE DATA
 state_lunch <- frl %>%
   mutate(location='Montana') %>%
-   rename(k12enrollment='K-12 Enrollment Count',
-         frl='K-12 FRL Enrollment Count') %>% 
+   rename(k12enrollment='County K12 Enrollment Count',
+         frl='County  K12 FRL Enrollment Count') %>% 
   group_by(location) %>%
   summarise(Number=sum(frl),
             Percent=sum(frl)/sum(k12enrollment)) %>%
@@ -715,17 +715,17 @@ write.csv(upload_data_lunch,file=paste0("./Output/education/",statefile,"_",year
 ##Need to input state estimate in code##
 ```{r}
 #read in the data
-dropout <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata_december.xlsx"),sheet='County') 
+dropout <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata3.xlsx"),sheet='County') 
 
 ###################
 #CREATE COUNTY DATA
 county_dropout <- dropout %>%
-  rename(location=CountyName) %>% 
-  mutate(`9-12 Dropouts`=as.numeric(paste(`9-12 Dropouts`)),
-         `9-12 Enrolled`=as.numeric(paste(`9-12 Enrolled`))) %>%
+  rename(location=ExitCountyName) %>% 
+  mutate(`9-12 Dropouts Event`=as.numeric(paste(`9-12 Dropouts Event`)),
+         `9-12 Enrolled Event`=as.numeric(paste(`9-12 Enrolled Event`))) %>%
   #suppress when dropouts are 5 or fewer
-  mutate(`9-12 Dropouts`=replace(`9-12 Dropouts`,`9-12 Dropouts`<=5,NA)) %>%
-  mutate(data=`9-12 Dropouts`/`9-12 Enrolled`) %>%
+  mutate(`9-12 Dropouts Event`=replace(`9-12 Dropouts Event`,`9-12 Dropouts Event`<=5,NA)) %>%
+  mutate(data=`9-12 Dropouts Event`/`9-12 Enrolled Event`) %>%
   select(c(location,data)) %>%
   #add in database variables
   mutate(timeframe=fullyear) %>%
@@ -737,7 +737,7 @@ county_dropout <- dropout %>%
 
 ###################
 #CREATE STATE DATA
-state_data <- c(0.02918475)
+state_data <- c(0.037569)
 state_dropout <- data.frame(state_data) %>%
   mutate(state='Montana') %>%
   rename(data=state_data) %>%
@@ -815,10 +815,13 @@ write.csv(upload_data_dropout,file=paste0("./Output/education/",statefile,"_",ye
 **HIGH SCHOOL EVENT DROP-OUT RATE BY RACE AND ETHNICITY**
 ```{r}
 #read in the data
-dropout_race <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata_december.xlsx"),sheet='State') 
+dropout_race <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata3.xlsx"),sheet='State') 
 
 state_dropout_race <- dropout_race  %>%
-  rename(data='Event DropoutRate') %>%
+  subset(!is.na(`9-12 Enrolled Event`)) %>%
+  mutate(`9-12 Dropouts Event`=as.numeric(paste(`9-12 Dropouts Event`)),
+         `9-12 Enrolled Event`=as.numeric(paste(`9-12 Enrolled Event`))) %>%
+  mutate(data=`9-12 Dropouts Event`/`9-12 Enrolled Event`) %>%
   select(c(RaceName,data)) %>%
   mutate(timeframe=fullyear) %>%
   mutate(race=case_when(
@@ -875,12 +878,12 @@ write.csv(upload_data_dropout_race,file=paste0("./Output/education/",statefile,"
 **FOUR-YEAR HIGH SCHOOL COHORT GRADUATION RATE**
 ##Need to input state estimate in code##
 ```{r}
-grad <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata_december.xlsx"),sheet='County') 
+grad <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata3.xlsx"),sheet='County') 
 
 ###################
 #CREATE COUNTY DATA
 county_grad <- grad %>%
-  rename(location=CountyName) %>% 
+  rename(location=ExitCountyName) %>% 
   mutate(`TotalInCohort`=as.numeric(paste(`TotalInCohort`)),
          `Graduates`=as.numeric(paste(`Graduates`))) %>%
   #suppress if 5 or fewer
@@ -898,7 +901,7 @@ county_grad <- grad %>%
 
 ###################
 #CREATE STATE DATA
-state_data <- c(0.8565449)
+state_data <- c(0.860671)
 state_grad <- data.frame(state_data) %>%
   mutate(state='Montana') %>%
   rename(data=state_data) %>%
@@ -977,10 +980,15 @@ write.csv(upload_data_graduates,file=paste0("./Output/education/",statefile,"_",
 
 **FOUR-YEAR HIGH SCHOOL COHORT GRADUATION RATE BY RACE AND ETHNICITY**
 ```{r}
-grad_race <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata_december.xlsx"),sheet='State') 
+grad_race <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata3.xlsx"),sheet='State') 
 
 state_graduates_race <- grad_race %>%
-  rename(data='Cohort Graduation Rate') %>%
+  subset(!is.na(`9-12 Enrolled Event`)) %>%
+  mutate(`TotalInCohort`=as.numeric(paste(`TotalInCohort`)),
+         `Graduates`=as.numeric(paste(`Graduates`))) %>%
+  #suppress if 5 or fewer
+  mutate(`Graduates`=replace(`Graduates`,`Graduates`<=5,NA)) %>%
+  mutate(data=`Graduates`/`TotalInCohort`) %>%
   select(c(RaceName,data)) %>%
   mutate(timeframe=fullyear) %>%
   mutate(race=case_when(
