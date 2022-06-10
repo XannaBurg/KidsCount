@@ -43,7 +43,7 @@ library(readxl)
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 statename <- "North Dakota"
-year <- "2020"
+year <- "2021"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -62,23 +62,18 @@ regionids$region <- as.character(regionids$region)
 
 ```{r}
 #import the data for both indicators
-hearingdata <- read_excel(path=paste0("/Users/xannaburg/Documents/KidsCountData/Input/health/northdakota_",year,"_newbornscreeningdata.xlsx"),sheet=paste0(year),skip=6) %>%
+hearingdata <- read_excel(path=paste0("/Users/xannaburg/Documents/KidsCountData/Input/health/northdakota_",year,"_newbornscreeningdata.xlsx")) %>%
   
   #rename columns
-  rename(location=`North Dakota Counties`,
-         totalbirths=`...14`,
-         totalscreened=`Number...15`,
-         percentscreened=`Percent of total births...16`,
-         totalfailed=`Number...17`,
-         percentfailed=`Percent of total screened...18`) %>%
-  select(c(location,totalbirths,totalscreened,percentscreened,totalfailed,percentfailed)) %>%
+  rename(location=County) %>%
+  #calculate variables
   
-  #remove state and state planning regions
-  subset(location!='Total For ND Counties:') %>%
-  subset(location!='Region 1' & location != 'Region 2' & location !='Region 3' & location !='Region 4' & location!='Region 5' & location !='Region 6' & location !='Region 7' & location !='Region 8') %>%
-  subset(!is.na(location)) %>%
-  
-  mutate(totalscreened=as.numeric(paste(totalscreened)))
+  group_by(location) %>%
+  summarise(totalbirths=sum(c(`Pass Both`,`Bilateral Referal`,`Unilateral Referal`,`Missed`,`No Screen Outcome`,`Not Indicated`,`Not Required`,`Moved Out Of State`,`Deceased`),na.rm=TRUE),
+            totalscreened=sum(c(`Pass Both`,`Bilateral Referal`,`Unilateral Referal`),na.rm=TRUE),
+            percentscreened=totalscreened/totalbirths,
+            totalfailed=sum(c(`Bilateral Referal`,`Unilateral Referal`),na.rm=TRUE),
+            percentfailed=totalfailed/totalscreened) 
 ```
 
 
