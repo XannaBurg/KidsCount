@@ -36,7 +36,7 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2021'
+year <- '2022'
 statename <- 'South Dakota'
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -72,7 +72,7 @@ ccap_county <- ccapdata %>%
   
   rename(location=Location,
          `Non-TANF`=`Non-TANF`,
-         `Foster Care`=`Foster Care`,
+         `Foster Care`=`FosterCare`,
          `TANF/TCC`=`TANF`) %>%
   
   #convert from wide to long
@@ -86,7 +86,7 @@ ccap_state <- ccapdata %>%
   
   rename(location=Location,
          `Non-TANF`=`Non-TANF`,
-         `Foster Care`=`Foster Care`,
+         `Foster Care`=`FosterCare`,
          `TANF/TCC`=`TANF`) %>%
   
   #convert from wide to long
@@ -172,7 +172,7 @@ categorylist <- as.data.frame(category)
 county_categorylist <-crossing(countylist,categorylist)
 
 #import the data
-childcaredata <- read_excel(path=paste0("./Input/education/southdakota_",year,"_childcaredatabycounty.xlsx"),sheet='Provider Count-with in process') 
+childcaredata <- read_excel(path=paste0("./Input/education/southdakota_",year,"_childcaredatabycounty.xlsx"),sheet='Provider count') 
 
 #COUNTY DATA
 childcare_county <- childcaredata %>%
@@ -191,10 +191,10 @@ childcare_county <- childcaredata %>%
   #update the category names and remove the total (we can calculate total)
   subset(!is.na(`Provider Type`)) %>%
   mutate(category=case_when(
-    `Provider Type`=='Day Care Center' ~ 'Licensed child care centers',
-    `Provider Type`=='Family Child Care' ~ 'Registered family child care homes',
-    `Provider Type`=='Group Family Child Care' ~ 'Licensed group family child care homes',
-    `Provider Type`=='School Age Care' ~ 'Licensed before and after school programs')) %>%
+    `Provider Type`=='Licensed Day Care Center' ~ 'Licensed child care centers',
+    `Provider Type`=='Registered Family Day Care' ~ 'Registered family child care homes',
+    `Provider Type`=='Licensed Group Family Day Care' ~ 'Licensed group family child care homes',
+    `Provider Type`=='Licensed before and after school care' ~ 'Licensed before and after school programs')) %>%
   rename(data=`Count of Providers`,
          location=`County Name`) %>%
   select(location,category,data) %>%
@@ -301,7 +301,7 @@ categorylist <- as.data.frame(category)
 county_categorylist <-crossing(countylist,categorylist)
 
 #import the data
-childcaredata_slots <- read_excel(path=paste0("./Input/education/southdakota_",year,"_childcaredatabycounty.xlsx"),sheet='AuthSlots-with in process') 
+childcaredata_slots <- read_excel(path=paste0("./Input/education/southdakota_",year,"_childcaredatabycounty.xlsx"),sheet='AuthSlots') 
 
 #COUNTY DATA
 childcare_county_slots <- childcaredata_slots %>%
@@ -320,10 +320,10 @@ childcare_county_slots <- childcaredata_slots %>%
   #update the category names and remove the total (we can calculate total)
   subset(!is.na(`Provider Type`)) %>%
   mutate(category=case_when(
-    `Provider Type`=='Day Care Center' ~ 'Licensed child care centers',
-    `Provider Type`=='Family Child Care' ~ 'Registered family child care homes',
-    `Provider Type`=='Group Family Child Care' ~ 'Licensed group family child care homes',
-    `Provider Type`=='School Age Care' ~ 'Licensed before and after school programs')) %>%
+    `Provider Type`=='Licensed Day Care Center' ~ 'Licensed child care centers',
+    `Provider Type`=='Registered Family Day Care' ~ 'Registered family child care homes',
+    `Provider Type`=='Licensed Group Family Day Care' ~ 'Licensed group family child care homes',
+    `Provider Type`=='Licensed before and after school care' ~ 'Licensed before and after school programs')) %>%
   rename(data=`Authorized Slots`,
          location=`County Name`) %>%
   select(location,category,data) %>%
@@ -433,7 +433,7 @@ categorylist <- as.data.frame(category)
 county_categorylist <-crossing(countylist,categorylist)
 
 #import the data
-childcaredata <- read_excel(path=paste0("./Input/education/southdakota_",year,"_childcaredatabycounty.xlsx"),sheet='Provider Count-with in process') 
+childcaredata <- read_excel(path=paste0("./Input/education/southdakota_",year,"_childcaredatabycounty.xlsx"),sheet='Provider count') 
 
 #COUNTY DATA
 schoolage_county <- childcaredata %>%
@@ -452,10 +452,10 @@ schoolage_county <- childcaredata %>%
   #update the category names and remove the total (we can calculate total)
   subset(!is.na(`Provider Type`)) %>%
   mutate(category=case_when(
-    `Provider Type`=='Day Care Center' ~ 'Licensed child care centers',
-    `Provider Type`=='Family Child Care' ~ 'Registered family child care homes',
-    `Provider Type`=='Group Family Child Care' ~ 'Licensed group family child care homes',
-    `Provider Type`=='School Age Care' ~ 'Licensed before and after school programs')) %>%
+    `Provider Type`=='Licensed Day Care Center' ~ 'Licensed child care centers',
+    `Provider Type`=='Registered Family Day Care' ~ 'Registered family child care homes',
+    `Provider Type`=='Licensed Group Family Day Care' ~ 'Licensed group family child care homes',
+    `Provider Type`=='Licensed before and after school care' ~ 'Licensed before and after school programs')) %>%
   rename(data=`Count of Providers`,
          location=`County Name`) %>%
   select(location,category,data) %>%
@@ -556,7 +556,7 @@ categorylist <- as.data.frame(category)
 county_categorylist <-crossing(countylist,categorylist)
 
 #import the data
-childcaredata <- read_excel(path=paste0("./Input/education/southdakota_",year,"_childcaredatabycounty.xlsx"),sheet='AuthSlots-with in process') 
+childcaredata <- read_excel(path=paste0("./Input/education/southdakota_",year,"_childcaredatabycounty.xlsx"),sheet='AuthSlots') 
 
 #COUNTY DATA
 schoolage_county_slots <- childcaredata %>%
@@ -575,10 +575,10 @@ schoolage_county_slots <- childcaredata %>%
   #update the category names and remove the total (we can calculate total)
   subset(!is.na(`Provider Type`)) %>%
   mutate(category=case_when(
-    `Provider Type`=='Day Care Center' ~ 'Licensed child care centers',
-    `Provider Type`=='Family Child Care' ~ 'Registered family child care homes',
-    `Provider Type`=='Group Family Child Care' ~ 'Licensed group family child care homes',
-    `Provider Type`=='School Age Care' ~ 'Licensed before and after school programs')) %>%
+    `Provider Type`=='Licensed Day Care Center' ~ 'Licensed child care centers',
+    `Provider Type`=='Registered Family Day Care' ~ 'Registered family child care homes',
+    `Provider Type`=='Licensed Group Family Day Care' ~ 'Licensed group family child care homes',
+    `Provider Type`=='Licensed before and after school care' ~ 'Licensed before and after school programs')) %>%
   rename(data=`Authorized Slots`,
          location=`County Name`) %>%
   select(location,category,data) %>%
