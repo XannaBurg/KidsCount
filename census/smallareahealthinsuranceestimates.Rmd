@@ -63,7 +63,7 @@ fips <- fips_codes
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 statename <- "South Dakota"
-year <- "2019"
+year <- "2020"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -753,7 +753,7 @@ sahie_income_moe <- sahie_county_income_moe %>%
  # select(-c(Year))
   
   #structure for easy import into template
-  pivot_wider(id_cols=c(Year,category,Location),names_from=category,
+  pivot_wider(id_cols=c(Year,Location),names_from=category,
               values_from = c('# Estimate','# Margin of Error (+/-)',
                               '% Estimate','% Margin of Error (+/-)'))
 
