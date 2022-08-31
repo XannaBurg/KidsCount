@@ -53,8 +53,10 @@ SD_locationids$Location <- as.character(paste(SD_locationids$Location))
 xl_data <- paste0("./Input/economics/AllData",fullyear,"_MMG_ToShare.xlsx")
 excel_sheets(path = xl_data)
 
-df_food <- read_excel(path=xl_data, sheet=paste0('County'))
-df_food_state <- read_excel(path=xl_data, sheet=paste0('State'))
+df_food <- read_excel(path=xl_data, sheet=paste0('County')) %>%
+  subset(Year==fullyear)
+df_food_state <- read_excel(path=xl_data, sheet=paste0('State')) %>%
+  subset(Year==fullyear)
 ```
 
 
