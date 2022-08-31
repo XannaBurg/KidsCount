@@ -33,8 +33,8 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '19'
-fullyear <- '2019' 
+year <- '20'
+fullyear <- '2020' 
 
 
 #input location ID file
@@ -53,8 +53,8 @@ SD_locationids$Location <- as.character(paste(SD_locationids$Location))
 xl_data <- paste0("./Input/economics/AllData",fullyear,"_MMG_ToShare.xlsx")
 excel_sheets(path = xl_data)
 
-df_food <- read_excel(path=xl_data, sheet=paste0(fullyear,' County'))
-df_food_state <- read_excel(path=xl_data, sheet=paste0(fullyear,' State'))
+df_food <- read_excel(path=xl_data, sheet=paste0('County'))
+df_food_state <- read_excel(path=xl_data, sheet=paste0('State'))
 ```
 
 
@@ -69,9 +69,9 @@ county_food <- df_food %>%
   subset(State=='MT' | State=='ND' | State=='SD') %>%
   rename(state='State',
          county='County, State',
-         childfi_rate=paste0(fullyear,' Child food insecurity rate'),
-         childfi_number=paste0('# of Food Insecure Children in ',fullyear),
-         costpermeal=paste0(fullyear,' Cost Per Meal')) %>%
+         childfi_rate=paste0('Child Food Insecurity Rate (1 Year)'),
+         childfi_number=paste0('# of Food Insecure Children (1 Year)'),
+         costpermeal=paste0('Cost Per Meal (1 Year)')) %>%
   mutate(county=sub("\\ County.*","",county)) %>% 
   select(c(state,county,childfi_rate,childfi_number,costpermeal)) %>%
   mutate(state=case_when(
@@ -139,9 +139,9 @@ sd_county_food <- county_allvars %>%
 state_food <- df_food_state %>%
   subset(State=='MT' | State=='ND' | State=='SD') %>%
   rename(state='State',
-         childfi_rate=paste0(fullyear,' Child Food Insecurity Rate'),
-         childfi_number=paste0('# of Food Insecure Children in ',fullyear),
-         costpermeal=paste0(fullyear,' Cost Per Meal')) %>%
+         childfi_rate=paste0('Child Food Insecurity Rate (1 Year)'),
+         childfi_number=paste0('# of Food Insecure Children (1 Year)'),
+         costpermeal=paste0('Cost Per Meal (1 Year)')) %>%
   select(c(state,childfi_rate,childfi_number,costpermeal)) %>%
   mutate(state=case_when(
     state=='MT' ~ 'Montana',
