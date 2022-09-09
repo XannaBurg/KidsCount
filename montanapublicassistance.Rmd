@@ -46,7 +46,7 @@ library(stringr)
 year <- '2022'
 statename <- 'Montana'
 #input the number that matches Missoula CITY for Medicaid children
-missoulavalue <- '7404'
+missoulavalue <- ''
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -976,8 +976,6 @@ dbWriteTable(con,database_state,upload_tanf_rechouse,append=TRUE,row.names=FALSE
 #write query from database to get needed format for KC data center
 
 uploadnumber_sql <- paste0("SELECT locationid, location, timeframe, category, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='tanfrecipientshouseholdsallages';")
-
-uploadnumber_sql <- paste0("SELECT locationid, location, timeframe, category, dataformat, data FROM ", database_state," WHERE (timeframe='2017' OR timeframe='2018' OR timeframe='2019' OR timeframe='2020' OR timeframe='2021') AND varname='tanfrecipientshouseholdsallages';")
 
 
 upload_datacenter_tanf_number <- dbGetQuery(con,uploadnumber_sql) %>%
