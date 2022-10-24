@@ -39,7 +39,7 @@ library(stringr)
 ```{r}
 
 ####UPDATE to reflect the current year data working with
-year <- '2020'
+year <- '2022'
 statename <- 'Montana'
 
 
@@ -59,37 +59,27 @@ countylist <- read.csv("./Input/MT County List.csv")
 ## ######################################################### ##
 ```{r}
 #read in the data that was shared by DPHHS
-bestbeginnings_county <- read_excel(path=paste0("./Input/education/montana_childcaredata_",year,".xlsx"),sheet=paste0("Indicator #3 SFY ",year),skip=11) 
-
-
-bestbeginnings_state <- read_excel(path=paste0("./Input/education/montana_childcaredata_",year,".xlsx"),sheet=paste0("Indicator #3 SFY ",year),range="E9:E10") %>%
-  rename(`Child Count`=`...1`)
-
+bestbeginnings_county <- read_excel(path=paste0("./Input/education/montana_childcaredata_",year,".xlsx"),sheet=paste0("BBS Indicator 1, 2, 3 SFY ",year),skip=30) 
 
 
 #COUNTY DATA
-data_county <- bestbeginnings_county %>%
-  rename(data=`Child Count`,
-         location=`County Name`) %>%
+data_bestbeginnings <- bestbeginnings_county %>%
+  rename(data=`Child\r\nCount`,
+         location=`County`) %>%
+  select(c(data,location)) %>%
   mutate(location=replace(location,
                           location=='Lewis and Clark','Lewis & Clark')) %>%
+    mutate(location=replace(location,
+                          location=='Mccone','McCone')) %>%
+  mutate(location=replace(location,location=='Grand Total','Montana')) %>%
   full_join(countylist,by=c('location'='Location')) %>%
   
   #for counties not in data, assign zero
   mutate(data=replace(data,is.na(data),0)) %>%
   select(location,data) %>%
-  mutate(locationtype='County')
-
-#STATE DATA
-data_state <- bestbeginnings_state %>%
-  rename(data=`Child Count`) %>%
-  mutate(location='Montana',
-         locationtype='State') 
-
-
-#COMBINE ALL GEOGRAPHIES
-data_all <- data_county %>%
-  bind_rows(data_state) %>%
+  mutate(locationtype=case_when(
+    location=='Montana' ~ 'State',
+    TRUE ~ 'County')) %>%
   
   #add in KC variables
   mutate(state='Montana',
@@ -111,14 +101,14 @@ data_all <- data_county %>%
 ### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
 
 # 1. Print name of location that has a mismatched location ID
-if (sum(is.na(data_all$locationid))>=1) {
-  print(data_all$location[is.na(data_all$locationid)])
-} else if (sum(is.na(data_all$locationid))==0) {
+if (sum(is.na(data_bestbeginnings$locationid))>=1) {
+  print(data_bestbeginnings$location[is.na(data_bestbeginnings$locationid)])
+} else if (sum(is.na(data_bestbeginnings$locationid))==0) {
   'all locations match'
 }
 
 #2. Check that no values are less than 5
-temp_suppresscheck <- data_all %>% subset(data<5)
+temp_suppresscheck <- data_bestbeginnings %>% subset(data<5)
 temp_rows <- as.numeric(nrow(temp_suppresscheck))
 if (temp_rows==0) {
   'data suppression followed at individual location level'
@@ -129,7 +119,7 @@ if (temp_rows==0) {
 #3. Check that there is no suppression or >1 suppression
 ########## MANUAL STEP #############
 #need to check that county data cannot be identified using totals
-temp_testsuppression <- data_all %>%
+temp_testsuppression <- data_bestbeginnings %>%
   subset(locationtype=='County') %>%
   group_by(location) %>%
   summarise_all(~sum(is.na(.))) %>%
@@ -144,7 +134,7 @@ if (temp_rows==0 | temp_rows>1) {
 }
 
 #if there is only one county, print the counties in ascending order
-#temp_check <- data_all %>%
+#temp_check <- data_bestbeginnings %>%
 #  subset(locationtype=='County') %>%
 #  arrange(data)
 #View(temp_check)
@@ -152,18 +142,18 @@ if (temp_rows==0 | temp_rows>1) {
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
 #**Choose the county with the next lowest count of births; if there is a tie, suppress both
-#data_all$data[data_all$location=='Billings'] <- NA
+#data_bestbeginnings$data[data_bestbeginnings$location=='Billings'] <- NA
 
 
 # 4. Visually inspect output data
-View(data_all)
+View(data_bestbeginnings)
 ```
 
 ```{r}
-#CHECK DATASET NAMED data_all TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#CHECK DATASET NAMED data_bestbeginnings TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
 #this code adds kids count data to MBPC postgres database
 #run postgres code (separate file) first
-dbWriteTable(con,database_state,data_all,append=TRUE,row.names=FALSE)
+dbWriteTable(con,database_state,data_bestbeginnings,append=TRUE,row.names=FALSE)
 ```
 
 ```{r}
@@ -192,7 +182,7 @@ write.csv(upload_datacenter,file=paste0("./Output/education/",database_state,"_"
 
 ```{r}
 #read in the data that was shared by DPHHS
-childcare_data <- read_excel(path=paste0("./Input/education/montana_childcaredata_2020.xlsx"),sheet=paste0("Indicator #1 & #2 SFY ",year),skip=21) 
+childcare_data <- read_excel(path=paste0("./Input/education/montana_childcaredata_",year,".xlsx"),sheet=paste0("Indicator 1, 2, 3 SFY ",year),skip=22) 
 
 #create a county list with indicator variable
 countylist2 <- countylist %>%
@@ -220,13 +210,19 @@ childcare_data2 <- childcare_data %>%
   #rename columns of interest
   rename(facilitycount='Facility Count...17',
          capacity='Total Capacity...18',
-         infant_capacity='Infant Capacity...19') %>%
+         infant_capacity='Under 2 Capacity...19') %>%
   
   #select variables of interest
   select(c(location,category,facilitycount,capacity,infant_capacity)) %>%
   
+  #fix so category of non star is consistent
+  mutate(category=replace(category,category=='STAR - Participant','STAR Participant')) %>%
+  
   #join to have all categories present for each location
   full_join(county_categorylist,by=c('location'='Location','category'='category')) %>%
+  mutate(facilitycount=as.numeric(paste(facilitycount))) %>%
+  mutate(capacity=as.numeric(paste(capacity))) %>%
+  mutate(infant_capacity=as.numeric(paste(infant_capacity))) %>%
    #assign missing counties to zero
   replace(is.na(.),0) %>%
   arrange(location,category)
@@ -278,7 +274,10 @@ facilities <- childcare_data2 %>%
          timeframe=year,
          varname='licensedchildcarefacilitiesbystarslevel') %>%
   left_join(locationids,by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
+  rename(locationid=LocationId) %>%
+  
+  #change label for STAR participant
+  mutate(category=replace(category,category=='STAR Participant','Non STAR, started process'))
 
 ####################
 ####################
@@ -361,7 +360,11 @@ capacity <- childcare_data2 %>%
          timeframe=year,
          varname='licensedchildcarecapacitybystarslevel') %>%
   left_join(locationids,by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
+  rename(locationid=LocationId) %>%
+  
+  #change label for STAR participant
+  mutate(category=replace(category,category=='STAR - Participant','Non STAR, started process')) %>%
+  mutate(category=replace(category,category=='STAR Participant','Non STAR, started process'))
 
 ####################
 ####################
@@ -444,7 +447,11 @@ capacity <- childcare_data2 %>%
          timeframe=year,
          varname='licensedchildcarecapacityinfantsbystarslevel') %>%
   left_join(locationids,by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
+  rename(locationid=LocationId) %>%
+  
+  #change label for STAR participant
+  mutate(category=replace(category,category=='STAR - Participant','Non STAR, started process')) %>%
+  mutate(category=replace(category,category=='STAR Participant','Non STAR, started process'))
 
 ####################
 ####################
