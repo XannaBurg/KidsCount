@@ -45,9 +45,9 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '20_21'
-fullyear <- '2020/21' 
-year_prior <- '2019/20' #for dropout data
+year <- '21_22'
+fullyear <- '2021/22' 
+year_prior <- '2020/21' #for dropout data
 statefile <- 'southdakota'
 statename <- 'South Dakota'
 
@@ -500,10 +500,10 @@ write.csv(upload_data_digest,file=paste0("./Output/education/southdakota_",year,
 
 #special education state data
 xl_data <- paste0("./Input/education/southdakota_",year,"_specialeducationstate.xlsx")
-df_specialed_impairment <- read_excel(path=xl_data, range="A4:W23")
-df_specialed_grade <- read_excel(path=xl_data, range="O26:W42")
-df_specialed_age <- read_excel(path=xl_data, range="O67:W87")
-df_specialed_race <- read_excel(path=xl_data, range="O49:W57")
+df_specialed_impairment <- read_excel(path=xl_data, range="A4:X23")
+df_specialed_grade <- read_excel(path=xl_data, range="O28:X44")
+df_specialed_age <- read_excel(path=xl_data, range="O70:X90")
+df_specialed_race <- read_excel(path=xl_data, range="O52:X60")
 
 #special education district data
 xl_data_specialed_district <- paste0("./Input/education/southdakota_",year,"_specialeducationdistrict.xlsx")
@@ -514,9 +514,10 @@ df_specialed_district <- read_excel(path=xl_data_specialed_district,skip=3)
 **CHILDREN ENROLLED IN SPECIAL EDUCATION IN PUBLIC SCHOOLS**
 ```{r}
 specialed_count <- df_specialed_district %>%
-  select(c('District Name','2020 TOTAL Child Count (ages 3-21)')) %>%
+  subset(!is.na(`District Number`)) %>%
+  select(c('District Name','2021 TOTAL Child Count (ages 3-21)')) %>%
   rename(location='District Name',
-         data='2020 TOTAL Child Count (ages 3-21)') %>%
+         data='2021 TOTAL Child Count (ages 3-21)') %>%
   subset(!is.na(location) & location != 'TOTAL' & 
            location != 'contact Susan Woodmansey,') %>%
   mutate(locationtype='School District') %>%
@@ -556,6 +557,7 @@ specialed_count <- df_specialed_district %>%
   rename(locationid=LocationId)
 
 specialed_percent <- df_specialed_district %>%
+  subset(!is.na(`District Number`)) %>%
   select(c('District Name','Child Count as % of Fall PK-12 Enrollment')) %>%
   rename(location='District Name',
          data='Child Count as % of Fall PK-12 Enrollment') %>%
@@ -598,8 +600,8 @@ specialed_percent <- df_specialed_district %>%
 
 
 specialed_count_state <- df_specialed_district %>%
-  rename(data='2020 TOTAL Child Count (ages 3-21)',
-         location='District Name') %>%
+  rename(data='2021 TOTAL Child Count (ages 3-21)',
+         location='District Number') %>%
   subset(location=='TOTAL') %>%
   select(c(data))  %>%
   mutate(location='South Dakota') %>%
@@ -613,7 +615,7 @@ specialed_count_state <- df_specialed_district %>%
 
 specialed_percent_state <- df_specialed_district %>%
   rename(data='Child Count as % of Fall PK-12 Enrollment',
-         location='District Name') %>%
+         location='District Number') %>%
   subset(location=='TOTAL') %>%
   select(c(data))  %>%
   mutate(location='South Dakota') %>%
@@ -684,10 +686,11 @@ tribalschools$school_specialednumber <- as.character(tribalschools$school_specia
 
 
 specialed_count <- df_specialed_district %>%
-  select(c('District Name','2020 TOTAL Child Count (ages 3-21)','District #')) %>%
+  subset(!is.na(`District Number`)) %>%
+  select(c('District Name','2021 TOTAL Child Count (ages 3-21)','District Number')) %>%
   rename(fulllocation_name='District Name',
-         districtid='District #',
-         data='2020 TOTAL Child Count (ages 3-21)') %>%
+         districtid='District Number',
+         data='2021 TOTAL Child Count (ages 3-21)') %>%
   
   #match to tribal area using crosswalk
   inner_join(tribalschools,by=c('districtid'='school_specialednumber')) %>%
@@ -705,9 +708,10 @@ specialed_count <- df_specialed_district %>%
 
 
 specialed_percent <- df_specialed_district %>%
-  select(c('District Name','Child Count as % of Fall PK-12 Enrollment','District #')) %>%
+  subset(!is.na(`District Number`)) %>%
+  select(c('District Name','Child Count as % of Fall PK-12 Enrollment','District Number')) %>%
   rename(fulllocation_name='District Name',
-         districtid='District #',
+         districtid='District Number',
          data='Child Count as % of Fall PK-12 Enrollment') %>%
   
   #match to tribal area using crosswalk
@@ -746,7 +750,7 @@ dbWriteTable(con,'southdakota',upload_specialeducation_district,append=TRUE,row.
 
 **CHILDREN ENROLLED IN SPECIAL EDUCATION IN PUBLIC SCHOOLS BY TYPE OF IMPAIRMENT**
 ```{r}
-fullyear_file <- '2020'
+fullyear_file <- '2021'
 year_variable <- paste0("December ",fullyear_file)
 
 
@@ -1340,9 +1344,9 @@ write.csv(upload_data_graduation,file=paste0("./Output/education/southdakota_",y
 #The same code can be used to run both indicators
 ```{r}
 #MANUALLY INPUT THE RACE DATA USING THE REPORT CARD
-race <- c('American Indian/Alaska Native','Asian','Black or African American','Hispanic or Latino','White','All Races')
-graduation <- c(.4497,.9171,.8421,.6667,.8980,.8288)
-completion <- c(.6282,.9330,.8910,.7625,.9429,.8986)
+race <- c('American Indian/Alaska Native','Asian','Black or African American','Hispanic or Latino','White','All Races','Two or more races')
+graduation <- c(.458,.8902,.7586,.6892,.8954,.8215,.7279)
+completion <- c(.6925,.9157,.8712,.7882,.9461,.9037,.8486)
 
 df_graduation_race <- data.frame(race,graduation) %>%
   rename(data=graduation) %>%
