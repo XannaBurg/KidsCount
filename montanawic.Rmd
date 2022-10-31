@@ -31,7 +31,7 @@ library(naniar)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2021'
+year <- '2022'
 
 statefile <- 'montana'
 statename <- 'Montana'
@@ -138,7 +138,34 @@ if (temp_rows==0) {
   View(temp_suppresscheck)
 }
 
-# 3. Visually inspect output data
+
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- wic_all %>%
+  subset(locationtype=='County') %>%
+  subset(data=='<5')
+
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed at the overall county level'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- wic_county %>%
+ # arrange(data)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#wic_all$data[wic_all$location=='Garfield'] <- '<5'
+
+# 4. Visually inspect output data
 View(wic_all)
 ```
 
@@ -247,7 +274,33 @@ if (temp_rows==0) {
   View(temp_suppresscheck)
 }
 
-# 3. Visually inspect output data
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- wic_all %>%
+  subset(locationtype=='County') %>%
+  subset(data=='<5')
+
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed at the overall county level'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- wic_county %>%
+ # arrange(data)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#wic_all$data[wic_all$location=='Garfield'] <- '<5'
+
+# 4. Visually inspect output data
 View(wic_all)
 ```
 
