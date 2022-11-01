@@ -99,7 +99,7 @@ statecode <- as.numeric(unique(fips$state_code[fips$state_name==statename]))
 ```{r}
 #pep/charagegroups is: Population Estimates Program
 #see lookup table for categorical vars: 
-#https://www.census.gov/data/developers/data-sets/popest-popproj/popest/popest-vars.Vintage_2018.html
+#https://www.census.gov/data/developers/data-sets/popest-popproj/popest/popest-vars.2000-2010_Intercensals.html
 
 
 #COUNTY DATA
@@ -122,7 +122,7 @@ pop_county <- getCensus(name="pep/int_charagegroups",
   
   #create the timeframe using the Date codes
   mutate(timeframe=case_when(
-    DATE_=='1' ~ '2000',
+    DATE_=='2' ~ '2000',
     DATE_=='3' ~ '2001',
     DATE_=='4' ~ '2002',
     DATE_=='5' ~ '2003',
@@ -164,7 +164,7 @@ pop_state <- getCensus(name="pep/int_charagegroups",
   
   #create the timeframe using the Date codes
   mutate(timeframe=case_when(
-    DATE_=='1' ~ '2000',
+    DATE_=='2' ~ '2000',
     DATE_=='3' ~ '2001',
     DATE_=='4' ~ '2002',
     DATE_=='5' ~ '2003',
@@ -228,7 +228,7 @@ pop_region <- getCensus(name="pep/int_charagegroups",
   
   #create the timeframe using the Date codes
   mutate(timeframe=case_when(
-    DATE_=='1' ~ '2000',
+    DATE_=='2' ~ '2000',
     DATE_=='3' ~ '2001',
     DATE_=='4' ~ '2002',
     DATE_=='5' ~ '2003',
