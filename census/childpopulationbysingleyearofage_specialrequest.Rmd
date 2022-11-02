@@ -1,0 +1,261 @@
+---
+title: "Child Population by Single Year of Age - Using NCHS SAS File"
+author: "Xanna Burg"
+output: html_document
+---
+
+
+**Created by:** Xanna Burg
+**Date:** July 2020
+**Updated by:**
+
+**Data Source:** US Census by request only, single year of age estimates
+**Purpose:** Obtain Population Estimates by single year of age for state, county, and planning regions.
+**Description:** This program adds the population estimates to the database and creates a dataset needed to upload to the KIDS COUNT data center.
+* Geographies: state total, county, state planning regions (where applicable, which are groups of counties)
+* Number - count of children in respective age group and geography
+* Age group - single year of age, from 0 to 25
+
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(tidycensus)
+library(RPostgreSQL)
+library(readxl)
+library(stringr)
+library(zoo)
+library(sas7bdat)
+```
+
+
+## STEP 1: UPDATE THE OBJECTS statename AND year
+```{r}
+#CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
+#state should match exactly as is in FIPS code in order for code to correctly run
+statename <- "South Dakota"
+year <- "2021"
+
+
+#run this code to create an object needed for the database (DO NOT EDIT)
+if (statename=='Montana') {
+  database_state <- 'montana'
+} else if (statename=='North Dakota') {
+  database_state <- 'northdakota'
+} else if (statename=='South Dakota') {
+  database_state <- 'southdakota'
+}
+
+#import the location ids matching the correct state (for MT, ND, and SD; DO NOT EDIT)
+locationids <- if (statename=='Montana') {
+  read.csv("../Input/MT KC Location IDs.csv")
+} else if (statename=='North Dakota') {
+  read.csv("../Input/ND KC Location IDs.csv")
+} else if (statename=='South Dakota') {
+  read.csv("../Input/SD KC Location IDs.csv")
+}
+locationids$Location <- as.character(locationids$Location) #assign as character instead of factor for merging
+
+#import the region match file matching the correct state (for MT, ND, and SD; DO NOT EDIT)
+regionids <- if (statename=='Montana') {
+  read.csv("../Input/MT KC Region List.csv")
+} else if (statename=='North Dakota') {
+  read.csv("../Input/ND KC Region List.csv") 
+} else if (statename=='South Dakota') {
+  read.csv("../Input/SD KC Region List.csv")
+}
+regionids$county <- as.character(regionids$county)
+regionids$region <- as.character(regionids$region)
+
+#RUN THIS CODE, BUT NOT REQUIRED TO CHANGE ANYTHING
+#county and state names that match fips codes (from tidycensus package)
+fips <- fips_codes
+fips$county_code = str_remove(fips$county_code, "^0+")
+fips$county_code=as.numeric(paste(fips$county_code))
+fips$state_code=as.numeric(paste(fips$state_code))
+
+
+#the data will subset data to each state based on the state FIPS code: MT=30, North Dakota=38, South Dakota=46
+statecode <- as.numeric(unique(fips$state_code[fips$state_name==statename]))
+```
+
+
+## STEP 2: IMPORT AND CLEAN DATA FROM CSV FILE
+```{r}
+#Montana
+#fulldata <- read.csv(paste0("../Input/demographics/DATADELIVERY_ Vintage 2021 Population Estimates20221021073707/v2021_co_res_char11_mt.csv"))
+
+#North Dakota
+#fulldata <- read.csv(paste0("../Input/demographics/DATADELIVERY_ Vintage 2021 Population Estimates20221021073707/v2021_co_res_char11_nd.csv"))
+
+#South Dakota
+#fulldata <- read.csv(paste0("../Input/demographics/DATADELIVERY_ Vintage 2021 Population Estimates20221021073707/v2021_co_res_char11_sd.csv"))
+
+############
+#COUNTY DATA
+#subset for state of interest, and age range 0-24
+populationdata_county <- fulldata %>%
+  subset(AGE<=24) %>%
+  
+  #remove data for April Census estimates
+  subset(DATE != 2) %>%
+  
+  #get data for all race groups, all hispanic groups, all sexes
+  subset(SEX==0) %>%
+  subset(RACE11==0) %>%
+  subset(HISP==0) %>%
+  
+  #format location names for counties
+  left_join(fips,by=c('STATE'='state_code','COUNTY'='county_code')) %>%
+  mutate(county=gsub("\\s*\\w*$", "", county)) %>%
+  
+  #format to KC variable names
+  mutate(timeframe=case_when(
+    DATE==3 ~ '2020',
+    DATE==4 ~ '2021')) %>% 
+  select(-c(DATE,SUMLEV,STATE,COUNTY,GEONAME,SEX,RACE11,HISP,state_name)) %>%
+  rename(location=county,
+         age_group=AGE,
+         data=POP) %>%
+  mutate(state=statename) %>%
+  mutate(vintageyear=year) %>%
+  mutate(dataformat='Number') %>%
+  mutate(varname='childpopulationbysingleyearofage') %>%
+  mutate(locationtype='County')
+
+
+###########
+#STATE DATA
+populationdata_state <- populationdata_county %>%
+  
+  mutate(location=statename) %>%
+  group_by(location,age_group,timeframe,state,vintageyear,dataformat,varname) %>%
+  summarise(data=sum(data)) %>%
+  ungroup %>%
+  
+  mutate(locationtype='State')
+  
+
+############
+#REGION DATA
+populationdata_region <- populationdata_county %>%
+  
+    mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  mutate(location=replace(location, 
+                          statename=='South Dakota' & location=='Shannon', 
+                          'Oglala Lakota')) %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region,age_group,timeframe,state,vintageyear,dataformat,varname) %>%
+  summarise(data=sum(data)) %>%
+  ungroup %>%
+  
+  subset(region != '') %>%
+  rename(location=region) %>%
+  mutate(locationtype='Planning Region')
+
+
+##################################
+#COMBINE COUNTY, STATE, and REGION
+populationdata <- populationdata_county %>%
+  bind_rows(populationdata_state) %>%
+  bind_rows(populationdata_region) %>%
+
+#merge location ids
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  mutate(location=replace(location, 
+                          statename=='South Dakota' & location=='Shannon', 
+                          'Oglala Lakota')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) 
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(populationdata$locationid))>=1) {
+  print(populationdata$location[is.na(populationdata$locationid)])
+} else if (sum(is.na(populationdata$locationid))==0) {
+  'all locations match'
+}
+
+
+# 2. Visually inspect output data
+View(populationdata)
+```
+
+## STEP 3a: ADD TO DATABASE (MONTANA & SOUTH DAKOTA WITHOUT PLANNING REGIONS)
+```{r}
+#add to database
+populationdata2 <- populationdata %>% subset(locationtype != 'Planning Region')
+dbWriteTable(con,database_state,populationdata2,append=TRUE,row.names=FALSE)
+```
+
+## STEP 3B: ADD TO DATABASE (NORTH DAKOTA WITH PLANNING REGIONS)
+```{r}
+#add to database
+dbWriteTable(con,database_state,populationdata,append=TRUE,row.names=FALSE)
+```
+
+## STEP 4: OUTPUT FILE FOR UPLOADING TO DATA CENTER
+```{r}
+#write query from database to get needed format for KC data center
+
+pop_sql <- paste0("SELECT locationid, location, timeframe, age_group, dataformat, data FROM ", database_state," WHERE vintageyear='",year,"' AND varname='childpopulationbysingleyearofage';")
+#remove the year from the sql WHERE clause if running all available years
+
+
+#since populate a new data set each year, query the vintage data from prior to most current decennial year
+
+#for data 1990-2009
+pop_sql_historic <- paste0("SELECT locationid, location, timeframe, age_group, dataformat, data FROM ", database_state," WHERE (vintageyear='2009' OR vintageyear='1999') AND varname='childpopulationbysingleyearofage';")
+#remove the year from the sql WHERE clause if running all available years
+
+#for data 2010-2019
+pop_sql_historic2 <- paste0("SELECT locationid, location, timeframe, age_group, dataformat, data FROM ", database_state," WHERE (vintageyear='2020') AND varname='childpopulationbysingleyearofage';")
+
+upload_data_pop1 <- dbGetQuery(con,pop_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+        'Age group'=age_group)
+
+upload_data_pop2 <- dbGetQuery(con,pop_sql_historic) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+        'Age group'=age_group)
+
+upload_data_pop3 <- dbGetQuery(con,pop_sql_historic2) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+        'Age group'=age_group) %>%
+  subset(TimeFrame != '2020')
+
+upload_data_pop <- upload_data_pop1 %>%
+  bind_rows(upload_data_pop2) %>%
+  bind_rows(upload_data_pop3)
+
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_pop,file=paste0("../Output/demographics/",database_state,"_",year,"_childpopulationbysingleyearofage.csv"),row.names=FALSE)
+```
+
+
+
+
+
