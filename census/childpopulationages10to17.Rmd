@@ -31,7 +31,7 @@ library(zoo)
 
 ## STEP 1: IMPORT DATA FROM SQL DATABASE AND CLEAN
 ```{r}
-year <- '2020'
+year <- '2021'
 statename <- 'South Dakota'
 
 
@@ -119,7 +119,7 @@ pop_sql2 <- paste0("SELECT locationid, location, timeframe, age_group, dataforma
 
 
 #since populate a new data set each year, query the vintage data from prior to most current decennial year
-pop_sql_historic <- paste0("SELECT locationid, location, timeframe, age_group, dataformat, data FROM ", database_state," WHERE (vintageyear='2009' OR vintageyear='1999') AND varname='childpopulationages10to17';")
+pop_sql_historic <- paste0("SELECT locationid, location, timeframe, age_group, dataformat, data FROM ", database_state," WHERE (vintageyear='2009' OR vintageyear='1999' OR vintageyear='2020') AND varname='childpopulationages10to17';")
 
 
 
@@ -137,7 +137,8 @@ upload_data_pop2 <- dbGetQuery(con,pop_sql_historic) %>%
          TimeFrame=timeframe,
          DataFormat=dataformat,
          Data=data,
-        'Age group'=age_group)
+        'Age group'=age_group) %>%
+  subset(TimeFrame != '2020')
 
 
 
