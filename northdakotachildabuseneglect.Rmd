@@ -38,7 +38,7 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2020'
+year <- '2021'
 statename <- 'North Dakota'
 
 
@@ -64,11 +64,11 @@ ndcounties <- read.csv("./Input/ND County List.csv")
 
 ```{r}
 #import the data
-ncands <- read_excel(path=paste0("./Input/safety/northdakota_",year,"_ncandschildabuse.xlsx"), guess_max = 1048576,sheet='CPS data') %>%
+ncands <- read_excel(path=paste0("./Input/safety/northdakota_",year,"_ncandschildabuse.xlsx"), guess_max = 1048576,sheet='Page1_1',skip=7) %>%
   
   #rename columns
-  rename(assessments='Number of assessments',
-         allegedvictims='Number of Alleged Victims',
+  rename(assessments='Number of Assessments',
+         allegedvictims='Alleged Victims',
          victims='Number of Victims') %>%
   
   #merge in missing counties
@@ -465,13 +465,13 @@ temp_checkregions <- allegedvictims_toupload %>%
   left_join(regionids,by=c('location'='county')) %>%
   
   #******ADD IN THE REGION HERE
-  subset(region=='Planning Region 2') %>%
+  subset(region=='Planning Region 6') %>%
   arrange(data)
 view(temp_checkregions)
 
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
-#allegedvictims_toupload$data[allegedvictims_toupload$location=='Renville'] <- NA
+#allegedvictims_toupload$data[allegedvictims_toupload$location=='Griggs'] <- NA
   
 ```
 
@@ -700,13 +700,13 @@ temp_checkregions <- victims %>%
   left_join(regionids,by=c('location'='county')) %>%
   
   #******ADD IN THE REGION HERE
-  subset(region=='Planning Region 1') %>%
+  subset(region=='Planning Region 4') %>%
   arrange(data)
 View(temp_checkregions)
 
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
-#victims$data[victims$location=='McKenzie'] <- NA
+#victims$data[victims$location=='Pembina'] <- NA
 #victims$data[victims$location=='Kidder'] <- NA
   
 ```
