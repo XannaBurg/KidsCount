@@ -34,8 +34,8 @@ library(naniar)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2020'
-year_short <- '20'
+year <- '2021'
+year_short <- '21'
 
 statefile <- 'montana'
 statename <- 'Montana'
@@ -52,9 +52,11 @@ regionids$county <- as.character(regionids$county)
 
 ## IMPORT THE DATA FILES THAT WILL BE USED
 ```{r}
-fostercaredata_0to17 <- read_excel(path=paste0("./Input/safety/montana_",year_short,"_fostercaredata.xlsx"),sheet='Ages 0-17',skip=3) 
+#fostercaredata_0to17 <- read_excel(path=paste0("./Input/safety/montana_",year_short,"_fostercaredata.xlsx"),sheet='Ages 0-17',skip=3) 
 
-fostercaredata_0to5 <- read_excel(path=paste0("./Input/safety/montana_",year_short,"_fostercaredata.xlsx"),sheet='Ages 0-5',skip=3) 
+#fostercaredata_0to5 <- read_excel(path=paste0("./Input/safety/montana_",year_short,"_fostercaredata.xlsx"),sheet='Ages 0-5',skip=3) 
+
+fostercaredata <- read_excel(path=paste0("./Input/safety/montana_",year_short,"_fostercaredata.xlsx"),sheet='2021 Unduplicated Kids in Care') 
 ```
 
 
@@ -62,19 +64,26 @@ fostercaredata_0to5 <- read_excel(path=paste0("./Input/safety/montana_",year_sho
 
 ## CLEAN THE IMPORTED DATA
 ```{r}
-fostercaredata_0to17_2 <- fostercaredata_0to17 %>% 
+fostercaredata_0to17 <- fostercaredata %>% 
   
   rename(location=`...1`) %>%
-  select(c(location,all_of(paste0("CY ",year)))) %>%
-  rename(data=all_of(paste0("CY ",year))) %>%
+  #select(c(location,all_of(paste0("CY ",year)))) %>%
+  #rename(data=all_of(paste0("CY ",year))) %>%
+  
+  #new format in 2021
+  rename(data=`Unduplicated kids in care 0-17`) %>%
+  select(location,data) %>%
+  
+  
   
   #update locations
-  mutate(location=replace(location,location=='State Total','Montana')) %>%
-  filter(!location %in% c("Blackfoot Tribal","Crow Tribal","Flathead Tribal","Fort Belknap Tribal","Fort Peck Tribal","Northern Cheyenne Tribal","Rocky Boy Tribal")) %>%
+  mutate(location=replace(location,location=='State (including tribal)','Montana')) %>%
+  filter(!location %in% c("Blackfeet Tribal SS","Crow Tribal SS","Flathead Tribal SS","Fort Belknap Tribal SS","Northern Cheyenne Tribal SS","Rocky Boy Tribal SS")) %>%
   mutate(locationtype=ifelse(location=='Montana','State','County')) %>%
   mutate(location=replace(location,location=='Choteau','Chouteau')) %>%
   mutate(location=replace(location,location=='Lewis and Clark','Lewis & Clark')) %>%
   mutate(location=replace(location,location=='Power River','Powder River')) %>%
+  mutate(location=replace(location,location=='Sweetgrass','Sweet Grass')) %>%
 
   mutate(state='Montana',
          dataformat='Number',
@@ -97,15 +106,15 @@ fostercaredata_0to17_2 <- fostercaredata_0to17 %>%
 ### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
 
 # 1. Print name of location that has a mismatched location ID
-if (sum(is.na(fostercaredata_0to17_2$locationid))>=1) {
-  print(fostercaredata_0to17_2$location[is.na(fostercaredata_0to17_2$locationid)])
-} else if (sum(is.na(fostercaredata_0to17_2$locationid))==0) {
+if (sum(is.na(fostercaredata_0to17$locationid))>=1) {
+  print(fostercaredata_0to17$location[is.na(fostercaredata_0to17$locationid)])
+} else if (sum(is.na(fostercaredata_0to17$locationid))==0) {
   'all locations match'
 }
 
 
 #2. Check that no values are less than 4
-temp_suppresscheck <- fostercaredata_0to17_2 %>% subset(data<4)
+temp_suppresscheck <- fostercaredata_0to17 %>% subset(data<4)
 temp_rows <- as.numeric(nrow(temp_suppresscheck))
 if (temp_rows==0) {
   'data suppression followed at individual location level'
@@ -116,7 +125,7 @@ if (temp_rows==0) {
 #3. Check that there is no suppression or >1 suppression
 ########## MANUAL STEP #############
 #need to check that county data cannot be identified using totals
-temp_testsuppression <- fostercaredata_0to17_2 %>%
+temp_testsuppression <- fostercaredata_0to17 %>%
   subset(locationtype=='County') %>%
   group_by(location) %>%
   summarise_all(~sum(is.na(.))) %>%
@@ -131,7 +140,7 @@ if (temp_rows==0 | temp_rows>1) {
 }
 
 #if there is only one county, print the counties in ascending order
-#temp_check <- fostercaredata_0to17_2 %>%
+#temp_check <- fostercaredata_0to17 %>%
 #  subset(locationtype=='County') %>%
 #  arrange(data)
 #View(temp_check)
@@ -139,17 +148,17 @@ if (temp_rows==0 | temp_rows>1) {
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
 #**Choose the county with the next lowest count of births; if there is a tie, suppress both
-#fostercaredata_0to17_2$fostercaredata_0to17_2[births_all$location=='Billings'] <- NA
+#fostercaredata_0to17$data[fostercaredata_0to17$location=='Billings'] <- NA
 
 # 4. Visually inspect output data
-View(fostercaredata_0to17_2)
+View(fostercaredata_0to17)
 ```
 
 ## STEP 2: ADD TO DATABASE
 ```{r}
-#CHECK DATASET NAMED fostercaredata_0to17_2 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#CHECK DATASET NAMED fostercaredata_0to17 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
 #add to database
-dbWriteTable(con,'montana',fostercaredata_0to17_2,append=TRUE,row.names=FALSE)
+dbWriteTable(con,'montana',fostercaredata_0to17,append=TRUE,row.names=FALSE)
 ```
 
 ## STEP 3: CALCULATE THE RATE
@@ -241,19 +250,29 @@ write.csv(upload_data,file=paste0("./Output/safety/",statefile,"_",year,"_childr
 
 ## CLEAN THE IMPORTED DATA
 ```{r}
-fostercaredata_0to5_2 <- fostercaredata_0to5 %>% 
+fostercaredata_0to5 <- fostercaredata %>% 
   
   rename(location=`...1`) %>%
-  select(c(location,all_of(paste0("CY ",year)))) %>%
-  rename(data=all_of(paste0("CY ",year))) %>%
+  #select(c(location,all_of(paste0("CY ",year)))) %>%
+  #rename(data=all_of(paste0("CY ",year))) %>%
+  
+  #select(c(location,all_of(paste0("CY ",year)))) %>%
+  #rename(data=all_of(paste0("CY ",year))) %>%
+  
+  #new format in 2021
+  rename(data=`Unduplicated kids in care 0-5`) %>%
+  select(location,data) %>%
+  
+  
   
   #update locations
-  mutate(location=replace(location,location=='State Total','Montana')) %>%
-  filter(!location %in% c("Blackfoot Tribal","Crow Tribal","Flathead Tribal","Fort Belknap Tribal","Fort Peck Tribal","Northern Cheyenne Tribal","Rocky Boy Tribal")) %>%
+  mutate(location=replace(location,location=='State (including tribal)','Montana')) %>%
+  filter(!location %in% c("Blackfeet Tribal SS","Crow Tribal SS","Flathead Tribal SS","Fort Belknap Tribal SS","Northern Cheyenne Tribal SS","Rocky Boy Tribal SS")) %>%
   mutate(locationtype=ifelse(location=='Montana','State','County')) %>%
   mutate(location=replace(location,location=='Choteau','Chouteau')) %>%
   mutate(location=replace(location,location=='Lewis and Clark','Lewis & Clark')) %>%
   mutate(location=replace(location,location=='Power River','Powder River')) %>%
+  mutate(location=replace(location,location=='Sweetgrass','Sweet Grass')) %>%
 
   mutate(state='Montana',
          dataformat='Number',
@@ -276,15 +295,15 @@ fostercaredata_0to5_2 <- fostercaredata_0to5 %>%
 ### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
 
 # 1. Print name of location that has a mismatched location ID
-if (sum(is.na(fostercaredata_0to5_2$locationid))>=1) {
-  print(fostercaredata_0to5_2$location[is.na(fostercaredata_0to5_2$locationid)])
-} else if (sum(is.na(fostercaredata_0to5_2$locationid))==0) {
+if (sum(is.na(fostercaredata_0to5$locationid))>=1) {
+  print(fostercaredata_0to5$location[is.na(fostercaredata_0to5$locationid)])
+} else if (sum(is.na(fostercaredata_0to5$locationid))==0) {
   'all locations match'
 }
 
 
 #2. Check that no values are less than 4
-temp_suppresscheck <- fostercaredata_0to5_2 %>% subset(data<4)
+temp_suppresscheck <- fostercaredata_0to5 %>% subset(data<4)
 temp_rows <- as.numeric(nrow(temp_suppresscheck))
 if (temp_rows==0) {
   'data suppression followed at individual location level'
@@ -295,7 +314,7 @@ if (temp_rows==0) {
 #3. Check that there is no suppression or >1 suppression
 ########## MANUAL STEP #############
 #need to check that county data cannot be identified using totals
-temp_testsuppression <- fostercaredata_0to5_2 %>%
+temp_testsuppression <- fostercaredata_0to5 %>%
   subset(locationtype=='County') %>%
   group_by(location) %>%
   summarise_all(~sum(is.na(.))) %>%
@@ -310,7 +329,7 @@ if (temp_rows==0 | temp_rows>1) {
 }
 
 #if there is only one county, print the counties in ascending order
-#temp_check <- fostercaredata_0to5_2 %>%
+#temp_check <- fostercaredata_0to5 %>%
 #  subset(locationtype=='County') %>%
 #  arrange(data)
 #View(temp_check)
@@ -318,17 +337,17 @@ if (temp_rows==0 | temp_rows>1) {
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
 #**Choose the county with the next lowest count of births; if there is a tie, suppress both
-#fostercaredata_0to5_2$fostercaredata_0to5_2[births_all$location=='Billings'] <- NA
+#fostercaredata_0to5$data[fostercaredata_0to5$location=='Billings'] <- NA
 
 # 4. Visually inspect output data
-View(fostercaredata_0to5_2)
+View(fostercaredata_0to5)
 ```
 
 ## STEP 2: ADD TO DATABASE
 ```{r}
-#CHECK DATASET NAMED fostercaredata_0to5_2 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#CHECK DATASET NAMED fostercaredata_0to5 TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
 #add to database
-dbWriteTable(con,'montana',fostercaredata_0to5_2,append=TRUE,row.names=FALSE)
+dbWriteTable(con,'montana',fostercaredata_0to5,append=TRUE,row.names=FALSE)
 ```
 
 ## STEP 3: CALCULATE THE RATE
@@ -424,15 +443,19 @@ excel0to17_sql <- paste0("SELECT locationid, location, timeframe, dataformat, da
 
 excel0to17_county <- dbGetQuery(con,excel0to17_sql) %>%
   pivot_wider(names_from='timeframe',values_from='data') %>%
-  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020')) %>%
-  select(c(`location`,`2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,`2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021')) %>%
+  select(c(`location`,`2021_Number`,`2021_Rate`,
+           `2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,
+           `2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
   subset(location != 'Montana') %>%
   arrange(location)
 
 excel0to17_state <- dbGetQuery(con,excel0to17_sql) %>%
   pivot_wider(names_from='timeframe',values_from='data') %>%
-  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020')) %>%
-  select(c(`location`,`2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,`2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021')) %>%
+  select(c(`location`,`2021_Number`,`2021_Rate`,
+           `2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,
+           `2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
   subset(location == 'Montana') %>%
   arrange(location)
 
@@ -446,15 +469,19 @@ excel0to5_sql <- paste0("SELECT locationid, location, timeframe, dataformat, dat
 
 excel0to5_county <- dbGetQuery(con,excel0to5_sql) %>%
   pivot_wider(names_from='timeframe',values_from='data') %>%
-  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020')) %>%
-  select(c(`location`,`2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,`2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021')) %>%
+  select(c(`location`,`2021_Number`,`2021_Rate`,
+           `2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,
+           `2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
   subset(location != 'Montana') %>%
   arrange(location)
 
 excel0to5_state <- dbGetQuery(con,excel0to5_sql) %>%
   pivot_wider(names_from='timeframe',values_from='data') %>%
-  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020')) %>%
-  select(c(`location`,`2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,`2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021')) %>%
+  select(c(`location`,`2021_Number`,`2021_Rate`,
+           `2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,
+           `2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
   subset(location == 'Montana') %>%
   arrange(location)
 
@@ -473,7 +500,7 @@ write.csv(excel0to5,'./Output/safety/MT Foster Care Excel/mt_fostercare_tocopy_0
 ## STEP 1: create the data file manually
 ```{r}
 #edit the data only
-data <- 553
+data <- 562
 
 #----
 location <- 'Montana'
