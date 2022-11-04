@@ -1,7 +1,6 @@
 ---
-title: "Child Population by Single Year of Age - for age 10-17"
+title: "Child Population by Single Year of Age - for age 10-17 only"
 author: "Xanna Burg"
-date: "July 2020"
 output: html_document
 ---
 
@@ -10,8 +9,7 @@ output: html_document
 **Date:** July 2020
 **Updated by:**
 
-**Data Source:** US Census populations with bridged race categories from NCHS. Retrieved from NCHS website SAS file.
-https://www.cdc.gov/nchs/nvss/bridged_race.htm#Newest%20Data%20Release
+**Data Source:** US Census by request only, single year of age estimates
 **Purpose:** Obtain Population Estimates by single year of age for state, county, and planning regions.
 **Description:** This program adds the population estimates to the database and creates a dataset needed to upload to the KIDS COUNT data center.
 * Geographies: state total, county, state planning regions (where applicable, which are groups of counties)
@@ -19,9 +17,6 @@ https://www.cdc.gov/nchs/nvss/bridged_race.htm#Newest%20Data%20Release
 * Age group - single year of age, from 0 to 25
 
 
-**To download the data needed for this code:**
-1. https://www.cdc.gov/nchs/nvss/bridged_race.htm#Newest%20Data%20Release
-2. Download the SAS file matching the most recent year that includes all previous intercensal years.
 
 ```{r,message=FALSE}
 #load required packages
@@ -40,7 +35,7 @@ library(sas7bdat)
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 statename <- "South Dakota"
-year <- "2020"
+year <- "2021"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -86,52 +81,50 @@ statecode <- as.numeric(unique(fips$state_code[fips$state_name==statename]))
 ```
 
 
-## STEP 2: IMPORT AND CLEAN DATA FROM SAS FILE
+## STEP 2: IMPORT AND CLEAN DATA FROM CSV FILE
+#ethnicity first
 ```{r}
-fulldata <- read.sas7bdat(paste0("../Input/demographics/pcen_v2020_y1020.sas7bdat"))
-```
+#South Dakota
+fulldata <- read.csv(paste0("../Input/demographics/DATADELIVERY_ Vintage 2021 Population Estimates20221021073707/v2021_co_res_char11_sd.csv"))
 
-
-## ETHNICITY FOR 10-17 YEAR OLDS ##
-```{r}
 ############
 #COUNTY DATA
 #subset for state of interest, and age range 0-24
 populationdata_county <- fulldata %>%
-  subset(ST_FIPS==statecode) %>%
-  subset(age>=10 & age<=17) %>%
+  subset(AGE<=17) %>%
+  subset(AGE>=10) %>%
   
-  #remove column for April 2010, and use July 2010 instead
-  select(-c(POP2010_APR)) %>%
+  #remove data for April Census estimates
+  subset(DATE != 2) %>%
+  
+  #get data for all race groups, all sexes
+  subset(SEX==0) %>%
+  subset(RACE11==0) %>%
+  
+  #remove all hispanic group - just want the breakdown
+  subset(HISP != 0) %>%
   
   #format location names for counties
-  left_join(fips,by=c('ST_FIPS'='state_code','CO_FIPS'='county_code')) %>%
-  mutate(county=gsub("\\s*\\w*$", "", county)) %>%
-  
-  #wide to long format
-  pivot_longer(cols=c(POP2010_JUL,POP2011,POP2012,POP2013,POP2014,POP2015,POP2016,POP2017,POP2018,POP2019,POP2020),names_to='date',values_to='data') %>%
-  
-  #sum across race and ethnicities
-  group_by(county,date,hisp) %>%
-  summarise(data=sum(data),.groups='keep') %>%
-  ungroup %>%
+  left_join(fips,by=c('STATE'='state_code','COUNTY'='county_code')) %>%
+  mutate(location=gsub("\\s*\\w*$", "", county)) %>%
   
   #format to KC variable names
   mutate(timeframe=case_when(
-    date=='POP2010_JUL' ~ '2010',
-    date=='POP2011' ~ '2011',
-    date=='POP2012' ~ '2012',
-    date=='POP2013' ~ '2013',
-    date=='POP2014' ~ '2014',
-    date=='POP2015' ~ '2015',
-    date=='POP2016' ~ '2016',
-    date=='POP2017' ~ '2017',
-    date=='POP2018' ~ '2018',
-    date=='POP2019' ~ '2019',
-    date=='POP2020' ~ '2020')) %>% 
-  select(-c(date)) %>%
-  rename(location=county,
-         race=hisp) %>%
+    DATE==3 ~ '2020',
+    DATE==4 ~ '2021')) %>% 
+  
+  mutate(race=case_when(
+    HISP==1 ~ 'Non-Hispanic',
+    HISP==2 ~ 'Hispanic')) %>%
+  
+  select(-c(DATE,SUMLEV,STATE,COUNTY,GEONAME,SEX,RACE11,HISP,state_name)) %>%
+    
+    #sum across ages
+    group_by(state,location,timeframe,race) %>%
+    summarise(data=sum(POP)) %>%
+
+    
+    
   mutate(state=statename) %>%
   mutate(vintageyear=year) %>%
   mutate(dataformat='Number') %>%
@@ -145,10 +138,11 @@ populationdata_state <- populationdata_county %>%
   
   mutate(location=statename) %>%
   group_by(location,race,timeframe,state,vintageyear,dataformat,varname) %>%
-  summarise(data=sum(data),.groups='keep') %>%
+  summarise(data=sum(data)) %>%
   ungroup %>%
   
   mutate(locationtype='State')
+
 
 
 #CALCULATE PERCENTAGES
@@ -171,14 +165,14 @@ population_percentages <- populationdata_county %>%
   rename(data=percent) %>%
   mutate(dataformat='Percent')
 
-  
+
+
 
 ##################################
 #COMBINE COUNTY, STATE
 populationdata <- populationdata_county %>%
   bind_rows(populationdata_state) %>%
   bind_rows(population_percentages) %>%
-  mutate(race=ifelse(race==2,'Hispanic','Non-Hispanic')) %>%
 
 #merge location ids
   mutate(location=replace(location, 
@@ -207,11 +201,14 @@ if (sum(is.na(populationdata$locationid))>=1) {
 View(populationdata)
 ```
 
-## STEP 3: ADD TO DATABASE
+## STEP 3a: ADD TO DATABASE (MONTANA & SOUTH DAKOTA WITHOUT PLANNING REGIONS)
 ```{r}
 #add to database
-dbWriteTable(con,database_state,populationdata,append=TRUE,row.names=FALSE)
+populationdata2 <- populationdata %>% subset(locationtype != 'Planning Region')
+dbWriteTable(con,database_state,populationdata2,append=TRUE,row.names=FALSE)
 ```
+
+
 
 ## STEP 4: OUTPUT FILE FOR UPLOADING TO DATA CENTER
 ```{r}
@@ -219,12 +216,6 @@ dbWriteTable(con,database_state,populationdata,append=TRUE,row.names=FALSE)
 
 pop_sql <- paste0("SELECT locationid, location, timeframe, race, dataformat, data FROM ", database_state," WHERE vintageyear='",year,"' AND varname='childrenages10to17byethnicity';")
 #remove the year from the sql WHERE clause if running all available years
-
-
-#since populate a new data set each year, query the vintage data from prior to most current decennial year
-#pop_sql_historic <- paste0("SELECT locationid, location, timeframe, race, dataformat, data FROM ", database_state," WHERE (vintageyear='2009' OR vintageyear='1999') AND varname='childrenages10to17byethnicity';")
-#remove the year from the sql WHERE clause if running all available years
-
 
 upload_data_pop1 <- dbGetQuery(con,pop_sql) %>%
   rename(LocationId=locationid,
@@ -234,73 +225,95 @@ upload_data_pop1 <- dbGetQuery(con,pop_sql) %>%
          Data=data,
          Race=race)
 
-#upload_data_pop2 <- dbGetQuery(con,pop_sql_historic) %>%
- # rename(LocationId=locationid,
-  #       Location=location,
-   #      TimeFrame=timeframe,
-    #     DataFormat=dataformat,
-     #    Data=data,
-      #   Race=race)
+pop_sql_historic <- paste0("SELECT locationid, location, timeframe, race, dataformat, data FROM ", database_state," WHERE vintageyear='2020' AND varname='childrenages10to17byethnicity';")
 
-#upload_data_pop <- upload_data_pop1 %>%
- # bind_rows(upload_data_pop2)
+upload_data_pop2 <- dbGetQuery(con,pop_sql_historic) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         Race=race) %>%
+  
+  #remove 2020
+  subset(TimeFrame != '2020')
+
+
+upload_data_pop <- upload_data_pop1 %>%
+  bind_rows(upload_data_pop2)
 
 
 
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
-write.csv(upload_data_pop1,file=paste0("../Output/demographics/",database_state,"_",year,"_childrenages10to17byethnicity.csv"),row.names=FALSE)
+write.csv(upload_data_pop,file=paste0("../Output/demographics/",database_state,"_",year,"_childrenages10to17byethnicity.csv"),row.names=FALSE)
 ```
 
 
 
 
 
-## RACE FOR 10-17 YEAR OLDS ##
+
+
+
+
+
+
+
+
+
+## STEP 2a: IMPORT AND CLEAN DATA FROM CSV FILE
+#race 
 ```{r}
+#South Dakota
+fulldata <- read.csv(paste0("../Input/demographics/DATADELIVERY_ Vintage 2021 Population Estimates20221021073707/v2021_co_res_char11_sd.csv"))
+
 ############
 #COUNTY DATA
 #subset for state of interest, and age range 0-24
 populationdata_county <- fulldata %>%
-  subset(ST_FIPS==statecode) %>%
-  subset(age>=10 & age<=17) %>%
+  subset(AGE<=17) %>%
+  subset(AGE>=10) %>%
   
-  #remove column for April 2010, and use July 2010 instead
-  select(-c(POP2010_APR)) %>%
+  #remove data for April Census estimates
+  subset(DATE != 2) %>%
+  
+  #get data for all race groups, all sexes
+  subset(SEX==0) %>%
+  subset(HISP==0) %>%
+  
+  #remove all hispanic group - just want the breakdown
+  subset(RACE11 != 0) %>%
+  subset(RACE11 != 7) %>%
+  subset(RACE11 != 8) %>%
+  subset(RACE11 != 9) %>%
+  subset(RACE11 != 10) %>%
+  subset(RACE11 != 11) %>%
   
   #format location names for counties
-  left_join(fips,by=c('ST_FIPS'='state_code','CO_FIPS'='county_code')) %>%
-  mutate(county=gsub("\\s*\\w*$", "", county)) %>%
-  
-  #wide to long format
-  pivot_longer(cols=c(POP2010_JUL,POP2011,POP2012,POP2013,POP2014,POP2015,POP2016,POP2017,POP2018,POP2019,POP2020),names_to='date',values_to='data') %>%
-  
-  #create race categories that aren't stratified by sex
-  mutate(race=case_when(
-    RACESEX==1 | RACESEX==2 ~ 'White',
-    RACESEX==3 | RACESEX==4 ~ 'Black or African American',
-    RACESEX==5 | RACESEX==6 ~ 'American Indian and Alaska Native',
-    RACESEX==7 | RACESEX==8 ~ 'Asian or Pacific Islander')) %>%
-  
-  #sum across race and 
-  group_by(county,date,race) %>%
-  summarise(data=sum(data),.groups='keep') %>%
-  ungroup %>%
+  left_join(fips,by=c('STATE'='state_code','COUNTY'='county_code')) %>%
+  mutate(location=gsub("\\s*\\w*$", "", county)) %>%
   
   #format to KC variable names
   mutate(timeframe=case_when(
-    date=='POP2010_JUL' ~ '2010',
-    date=='POP2011' ~ '2011',
-    date=='POP2012' ~ '2012',
-    date=='POP2013' ~ '2013',
-    date=='POP2014' ~ '2014',
-    date=='POP2015' ~ '2015',
-    date=='POP2016' ~ '2016',
-    date=='POP2017' ~ '2017',
-    date=='POP2018' ~ '2018',
-    date=='POP2019' ~ '2019',
-    date=='POP2020' ~ '2020')) %>% 
-  select(-c(date)) %>%
-  rename(location=county) %>%
+    DATE==3 ~ '2020',
+    DATE==4 ~ '2021')) %>% 
+  
+  mutate(race=case_when(
+    RACE11==1 ~ 'White',
+    RACE11==2 ~ 'Black or African American',
+    RACE11==3 ~ 'American Indian and Alaska Native',
+    RACE11==4 ~ 'Asian',
+    RACE11==5 ~ 'Native Hawaiian and Other Pacific Islander',
+    RACE11==6 ~ 'Two or more races')) %>%
+  
+  select(-c(DATE,SUMLEV,STATE,COUNTY,GEONAME,SEX,RACE11,HISP,state_name)) %>%
+    
+    #sum across ages
+    group_by(state,location,timeframe,race) %>%
+    summarise(data=sum(POP)) %>%
+
+    
+    
   mutate(state=statename) %>%
   mutate(vintageyear=year) %>%
   mutate(dataformat='Number') %>%
@@ -314,7 +327,7 @@ populationdata_state <- populationdata_county %>%
   
   mutate(location=statename) %>%
   group_by(location,race,timeframe,state,vintageyear,dataformat,varname) %>%
-  summarise(data=sum(data),.groups='keep') %>%
+  summarise(data=sum(data)) %>%
   ungroup %>%
   
   mutate(locationtype='State')
@@ -340,7 +353,6 @@ population_percentages <- populationdata_county %>%
   rename(data=percent) %>%
   mutate(dataformat='Percent')
 
-  
 
 ##################################
 #COMBINE COUNTY, STATE
@@ -375,24 +387,22 @@ if (sum(is.na(populationdata$locationid))>=1) {
 View(populationdata)
 ```
 
-## STEP 3: ADD TO DATABASE
+## STEP 3a: ADD TO DATABASE (MONTANA & SOUTH DAKOTA WITHOUT PLANNING REGIONS)
 ```{r}
 #add to database
-dbWriteTable(con,database_state,populationdata,append=TRUE,row.names=FALSE)
+populationdata2 <- populationdata %>% subset(locationtype != 'Planning Region')
+dbWriteTable(con,database_state,populationdata2,append=TRUE,row.names=FALSE)
 ```
+
+
 
 ## STEP 4: OUTPUT FILE FOR UPLOADING TO DATA CENTER
 ```{r}
 #write query from database to get needed format for KC data center
 
+#get most recent year vintage data
 pop_sql <- paste0("SELECT locationid, location, timeframe, race, dataformat, data FROM ", database_state," WHERE vintageyear='",year,"' AND varname='childrenages10to17byrace';")
 #remove the year from the sql WHERE clause if running all available years
-
-
-#since populate a new data set each year, query the vintage data from prior to most current decennial year
-#pop_sql_historic <- paste0("SELECT locationid, location, timeframe, race, dataformat, data FROM ", database_state," WHERE (vintageyear='2009' OR vintageyear='1999') AND varname='childrenages10to17byethnicity';")
-#remove the year from the sql WHERE clause if running all available years
-
 
 upload_data_pop1 <- dbGetQuery(con,pop_sql) %>%
   rename(LocationId=locationid,
@@ -402,21 +412,29 @@ upload_data_pop1 <- dbGetQuery(con,pop_sql) %>%
          Data=data,
          Race=race)
 
-#upload_data_pop2 <- dbGetQuery(con,pop_sql_historic) %>%
- # rename(LocationId=locationid,
-  #       Location=location,
-   #      TimeFrame=timeframe,
-    #     DataFormat=dataformat,
-     #    Data=data,
-      #   Race=race)
 
-#upload_data_pop <- upload_data_pop1 %>%
- # bind_rows(upload_data_pop2)
+#separately, get 2010-2019 - do not need to re-upload every year
+pop_sql_historic <- paste0("SELECT locationid, location, timeframe, race, dataformat, data FROM ", database_state," WHERE vintageyear='2020' AND varname='childrenages10to17byrace';")
+
+upload_data_pop2 <- dbGetQuery(con,pop_sql_historic) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data,
+         Race=race) %>%
+  
+  #remove 2020
+  subset(TimeFrame != '2020')
+
+
+
 
 
 
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
 write.csv(upload_data_pop1,file=paste0("../Output/demographics/",database_state,"_",year,"_childrenages10to17byrace.csv"),row.names=FALSE)
-```
 
+write.csv(upload_data_pop2,file=paste0("../Output/demographics/",database_state,"_2010-2019_childrenages10to17byrace.csv"),row.names=FALSE)
+```
 

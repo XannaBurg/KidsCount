@@ -9,7 +9,7 @@ output: html_document
 **Date:** July 2020
 **Updated by:**
 
-**Data Source:** US Census populations with bridged race categories from NCHS. Retrieved from Missouri Census Data Center.
+**Data Source:** US Census populations with bridged race categories from NCHS (up through 2019); starting in Vintage year 2021, data comes from U.S. Census Bureau, Population Estimates Program.
 **Purpose:** Group Population Estimates into age group 10-17 to report.
 **Description:** This program adds the population estimates to the database and creates a dataset needed to upload to the KIDS COUNT data center.
 * Geographies: state total, county, state planning regions (where applicable, which are groups of counties)

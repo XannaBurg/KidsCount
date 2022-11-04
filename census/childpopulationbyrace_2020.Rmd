@@ -7,13 +7,12 @@ output: html_document
 
 ## Indicator: Child population by race
 
-## Child population by race could also be calculated from the base datasets imported from Census API, however are not calculated for Montana, North Dakota, and South Dakota since cell counts are too low for most groups
 
 **Created by:** Xanna Burg
 **Date:** April 2020
 **Updated by:**
 
-**Data Source:** U.S. Census Bureau, Annual Population Estimates. Specific table: pep/charagegroups 
+**Data Source:** U.S. Census Bureau, Annual Population Estimates. In 2020, data was not available via API, this code was updated to import from data file.
 **Purpose:** Connect to census data table, clean data, add to master database, output csv to upload to Data Center in correct format. Update Montana, North Dakota, and South Dakota KIDS COUNT Data Center indicator with most recent year of vintage data.
 **Description:** this program calculates **two indicators: Child population by race and Child population by age group and race**
 * Geographies: state total, county, state planning regions (where applicable, which are groups of counties)
