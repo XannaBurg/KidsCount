@@ -438,3 +438,69 @@ write.csv(upload_data_pop1,file=paste0("../Output/demographics/",database_state,
 write.csv(upload_data_pop2,file=paste0("../Output/demographics/",database_state,"_2010-2019_childrenages10to17byrace.csv"),row.names=FALSE)
 ```
 
+
+
+
+
+
+
+
+
+
+
+#Non-Hispanic race estimates for report updates
+#race 
+```{r}
+#South Dakota
+fulldata <- read.csv(paste0("../Input/demographics/DATADELIVERY_ Vintage 2021 Population Estimates20221021073707/v2021_co_res_char11_sd.csv"))
+
+############
+#COUNTY DATA
+#subset for state of interest, and age range 0-24
+populationdata <- fulldata %>%
+  subset(AGE<=17) %>%
+  subset(AGE>=10) %>%
+  
+  #remove data for April Census estimates
+  subset(DATE == 4) %>%
+  
+  #get data for all sexes
+  subset(SEX==0) %>%
+  
+  #only get data for non-Hispanic
+  subset(HISP !=0) %>%
+  
+  
+  subset(RACE11 != 0) %>%
+  subset(RACE11 != 7) %>%
+  subset(RACE11 != 8) %>%
+  subset(RACE11 != 9) %>%
+  subset(RACE11 != 10) %>%
+  subset(RACE11 != 11) %>%
+  
+  
+  #format to KC variable names
+  mutate(timeframe=case_when(
+    DATE==4 ~ '2021')) %>% 
+  
+  mutate(race=case_when(
+    RACE11==1 & HISP==1 ~ 'NH - White',
+    RACE11==2 & HISP==1 ~ 'NH - Black or African American',
+    RACE11==3 & HISP==1 ~ 'NH - American Indian and Alaska Native',
+    RACE11==4 & HISP==1 ~ 'NH - Asian',
+    RACE11==5 & HISP==1 ~ 'NH - Native Hawaiian and Other Pacific Islander',
+    RACE11==6 & HISP==1 ~ 'NH - Two or more races',
+    HISP==2 ~ 'Hispanic')) %>%
+  
+    
+    #sum across ages
+    group_by(timeframe,race) %>%
+    summarise(data=sum(POP)) 
+
+
+
+write.csv(populationdata,file="/Users/xannaburg/Documents/Analysis/South Dakota Juvenile Justice/2022 Update/References/population_age10to17_raceethnicitycombo.csv",row.names=FALSE)
+
+```
+
+
