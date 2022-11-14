@@ -50,8 +50,8 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2020'
-year_5 <- '2016-2020'
+year <- '2021'
+year_5 <- '2017-2021'
 statename <- 'South Dakota'
 
 
@@ -193,8 +193,8 @@ lbw <- read_excel(path=paste0("./Input/health/southdakota_",year_5,"_vitalstatis
   mutate(Number=as.numeric(paste(Number)),
          Percent=as.numeric(paste(Percent)),
          moe=as.numeric(paste(moe)),
-         lci=as.numeric(paste(moe)),
-         uci=as.numeric(paste(moe))) %>%
+         lci=as.numeric(paste(lci)),
+         uci=as.numeric(paste(uci))) %>%
   #change number to <3
   mutate(Number=as.character(paste(Number))) %>%
   mutate(Number=replace(Number,Number=='NA','<3')) %>%
@@ -341,8 +341,8 @@ teens <- read_excel(path=paste0("./Input/health/southdakota_",year_5,"_vitalstat
   mutate(Number=as.numeric(paste(Number)),
          Percent=as.numeric(paste(Percent)),
          moe=as.numeric(paste(moe)),
-         lci=as.numeric(paste(moe)),
-         uci=as.numeric(paste(moe))) %>%
+         lci=as.numeric(paste(lci)),
+         uci=as.numeric(paste(uci))) %>%
   #change number to <3
   mutate(Number=as.character(paste(Number))) %>%
   mutate(Number=replace(Number,Number=='NA','<3')) %>%
@@ -491,8 +491,8 @@ pnc <- read_excel(path=paste0("./Input/health/southdakota_",year_5,"_vitalstatis
   mutate(Number=as.numeric(paste(Number)),
          Percent=as.numeric(paste(Percent)),
          moe=as.numeric(paste(moe)),
-         lci=as.numeric(paste(moe)),
-         uci=as.numeric(paste(moe))) %>%
+         lci=as.numeric(paste(lci)),
+         uci=as.numeric(paste(uci))) %>%
   #change number to <3
   mutate(Number=as.character(paste(Number))) %>%
   mutate(Number=replace(Number,Number=='NA','<3')) %>%
@@ -641,8 +641,8 @@ infantdeaths <- read_excel(path=paste0("./Input/health/southdakota_",year_5,"_vi
   mutate(Number=as.numeric(paste(Number)),
          Rate=as.numeric(paste(Rate)),
          moe=as.numeric(paste(moe)),
-         lci=as.numeric(paste(moe)),
-         uci=as.numeric(paste(moe))) %>%
+         lci=as.numeric(paste(lci)),
+         uci=as.numeric(paste(uci))) %>%
   #change number to <3
   mutate(Number=as.character(paste(Number))) %>%
   mutate(Number=replace(Number,Number=='NA','<3')) %>%
@@ -777,7 +777,7 @@ childdeaths <- read_excel(path=paste0("./Input/health/southdakota_",year_5,"_vit
   rename(location=`...2`) %>%
   select(-c(`...1`,`...9`)) %>%
   #remove extra text and Unknown county
-  subset(!is.na(`POP 1-14`)) %>%
+  subset(!is.na(`Pop 1-14`)) %>%
   mutate(location=replace(location,is.na(location),'South Dakota')) %>%
   subset(location!='Unknown') %>%
   
@@ -786,12 +786,12 @@ childdeaths <- read_excel(path=paste0("./Input/health/southdakota_",year_5,"_vit
          moe=`95% CI ±`,
          lci=`Lower Limit`,
          uci=`Upper Limit`) %>%
-  select(-c(`POP 1-14`)) %>%
+  select(-c(`Pop 1-14`)) %>%
   mutate(Number=as.numeric(paste(Number)),
          Rate=as.numeric(paste(Rate)),
          moe=as.numeric(paste(moe)),
-         lci=as.numeric(paste(moe)),
-         uci=as.numeric(paste(moe))) %>%
+         lci=as.numeric(paste(lci)),
+         uci=as.numeric(paste(uci))) %>%
   #change number to <3
   mutate(Number=as.character(paste(Number))) %>%
   mutate(Number=replace(Number,Number=='NA','<3')) %>%
@@ -939,8 +939,8 @@ teendeaths <- read_excel(path=paste0("./Input/health/southdakota_",year_5,"_vita
   mutate(Number=as.numeric(paste(Number)),
          Rate=as.numeric(paste(Rate)),
          moe=as.numeric(paste(moe)),
-         lci=as.numeric(paste(moe)),
-         uci=as.numeric(paste(moe))) %>%
+         lci=as.numeric(paste(lci)),
+         uci=as.numeric(paste(uci))) %>%
   #change number to <3
   mutate(Number=as.character(paste(Number))) %>%
   mutate(Number=replace(Number,Number=='NA','<3')) %>%
