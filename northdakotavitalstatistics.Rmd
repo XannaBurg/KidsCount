@@ -2708,9 +2708,16 @@ year_minus2 <- as.character(as.numeric(year)-2)
 year_minus3 <- as.character(as.numeric(year)-3)
 year_minus4 <- as.character(as.numeric(year)-4)
 
-population_denominatorsql <- paste0("SELECT location, locationtype, timeframe, age_group, data FROM northdakota WHERE vintageyear='",year,"' AND (timeframe='",year,"' OR timeframe='",year_minus1,"' OR timeframe='",year_minus2,"' OR timeframe='",year_minus3,"' OR timeframe='",year_minus4,"') AND varname='childpopulationbysingleyearofage';")
+#for 2020 and 2021 pop data
+population_denominatorsql1 <- paste0("SELECT location, locationtype, timeframe, age_group, data FROM northdakota WHERE vintageyear='",year,"' AND (timeframe='",year,"' OR timeframe='",year_minus1,"') AND varname='childpopulationbysingleyearofage';")
 
-population_denominator <- dbGetQuery(con,population_denominatorsql) %>%
+#for 2019 and before
+population_denominatorsql2 <- paste0("SELECT location, locationtype, timeframe, age_group, data FROM northdakota WHERE vintageyear='2020' AND (timeframe='",year_minus2,"' OR timeframe='",year_minus3,"' OR timeframe='",year_minus4,"') AND varname='childpopulationbysingleyearofage';")
+
+population_denominator1 <- dbGetQuery(con,population_denominatorsql1)
+
+population_denominator <- dbGetQuery(con,population_denominatorsql2) %>% 
+  bind_rows(population_denominator1) %>%
   mutate(age_group=as.numeric(paste(age_group))) %>%
   subset(age_group>=1 & age_group<=19) %>%
   
