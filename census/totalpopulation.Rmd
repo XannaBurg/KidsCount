@@ -348,7 +348,7 @@ pop_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM
 #remove the year from the sql WHERE clause if running all available years
 
 #edit this to include estimates available prior to current vintage year
-pop_sql_prioryears <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE (vintageyear='2000' OR vintageyear='1990') AND varname='totalpopulation';")
+pop_sql_prioryears <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE (vintageyear='2000' OR vintageyear='1990' OR vintageyear='2020') AND varname='totalpopulation';")
 
 upload_data_pop1 <- dbGetQuery(con,pop_sql) %>%
   rename(LocationId=locationid,
@@ -362,7 +362,8 @@ upload_data_pop2 <- dbGetQuery(con,pop_sql_prioryears) %>%
          Location=location,
          TimeFrame=timeframe,
          DataFormat=dataformat,
-         Data=data)
+         Data=data) %>%
+  subset(TimeFrame != '2020')
 
 #run the totalpopulationtribalarea for the matching year before adding tribal data to this query
 acs_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE varname='totalpopulationtribalarea';")
