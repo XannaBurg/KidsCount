@@ -62,8 +62,8 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 statename <- "South Dakota"
-year <- "2019"
-acsyear <- "2015-2019"
+year <- "2021"
+acsyear <- "2017-2021"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -279,8 +279,11 @@ acs_tribal <- getCensus(name="acs/acs5",
   
   #for South Dakota Northern Cheyenne is too small to have data, remove
   filter(state!='South Dakota' | location !='Northern Cheyenne Indian Reservation and Off-Reservation Trust Land') %>%
-
-
+  
+  #for South Dakota 
+  filter(state!='South Dakota' | location !='Shakopee Mdewakanton Sioux Community and Off-Reservation Trust Land') %>%
+  
+  
   #merge in location ids
   mutate(location=replace(location, 
                           statename=='Montana' & location=='Lewis and Clark', 
