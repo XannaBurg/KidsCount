@@ -45,9 +45,11 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '21_22'
-fullyear <- '2021/22' 
-year_prior <- '2020/21' #for dropout data
+year <- '22_23'
+fullyear <- '2022/23' 
+year_prior <- '2021/22' #for dropout data
+year_dropout <- '21_22'
+calyearformat <- '2022'
 statefile <- 'southdakota'
 statename <- 'South Dakota'
 
@@ -63,15 +65,15 @@ locationids <- read.csv("./Input/SD KC Location IDs.csv")
 #The same code can be used to run both enrollment indicators by changing the objects at the beginning of the first chunk
 ```{r}
 #requested dataset for enrollment and dropouts
-xl_data_enroll <- paste0("./Input/education/southdakota_",year,"_enrollmentdropout.xlsx")
-df_enrollment <- read_excel(path=xl_data_enroll, sheet='Pubdisgr',skip=3)
+xl_data_enroll_public <- paste0("./Input/education/southdakota_",year,"_publicenrollment.xlsx")
+df_enrollment <- read_excel(path=xl_data_enroll_public, sheet=paste0('Pubdisgr-',calyearformat),skip=5)
 
 
 #UPDATE THESE TWO VARIABLES PRIOR TO RUNNING THE CODE
 #RUN THE CODE IN THESE CHUNKS THROUGH FOR EACH OF THE INDICATORS
-columnname <- 'PK'
+columnname <- 'TOTAL KG-12'
 input_dataformat <- 'Number'
-variablename <- 'prekenrollment'
+variablename <- 'publicschoolk12enrollment'
 
 
 enrollment_district <- df_enrollment %>%
@@ -91,25 +93,25 @@ enrollment_district <- df_enrollment %>%
                          'Deubrook School District 05-6',location)) %>%
     mutate(location=ifelse(location=='Wagner Community School District 11-4',
                          'Wagner School District 11-4',location)) %>%
-    mutate(location=ifelse(location=='Webster Area',
+    mutate(location=ifelse(location=='Webster Area School District 18-5',
                          'Webster School District 18-5',location)) %>%
     mutate(location=ifelse(location=='Ipswich Public School District 22-6',
                          'Ipswich School District 22-6',location)) %>%
-    mutate(location=ifelse(location=='Faulkton Area',
+    mutate(location=ifelse(location=='Faulkton Area Schools School District 24-4',
                          'Faulkton School District 24-4',location)) %>%
-    mutate(location=ifelse(location=='Miller',
+    mutate(location=ifelse(location=='Miller School District 29-4',
                          'Miller Area School District 29-4',location)) %>%
     mutate(location=ifelse(location=='Kadoka Area School District 35-2',
                          'Kadoka School District 35-2',location)) %>%
     mutate(location=ifelse(location=='Chester Area School District 39-1',
                          'Chester Area District 39-1',location)) %>%
-    mutate(location=ifelse(location=='Langford Area',
+    mutate(location=ifelse(location=='Langford Area School District 45-5',
                          'Langford School District 45-5',location)) %>%
-    mutate(location=ifelse(location=='Rapid City  Area School District 51-4',
+    mutate(location=ifelse(location=='Rapid City Area School District 51-4',
                          'Rapid City School District 51-4',location)) %>%
     mutate(location=ifelse(location=='Viborg-Hurley School District 60-6',
                          'Viborg Hurley 60-6',location)) %>%
-    mutate(location=ifelse(location=='Selby  Area School District 62-5',
+    mutate(location=ifelse(location=='Selby Area School District 62-5',
                          'Selby School District 62-5',location)) %>%
     mutate(location=ifelse(location=='Shannon County School District 65-1',
                          'Oglala Lakota County School District 65-1',location)) %>%
@@ -128,7 +130,7 @@ enrollment_district <- df_enrollment %>%
   left_join(locationids,by=c('location'='Location')) %>%
   rename(locationid=LocationId) %>%
   subset(!is.na(data)) %>%
-  subset(location!='State Totals')
+  subset(location!='State Total')
 
 
 
@@ -185,9 +187,9 @@ tribalschools <- read.csv("./Documentation/Indicator Documentation/South Dakota 
 
 
 #requested dataset for enrollment and dropouts
-xl_data_enroll <- paste0("./Input/education/southdakota_",year,"_enrollmentdropout.xlsx")
-df_enrollment <- read_excel(path=xl_data_enroll, sheet='Pubdisgr',skip=3)
-df_enrollment_nonpublic <- read_excel(path=xl_data_enroll, sheet='NPdisgr',skip=3)
+xl_data_enroll_nonpublic <- paste0("./Input/education/southdakota_",year,"_nonpublicenrollment.xlsx")
+df_enrollment <- read_excel(path=xl_data_enroll_public, sheet=paste0('Pubdisgr-',calyearformat),skip=5)
+df_enrollment_nonpublic <- read_excel(path=xl_data_enroll_nonpublic, sheet=paste0('NPdisgr-',calyearformat),skip=6)
 
 
 #UPDATE THESE TWO VARIABLES PRIOR TO RUNNING THE CODE
@@ -199,9 +201,10 @@ variablename <- 'prek12enrollment'
 #for public schools
 enrollment_district <- df_enrollment %>%
   rename(fulllocation_name='District Name',
-         districtid='District No.',
+         districtid='District Number',
          data=all_of(columnname)) %>%
   select(c(fulllocation_name,data,districtid)) %>%
+  mutate(districtid=as.numeric(paste(districtid))) %>%
   
   #join with crosswalk to only include public schools matched to a tribal area
   inner_join(tribalschools,by=c('districtid'='school_specialednumber')) %>%
@@ -217,9 +220,10 @@ enrollment_district <- df_enrollment %>%
 #for non public schools
 enrollment_district_nonpublic <- df_enrollment_nonpublic %>%
   rename(fulllocation_name='District Name',
-         districtid='District No.',
+         districtid='District Number',
          data=all_of(columnname)) %>%
   select(c(fulllocation_name,data,districtid)) %>%
+  mutate(districtid=as.numeric(paste(districtid))) %>%
   
   #join with crosswalk to only include public schools matched to a tribal area
   inner_join(tribalschools,by=c('districtid'='school_specialednumber')) %>%
@@ -250,7 +254,7 @@ dbWriteTable(con,'southdakota',enrollment,append=TRUE,row.names=FALSE)
 
 **NON-PUBLIC SCHOOL ENROLLMENT GRADES PRE-K THROUGH 12**
 ```{r}
-state_data <- 15455
+state_data <- 16131
 #######
 
 #CALCULATE THE STATEWIDE DATA
@@ -302,9 +306,9 @@ tribalschools <- read.csv("./Documentation/Indicator Documentation/South Dakota 
 
 
 #requested dataset for enrollment and dropouts
-xl_data_enroll <- paste0("./Input/education/southdakota_",year,"_enrollmentdropout.xlsx")
-df_enrollment <- read_excel(path=xl_data_enroll, sheet='Drop2021SDPubRate',skip=4)
-df_enrollment_nonpublic <- read_excel(path=xl_data_enroll, sheet='Drop2021SDNPRate',skip=4)
+xl_data_enroll <- paste0("./Input/education/southdakota_",year_dropout,"_dropout.xlsx")
+df_enrollment <- read_excel(path=xl_data_enroll, sheet='Drop2122SDPubRate',skip=3)
+df_enrollment_nonpublic <- read_excel(path=xl_data_enroll, sheet='Drop2122SDNPRate',skip=3)
 
 
 #UPDATE THESE TWO VARIABLES PRIOR TO RUNNING THE CODE
@@ -316,7 +320,7 @@ variablename <- 'grades7to12eventdropoutrate'
 #for public schools
 enrollment_district <- df_enrollment %>%
   rename(fulllocation_name='District Name',
-         districtid='District No',
+         districtid='District Number',
          data=all_of(columnname)) %>%
   select(c(fulllocation_name,data,districtid)) %>%
   
@@ -338,9 +342,10 @@ enrollment_district <- df_enrollment %>%
 #for non public schools
 enrollment_district_nonpublic <- df_enrollment_nonpublic %>%
   rename(fulllocation_name='District Name',
-         districtid='District No',
+         districtid='District Number',
          data=all_of(columnname)) %>%
   select(c(fulllocation_name,data,districtid)) %>%
+  mutate(districtid=as.numeric(paste(districtid))) %>%
   
   #join with crosswalk to only include public schools matched to a tribal area
   inner_join(tribalschools,by=c('districtid'='school_specialednumber')) %>%
