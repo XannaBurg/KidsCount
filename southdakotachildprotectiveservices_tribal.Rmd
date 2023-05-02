@@ -1,0 +1,41 @@
+---
+title: "South Dakota Child Protection Tribal"
+output: html_document
+---
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+library(stringr)
+```
+
+
+```{r}
+####UPDATE to reflect the current year data working with
+year <- '22'
+statename <- 'South Dakota'
+
+#run this code to create an object needed for the database (DO NOT EDIT)
+database_state <- 'southdakota'
+```
+
+
+
+## STEP 1: IMPORT DATA
+```{r}
+#import the data
+importdata <- read.csv(paste0("./Input/safety/southdakota_",year,"_tribaldssdata.csv")) 
+```
+
+
+## STEP 2: ADD TO DATABASE
+```{r}
+#CHECK DATASET NAMED importdata TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,importdata,append=TRUE,row.names=FALSE)
+```
+
