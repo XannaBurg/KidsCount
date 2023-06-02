@@ -49,7 +49,7 @@ year <- '22_23'
 fullyear <- '2022/23' 
 year_prior <- '2021/22' #for dropout data
 year_dropout <- '21_22'
-calyearformat <- '2022'
+calyearformat <- '2023'
 statefile <- 'southdakota'
 statename <- 'South Dakota'
 
@@ -388,15 +388,15 @@ dbWriteTable(con,'southdakota',enrollment,append=TRUE,row.names=FALSE)
 df_digest <- read_excel(path=paste0("./Input/education/southdakota_",year,"_educationstatisticaldigest.xlsx"),skip=3)
 
 ####### UPDATE THESE VARIABLES PRIOR TO RUNNING THE CODE
-#verify column names prior to assigning, should be: 'Dropout Rate\r\n (%)' and 'Expenditure per ADM' and 'ACT Composite Score' and 'Fall Count of Home School Students' and 'Free & Reduced Lunch Eligibility Percentage'
+#verify column names prior to assigning, should be: 'Dropout Rate\r\n (%)' and 'Expenditure per ADM' and 'ACT Composite Score' and 'Fall Count of Open Enrolled Students' and 'Free & Reduced Lunch Eligibility Percentage'
 #in 20/21 home school varname is 'Fall ADM Count of Home School Students'
 #variable.names(df_digest)
 
-columnname <- 'Fall ADM Count of Home School Students'
-input_dataformat <- 'Number'
-variablename <- 'homeschoolk12enrollment'
+columnname <- 'Free & Reduced Lunch Eligibility Percentage'
+input_dataformat <- 'Percent'
+variablename <- 'freereducedlunch'
 #pull state data from the school profile on the statistical digest
-state_data <- 6677.35
+state_data <- .283
 #######
 
 
@@ -505,10 +505,10 @@ write.csv(upload_data_digest,file=paste0("./Output/education/southdakota_",year,
 
 #special education state data
 xl_data <- paste0("./Input/education/southdakota_",year,"_specialeducationstate.xlsx")
-df_specialed_impairment <- read_excel(path=xl_data, range="A4:X23")
-df_specialed_grade <- read_excel(path=xl_data, range="O28:X44")
-df_specialed_age <- read_excel(path=xl_data, range="O70:X90")
-df_specialed_race <- read_excel(path=xl_data, range="O52:X60")
+df_specialed_impairment <- read_excel(path=xl_data, range="A4:Y23")
+df_specialed_grade <- read_excel(path=xl_data, range="A26:Y42")
+df_specialed_age <- read_excel(path=xl_data, range="A67:Y87")
+df_specialed_race <- read_excel(path=xl_data, range="A49:Y57")
 
 #special education district data
 xl_data_specialed_district <- paste0("./Input/education/southdakota_",year,"_specialeducationdistrict.xlsx")
@@ -520,9 +520,9 @@ df_specialed_district <- read_excel(path=xl_data_specialed_district,skip=3)
 ```{r}
 specialed_count <- df_specialed_district %>%
   subset(!is.na(`District Number`)) %>%
-  select(c('District Name','2021 TOTAL Child Count (ages 3-21)')) %>%
+  select(c('District Name','2022 TOTAL Child Count (ages 3-21)')) %>%
   rename(location='District Name',
-         data='2021 TOTAL Child Count (ages 3-21)') %>%
+         data='2022 TOTAL Child Count (ages 3-21)') %>%
   subset(!is.na(location) & location != 'TOTAL' & 
            location != 'contact Susan Woodmansey,') %>%
   mutate(locationtype='School District') %>%
@@ -605,7 +605,7 @@ specialed_percent <- df_specialed_district %>%
 
 
 specialed_count_state <- df_specialed_district %>%
-  rename(data='2021 TOTAL Child Count (ages 3-21)',
+  rename(data='2022 TOTAL Child Count (ages 3-21)',
          location='District Number') %>%
   subset(location=='TOTAL') %>%
   select(c(data))  %>%
@@ -692,10 +692,10 @@ tribalschools$school_specialednumber <- as.character(tribalschools$school_specia
 
 specialed_count <- df_specialed_district %>%
   subset(!is.na(`District Number`)) %>%
-  select(c('District Name','2021 TOTAL Child Count (ages 3-21)','District Number')) %>%
+  select(c('District Name','2022 TOTAL Child Count (ages 3-21)','District Number')) %>%
   rename(fulllocation_name='District Name',
          districtid='District Number',
-         data='2021 TOTAL Child Count (ages 3-21)') %>%
+         data='2022 TOTAL Child Count (ages 3-21)') %>%
   
   #match to tribal area using crosswalk
   inner_join(tribalschools,by=c('districtid'='school_specialednumber')) %>%
@@ -755,7 +755,7 @@ dbWriteTable(con,'southdakota',upload_specialeducation_district,append=TRUE,row.
 
 **CHILDREN ENROLLED IN SPECIAL EDUCATION IN PUBLIC SCHOOLS BY TYPE OF IMPAIRMENT**
 ```{r}
-fullyear_file <- '2021'
+fullyear_file <- '2022'
 year_variable <- paste0("December ",fullyear_file)
 
 
@@ -768,10 +768,10 @@ specialed_impairment_count <- df_specialed_impairment %>%
            category_original != 'Total Ages 6-21' & 
            category_original != 'TOTAL CHILD COUNT (Ages 3-21)') %>%
   mutate(category=case_when(
-    category_original=='Autism (560)' ~ 'Autism Spectrum Disorder',
+    category_original=='Autism Spectrum Disorder (560)' ~ 'Autism Spectrum Disorder',
     category_original=='Cognitive Disability (510)' ~ 'Cognitive Disability',
     category_original=='Deaf (545)' ~ 'Deafness',
-    category_original=='Emotionally Disturbed (505)' ~ 
+    category_original=='Emotional Behavioral Disability (505)' ~ 
       'Emotionally Disturbed',
     category_original=='Hearing Loss (515)' ~ 'Hearing Loss',
     category_original=='Multiple Disabilities (530)' ~ 
@@ -780,7 +780,7 @@ specialed_impairment_count <- df_specialed_impairment %>%
       'Orthopedic Impairments',
     category_original=='Other Health Impaired (555)' ~ 
       'Other Health Impairments',
-    category_original=='Preschool 3-5 (570)' ~ 
+    category_original=='Developmental Delay (570)' ~ 
       'Developmental Delay (Preschool Ages 3-5)',
     category_original=='Prolonged Assistance (Ages 0-2)' ~ 
       'Prolonged Assistance (Ages 0-2)',
@@ -813,10 +813,10 @@ specialed_impairment_percent <- df_specialed_impairment %>%
    mutate(total=data_number[category_original=='TOTAL CHILD COUNT (Ages 3-21)']) %>%
   subset(category_original != 'TOTAL CHILD COUNT (Ages 3-21)') %>%
   mutate(category=case_when(
-    category_original=='Autism (560)' ~ 'Autism Spectrum Disorder',
+    category_original=='Autism Spectrum Disorder (560)' ~ 'Autism Spectrum Disorder',
     category_original=='Cognitive Disability (510)' ~ 'Cognitive Disability',
     category_original=='Deaf (545)' ~ 'Deafness',
-    category_original=='Emotionally Disturbed (505)' ~ 
+    category_original=='Emotional Behavioral Disability (505)' ~ 
       'Emotionally Disturbed',
     category_original=='Hearing Loss (515)' ~ 'Hearing Loss',
     category_original=='Multiple Disabilities (530)' ~ 
@@ -825,7 +825,7 @@ specialed_impairment_percent <- df_specialed_impairment %>%
       'Orthopedic Impairments',
     category_original=='Other Health Impaired (555)' ~ 
       'Other Health Impairments',
-    category_original=='Preschool 3-5 (570)' ~ 
+    category_original=='Developmental Delay (570)' ~ 
       'Developmental Delay (Preschool Ages 3-5)',
     category_original=='Prolonged Assistance (Ages 0-2)' ~ 
       'Prolonged Assistance (Ages 0-2)',
@@ -872,9 +872,7 @@ dbWriteTable(con,'southdakota',upload_specialeducation,append=TRUE,row.names=FAL
 
 specialed_impairment_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data, category FROM southdakota WHERE timeframe='",fullyear,"' AND  varname='totalspecialeducationbyimpairment';")
 
-upload_data_specialed_impairment <- dbGetQuery(con,specialed_impairment_sql)
-
-upload_data_specialed_impairment2 <- upload_data_specialed_impairment %>%
+upload_data_specialed_impairment <- dbGetQuery(con,specialed_impairment_sql) %>%
   rename(LocationId=locationid,
          Location=location,
          TimeFrame=timeframe,
