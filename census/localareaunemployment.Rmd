@@ -82,6 +82,7 @@ if (statename=='Montana') {
 
 
 ## STEP 1: IMPORT THE MOST RECENT DATA FROM A TEXT FILE ON THE BLS WEBSITE
+~This code no longer works because R cannot verify not a bot to access the website.~
 ```{r}
 #all options for data files found here: https://download.bls.gov/pub/time.series/la/
 
@@ -157,24 +158,45 @@ bls_periods <- import.from.bls2("https://download.bls.gov/pub/time.series/la/la.
 bls_measures <- import.from.bls2("https://download.bls.gov/pub/time.series/la/la.measure")
 ```
 
+## STEP 1B: IMPORT DATA THAT HAS BEEN DOWNLOADED FROM WEBSITE
+```{r}
+#https://download.bls.gov/pub/time.series/la
+#Go to the website, click on each state, and once the data is pulled up, right click and save as to download a .txt file. Let it be named the default file name, which will overwrite the file each year
+
+blsdata_mt <- read.table('/Users/xannaburg/Documents/KidsCountData/Input/economics/la.data.33.Montana.txt',header=TRUE,sep="\t")
+blsdata_nd <- read.table('/Users/xannaburg/Documents/KidsCountData/Input/economics/la.data.41.NorthDakota.txt',header=TRUE,sep="\t")
+blsdata_sd <- read.table('/Users/xannaburg/Documents/KidsCountData/Input/economics/la.data.49.SouthDakota.txt',header=TRUE,sep="\t")
+
+bls_periods <- read.table('/Users/xannaburg/Documents/KidsCountData/Input/economics/la.period.txt',header=TRUE,sep="\t")
+bls_measures <- read.table('/Users/xannaburg/Documents/KidsCountData/Input/economics/la.measure.txt',header=TRUE,sep="\t")
+```
 
 ## STEP 2: FORMAT THE IMPORTED DATA
 ```{r}
+if (statename=='Montana') {
+  blsdata <- blsdata_mt
+} else if (statename=='North Dakota') {
+  blsdata <- blsdata_nd
+} else if (statename=='South Dakota') {
+  blsdata <- blsdata_sd
+}
+
+
 blsdata_formatted <- blsdata %>%
   
   #add in the description of periods/time frame
   left_join(bls_periods,by=c('period'='period')) %>%
   
   #add in the description of the measure
-  mutate(measure_code=as.numeric(str_sub(`series_id                     `,start=-1))) %>%
+  mutate(measure_code=as.numeric(str_sub(`series_id`,-11,-10))) %>%
   left_join(bls_measures,by=c('measure_code'='measure_code')) %>%
   
   #add in the location name
-  mutate(laus_id=(str_sub(`series_id                     `,start=6,end=10))) %>%
+  mutate(laus_id=(str_sub(series_id,start=6,end=10))) %>%
   left_join(lausids,by=c('laus_id'='laus_id')) %>%
   
   #subset for only non-seasonally adjusted data (what is available at the county level)
-  mutate(seasonal=str_sub(`series_id                     `,start=1,end=5)) %>%
+  mutate(seasonal=str_sub(series_id,start=1,end=5)) %>%
   subset(seasonal=='LAUST' | seasonal=='LAUCN')
 
 ```
@@ -190,7 +212,7 @@ blsdata_formatted <- blsdata %>%
 
 ```{r}
 # ***** UPDATE THE YEAR TO THE CURRENT YEAR ***** 
-year <- '2021'
+year <- '2022'
 
 
 year_numeric <- as.numeric(paste(year))
@@ -209,16 +231,16 @@ bls_annual <- blsdata_formatted %>%
   #subset for the rate
   subset(measure_text=='unemployment rate') %>%
   #reformat to decimal version of percent
-  mutate(`       value`=`       value`/100) %>%
+  mutate(value=value/100) %>%
   
   #select desired variables
-  select(c(year,`       value`,State,Location)) %>%
+  select(c(year,value,State,Location)) %>%
   
   #format for KC database
   rename(location=Location,
          state=State,
          timeframe=year,
-         data=`       value`) %>%
+         data=value) %>%
   mutate(locationtype=if_else(location=='Montana','State','County')) %>%
   mutate(dataformat='Percent',
          varname='lausunemployment') %>%
