@@ -35,7 +35,7 @@ library(naniar)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2019'
+year <- '2021'
 
 year_minus3 <- as.character(as.numeric(year)-2)
 year_minus5 <- as.character(as.numeric(year)-4)
@@ -66,9 +66,9 @@ montana_3year <- read_excel(path=paste0("./Input/health/montana_",year_minus3,"_
 
 counties_3year <- read_excel(path=paste0("./Input/health/montana_",year_minus3,"_",year,"_vitalstatistics_KIDS_COUNT_",year_minus3,"_",year,".xlsx"),sheet='Counties',skip=3) 
 
-montana_5year <- read_excel(path=paste0("./Input/health/montana_",year_minus5,"_",year,"_vitalstatistics_KIDS_COUNT_",year_minus5,"_",year,".xlsx"),sheet='Montana',skip=3) 
+montana_5year <- read_excel(path=paste0("./Input/health/montana_",year_minus5,"_",year,"_vitalstatistics_KIDS_COUNT_",year_minus5,"_",year,"v2.xlsx"),sheet='Montana',skip=3) 
 
-counties_5year <- read_excel(path=paste0("./Input/health/montana_",year_minus5,"_",year,"_vitalstatistics_KIDS_COUNT_",year_minus5,"_",year,".xlsx"),sheet='Counties',skip=3) 
+counties_5year <- read_excel(path=paste0("./Input/health/montana_",year_minus5,"_",year,"_vitalstatistics_KIDS_COUNT_",year_minus5,"_",year,"v2.xlsx"),sheet='Counties',skip=3) 
 
 ```
 
@@ -501,7 +501,7 @@ if (temp_rows==0) {
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
 #**Suppress the three year percentage if there is exactly one NA during the three years
-#births_all$data[births_all$location=='Roosevelt'] <- NA
+#births_all$data[births_all$location=='Big Horn'] <- NA
 ```
 
 ## STEP 3: ADD TO DATABASE
@@ -686,7 +686,7 @@ if (temp_rows==0) {
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
 #**Suppress the three year percentage if there is exactly one NA during the five years
-#births_all$data[births_all$location=='Ravalli'] <- NA
+#births_all$data[births_all$location=='Big Horn'] <- NA
 ```
 
 ## STEP 3: ADD TO DATABASE
@@ -941,14 +941,14 @@ if (temp_rows==0 | temp_rows>1) {
 
 #if there is only one county, print the counties in ascending order
 #temp_check <- counties_3year %>%
-#  select(County,`Number Starting PNC in 1st Trimester`) %>%
-#  arrange(`Number Starting PNC in 1st Trimester`)
+ # select(County,`Number Starting PNC in 1st Trimester`) %>%
+  #arrange(`Number Starting PNC in 1st Trimester`)
 #View(temp_check)
 
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
 #**Choose the county with the next lowest count of births; if there is a tie, suppress both
-#births_all$data[births_all$location=='Billings'] <- NA
+#births_all$data[births_all$location=='Petroleium'] <- NA
 
 
 # 4. Visually inspect output data
@@ -996,7 +996,7 @@ if (temp_rows==0) {
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
 #**Suppress the three year percentage if there is exactly one NA during the three years
-#births_all$data[births_all$location=='Billings'] <- NA
+#births_all$data[births_all$location=='Granite'] <- NA
 
 ```
 
@@ -1125,7 +1125,7 @@ if (temp_rows==0 | temp_rows>1) {
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
 #**Choose the county with the next lowest count of births; if there is a tie, suppress both
-#births_all$data[births_all$location=='Golden Valley'] <- NA
+#births_all$data[births_all$location=='Sweet Grass'] <- NA
 
 
 # 4. Visually inspect output data
@@ -1353,6 +1353,7 @@ write.csv(upload_data,file=paste0("./Output/health/",statefile,"_",year,"_smoked
 ## STEP 1: CLEAN DATA
 ```{r}
 #COUNTY DATA
+#WHEN RATE CAN BE USED DIRECTLY FROM SPREADSHEET
 births_county <- counties_5year %>%
   #select only needed column
   select(c(County,`Teen Birth Rate`)) %>%
@@ -1375,6 +1376,7 @@ births_county <- counties_5year %>%
 
 
 #STATE DATA
+#WHEN RATE CAN BE USED DIRECTLY FROM SPREADSHEET
 births_state <- montana_5year %>%
   #select only needed column
   select(c(Race,`Teen Birth Rate`)) %>%
@@ -1388,11 +1390,27 @@ births_state <- montana_5year %>%
   mutate(location='Montana') %>%
   
   mutate(locationtype='State')
-  
+
+
+#pull data for population matching age 15-19 for females only
+#fulldata <- read.csv(paste0("../Input/demographics/DATADELIVERY_ Vintage 2021 Population Estimates20221021073707/v2021_co_res_char11_mt.csv"))
+
+#population_15_19 <- fulldata %>% 
+ # mutate(age_group=as.numeric(paste(age_group))) %>%
+  #mutate(data=as.numeric(paste(data))) %>%
+  #subset(age_group >=15 & age_group <=19) %>%
+  #group_by(location) %>%
+  #summarise(age_15_19=sum(data))
+
 
 #COMBINE GEOGRAPHIES
 births_all <- births_county %>%
   bind_rows(births_state) %>%
+  
+  #calculate rate
+ # left_join(population_15_19,by=c('location'='location')) %>%
+  #mutate(data=(count/age_15_19)*1000) %>%
+  #select(c(count)) %>%
   
   #add in KC variables
   mutate(timeframe=fiveyear,
