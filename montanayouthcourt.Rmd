@@ -34,8 +34,8 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '21'
-fullyear <- '2021' 
+year <- '22'
+fullyear <- '2022' 
 
 
 #input location ID file
