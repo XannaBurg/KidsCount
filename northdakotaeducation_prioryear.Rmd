@@ -43,10 +43,10 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '20-21'
-fullyear <- '2020/21' 
+year <- '21-22'
+fullyear <- '2021/22' 
 #fiscal year is the spring of reference school year
-fiscalyear <- '2021'
+fiscalyear <- '2022'
 
 
 statefile <- 'northdakota'
@@ -77,20 +77,23 @@ tribalschools$id_dash <- as.character(paste((tribalschools$id_dash)))
 STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #reformat year for fixing column names
-year_periods <- paste0(substr(year,1,2),".",substr(year,4,5))
+year_periods <- paste0(substr(year,1,2),"-",substr(year,4,5))
 
 #import data
-homeless_data <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Homeless_",year,".csv")) %>%
+homeless_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Homeless_",year,".xlsx")) %>%
   #rename columns removing year
-  rename(denominator=all_of(paste0("X20",year_periods,".Denominator")),
-         numerator=all_of(paste0("X20",year_periods,".Homeless")))
+  rename(denominator=all_of(paste0("20",year_periods," Denominator")),
+         numerator=all_of(paste0("20",year_periods," Homeless"))) %>%
+  #remove first rows with information FYI only
+  mutate(CountyCode=as.numeric(paste(CountyCode))) %>%
+  subset(!is.na(CountyCode))
 
 
 ############
 #COUNTY DATA
 homeless_county <- homeless_data %>%
   
-  separate(EntityID,c('county','district'),sep="-") %>%
+  separate(StateIssuedID,c('county','district'),sep="-") %>%
   mutate(county=as.numeric(paste(county))) %>%
   
   #import county name
@@ -156,7 +159,7 @@ tribalschools_updated <- tribalschools %>%
 
 homeless_tribal <- homeless_data %>%
   
-  separate(EntityID,c('county','district'),sep="-") %>%
+  separate(StateIssuedID,c('county','district'),sep="-") %>%
   
   #import tribal name
   left_join(tribalschools_updated,by=c('county'='county','district'='district')) %>%
@@ -785,8 +788,8 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_avgex
 STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #import data
-grad_data <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Grad_Rates_",year,".csv")) %>%
-  rename(ontime_Count='On.Time.Grads',
+grad_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Grad_Rates_",year,".xlsx")) %>%
+  rename(ontime_Count='On-Time Grads',
          Total_Students='Cohort') %>%
   subset(Race=='All')
 
@@ -854,11 +857,7 @@ grad_region <- grad_county %>%
 #TRIBAL AREA DATA
 #subset tribal schools lookup table to just county and district
 tribalschools_updated <- tribalschools %>%
-  separate(col=id_nodash,into=c('first','last'),sep=5) %>%
-  mutate(first=replace(first,first=='03029','3029')) %>%
-  mutate(first=replace(first,first=='03016','3016')) %>%
-  mutate(first=replace(first,first=='03030','3030')) %>%
-  mutate(first=replace(first,first=='03900','3900'))
+  separate(col=id_nodash,into=c('first','last'),sep=5) 
 
 grad_tribal <- grad_data %>%
   
@@ -1050,7 +1049,7 @@ View(temp_testsuppression_region)
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
 #**Choose the county with the next lowest count of births; if there is a tie, suppress both
-#grad_all$data[grad_all$location=='Sargent'] <- 'NA'
+#grad_all$data[grad_all$location=='Planning Region 5'] <- 'NA'
 
 
 # 5. Visually inspect output data
@@ -1090,8 +1089,8 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_gradu
 ## FOUR-YEAR HIGH SCHOOL COHORT GRADUATION RATE BY RACE ##
 STEP 1: Import and Clean Data
 ```{r}
-grad_data2 <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Grad_Rates_",year,".csv")) %>%
-  rename(ontime_Count='On.Time.Grads',
+grad_data2 <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Grad_Rates_",year,".xlsx")) %>%
+  rename(ontime_Count='On-Time Grads',
          Total_Students='Cohort') %>%
 
 
@@ -1132,7 +1131,7 @@ gradrace_county2 <- grad_data2 %>%
 ###########
 #STATE DATA
 #start with  cleaned county data
-gradrace_state <- gradrace_county %>%
+gradrace_state <- gradrace_county2 %>%
   mutate(location='North Dakota') %>%
   group_by(location,timeframe,race) %>%
   summarise(summed_numerator=sum(summed_numerator),
@@ -1147,7 +1146,7 @@ gradrace_state <- gradrace_county %>%
   
 ######################## 
 #combine all geographies
-gradrace_all <- gradrace_county %>%
+gradrace_all <- gradrace_county2 %>%
   bind_rows(gradrace_state) %>%
   
   
@@ -1319,7 +1318,9 @@ fiscalyear_minus1 <- as.character(as.numeric(fiscalyear)-1)
 academicyear <- paste0(fiscalyear_minus1,"-",fiscalyear)
 
 #import data
-dropout_data <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Dropout_Rates_7th-12th_",year,".csv")) 
+dropout_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Dropout_Rates_7th-12th_",year,".xlsx")) %>%
+  #change county to numeric
+  mutate(County=as.numeric(paste(County)))
 
 
 ############
@@ -1548,6 +1549,7 @@ if (temp_rows==0 | temp_rows>1) {
 }
 
 #if there is only one county, print the counties in ascending order
+#if other counties have ranges for percents, do not need to suppress one NA
 #temp_check <- dropout_county %>%
 #  arrange(totalenroll)
 #View(temp_check)
@@ -1560,6 +1562,7 @@ if (temp_rows==0 | temp_rows>1) {
 
 
 #4. Check that there is no suppression or >1 suppression
+#do not need to suppress if there are ranges of percents for multiple counties
 ########## MANUAL STEP #############
 #need to check that county data cannot be identified using region totals
 temp_testsuppression_region <- dropout_overall %>%
@@ -1727,7 +1730,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_grade
 STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #import data
-assessment_data <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",year,".csv")) %>%
+assessment_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",year,".xlsx")) %>%
 
   
   #subset for all students
@@ -2178,7 +2181,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_third
 STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #import data
-assessment_data <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",year,".csv")) %>%
+assessment_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",year,".xlsx")) %>%
 
   
   #subset for reading

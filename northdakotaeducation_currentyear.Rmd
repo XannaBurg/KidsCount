@@ -41,10 +41,10 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '21-22'
-fullyear <- '2021/22' 
+year <- '22-23'
+fullyear <- '2022/23' 
 #fiscal year is the spring of reference school year
-fiscalyear <- '2022'
+fiscalyear <- '2023'
 
 
 statefile <- 'northdakota'
@@ -325,9 +325,9 @@ View(temp_testsuppression)
 
 #if there is only one county, print the counties in ascending order
 #temp_check <- frl_all %>%
-  #subset(locationtype=='County' & dataformat=='Number') %>%
-  #mutate(data=as.numeric(paste(data))) %>%
-  #arrange(data)
+ # subset(locationtype=='County' & dataformat=='Number') %>%
+#  mutate(data=as.numeric(paste(data))) %>%
+ # arrange(data)
 #View(temp_check)
 
 #******
@@ -388,7 +388,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_freer
 STEP 1: IMPORT AND CLEAN SPECIAL EDUCATION DATA
 ```{r}
 #import data
-specialed_data <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/December1_SpecialEdSnapShots_",year,".csv"))
+specialed_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/December1_SpecialEdSnapShots_",year,".xlsx"))
 
 
 ############
@@ -504,7 +504,7 @@ specialed_all <- specialed_county %>%
 STEP 2: CALCULATE DENOMINATOR FROM ENROLLMENT SNAPSHOT
 ```{r}
 #import data
-enroll_data <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Enrollment_inclusive_",year,".csv"))
+enroll_data <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Enrollment_inclusive_",year,".xlsx"),guess_max = 1048576)
 
 
 ############
@@ -799,7 +799,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_total
 STEP 1: IMPORT AND CLEAN SPECIAL EDUCATION DATA
 ```{r}
 #import data
-specialed_data <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/December1_SpecialEdSnapShots_",year,".csv")) 
+specialed_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/December1_SpecialEdSnapShots_",year,".xlsx")) 
 
 
 ############
@@ -1002,7 +1002,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_total
 STEP 1: IMPORT AND CLEAN SPECIAL EDUCATION DATA
 ```{r}
 #import data
-specialed_data <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/December1_SpecialEdSnapShots_",year,".csv"))
+specialed_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/December1_SpecialEdSnapShots_",year,".xlsx"))
 
 
 ############
