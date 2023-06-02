@@ -33,7 +33,7 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2020'
+year <- '2021'
 statename <- 'North Dakota'
 
 
@@ -66,7 +66,7 @@ offenses <- read_excel(path=xl_path, guess_max = 1048576)
 offense_county <- offenses %>%
   
   #include those ages 10-17
-  subset(AGE_AT_OFFENSE>=10 & AGE_AT_OFFENSE<=17) %>%
+  subset(AGE>=10 & AGE<=17) %>%
   
   #unduplicate at the county level
   group_by(MID,COUNTY) %>%
