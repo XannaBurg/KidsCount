@@ -36,7 +36,7 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2022'
+year <- '2023'
 statename <- 'South Dakota'
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -178,11 +178,21 @@ childcaredata <- read_excel(path=paste0("./Input/education/southdakota_",year,"_
 childcare_county <- childcaredata %>%
   
   #fix formatting so there is a county for each row
-  fill(`County Name`,.direction=c("down")) %>%
+  fill(`CountyName`,.direction=c("down")) %>%
   #remove grand total (we can calculate)
-  subset(`County Name` != 'Grand Total') %>%
+  subset(`CountyName` != 'Grand Total') %>%
   #remove the word total
-  mutate(`County Name`=str_remove_all(`County Name`," Total")) %>%
+  mutate(`CountyName`=str_remove_all(`CountyName`," Total")) %>%
+  
+  #assign category names to coded values
+  mutate(`Provider Type`=case_when(
+    `ProviderType`=='00702' ~ 'Registered family child care homes',
+    `ProviderType`=='00701' ~ 'Licensed group family child care homes',
+    `ProviderType`=='00703' ~ 'Licensed child care centers',
+    `ProviderType`=='00706' ~ 'Licensed before and after school programs',
+    `ProviderType`=='00752' ~ 'In process of getting registered',
+    `ProviderType`=='00758' ~ 'In process of licensing')) %>%
+  
   #remove in process
   subset(`Provider Type`!='In process of licensing') %>%
   subset(`Provider Type`!='In process of getting registered') %>%
@@ -190,13 +200,9 @@ childcare_county <- childcaredata %>%
   
   #update the category names and remove the total (we can calculate total)
   subset(!is.na(`Provider Type`)) %>%
-  mutate(category=case_when(
-    `Provider Type`=='Licensed Day Care Center' ~ 'Licensed child care centers',
-    `Provider Type`=='Registered Family Day Care' ~ 'Registered family child care homes',
-    `Provider Type`=='Licensed Group Family Day Care' ~ 'Licensed group family child care homes',
-    `Provider Type`=='Licensed before and after school care' ~ 'Licensed before and after school programs')) %>%
-  rename(data=`Count of Providers`,
-         location=`County Name`) %>%
+  rename(data=`Count of ProviderID`,
+         location=`CountyName`,
+         category=`Provider Type`) %>%
   select(location,category,data) %>%
   
   #merge with all possible options of county and category
@@ -307,11 +313,20 @@ childcaredata_slots <- read_excel(path=paste0("./Input/education/southdakota_",y
 childcare_county_slots <- childcaredata_slots %>%
   
   #fix formatting so there is a county for each row
-  fill(`County Name`,.direction=c("down")) %>%
+  fill(`CountyName`,.direction=c("down")) %>%
   #remove grand total (we can calculate)
-  subset(`County Name` != 'Grand Total') %>%
+  subset(`CountyName` != 'Grand Total') %>%
   #remove the word total
-  mutate(`County Name`=str_remove_all(`County Name`," Total")) %>%
+  mutate(`CountyName`=str_remove_all(`CountyName`," Total")) %>%
+  
+  mutate(`Provider Type`=case_when(
+    `ProviderType`=='00702' ~ 'Registered family child care homes',
+    `ProviderType`=='00701' ~ 'Licensed group family child care homes',
+    `ProviderType`=='00703' ~ 'Licensed child care centers',
+    `ProviderType`=='00706' ~ 'Licensed before and after school programs',
+    `ProviderType`=='00752' ~ 'In process of getting registered',
+    `ProviderType`=='00758' ~ 'In process of licensing')) %>%
+  
   #remove in process
   subset(`Provider Type`!='In process of licensing') %>%
   subset(`Provider Type`!='In process of getting registered') %>%
@@ -319,13 +334,9 @@ childcare_county_slots <- childcaredata_slots %>%
   
   #update the category names and remove the total (we can calculate total)
   subset(!is.na(`Provider Type`)) %>%
-  mutate(category=case_when(
-    `Provider Type`=='Licensed Day Care Center' ~ 'Licensed child care centers',
-    `Provider Type`=='Registered Family Day Care' ~ 'Registered family child care homes',
-    `Provider Type`=='Licensed Group Family Day Care' ~ 'Licensed group family child care homes',
-    `Provider Type`=='Licensed before and after school care' ~ 'Licensed before and after school programs')) %>%
-  rename(data=`Authorized Slots`,
-         location=`County Name`) %>%
+  rename(data=`Sum of AuthorizedSlots`,
+         location=`CountyName`,
+         category=`Provider Type`) %>%
   select(location,category,data) %>%
   
   #merge with all possible options of county and category
@@ -439,11 +450,20 @@ childcaredata <- read_excel(path=paste0("./Input/education/southdakota_",year,"_
 schoolage_county <- childcaredata %>%
   
   #fix formatting so there is a county for each row
-  fill(`County Name`,.direction=c("down")) %>%
+  fill(`CountyName`,.direction=c("down")) %>%
   #remove grand total (we can calculate)
-  subset(`County Name` != 'Grand Total') %>%
+  subset(`CountyName` != 'Grand Total') %>%
   #remove the word total
-  mutate(`County Name`=str_remove_all(`County Name`," Total")) %>%
+  mutate(`CountyName`=str_remove_all(`CountyName`," Total")) %>%
+  
+   mutate(`Provider Type`=case_when(
+    `ProviderType`=='00702' ~ 'Registered family child care homes',
+    `ProviderType`=='00701' ~ 'Licensed group family child care homes',
+    `ProviderType`=='00703' ~ 'Licensed child care centers',
+    `ProviderType`=='00706' ~ 'Licensed before and after school programs',
+    `ProviderType`=='00752' ~ 'In process of getting registered',
+    `ProviderType`=='00758' ~ 'In process of licensing')) %>%
+  
   #remove in process
   subset(`Provider Type`!='In process of licensing') %>%
   subset(`Provider Type`!='In process of getting registered') %>%
@@ -451,13 +471,9 @@ schoolage_county <- childcaredata %>%
   
   #update the category names and remove the total (we can calculate total)
   subset(!is.na(`Provider Type`)) %>%
-  mutate(category=case_when(
-    `Provider Type`=='Licensed Day Care Center' ~ 'Licensed child care centers',
-    `Provider Type`=='Registered Family Day Care' ~ 'Registered family child care homes',
-    `Provider Type`=='Licensed Group Family Day Care' ~ 'Licensed group family child care homes',
-    `Provider Type`=='Licensed before and after school care' ~ 'Licensed before and after school programs')) %>%
-  rename(data=`Count of Providers`,
-         location=`County Name`) %>%
+  rename(data=`Count of ProviderID`,
+         location=`CountyName`,
+         category=`Provider Type`) %>%
   select(location,category,data) %>%
   
   #merge with all possible options of county and category
@@ -562,11 +578,20 @@ childcaredata <- read_excel(path=paste0("./Input/education/southdakota_",year,"_
 schoolage_county_slots <- childcaredata %>%
   
   #fix formatting so there is a county for each row
-  fill(`County Name`,.direction=c("down")) %>%
+  fill(`CountyName`,.direction=c("down")) %>%
   #remove grand total (we can calculate)
-  subset(`County Name` != 'Grand Total') %>%
+  subset(`CountyName` != 'Grand Total') %>%
   #remove the word total
-  mutate(`County Name`=str_remove_all(`County Name`," Total")) %>%
+  mutate(`CountyName`=str_remove_all(`CountyName`," Total")) %>%
+  
+  mutate(`Provider Type`=case_when(
+    `ProviderType`=='00702' ~ 'Registered family child care homes',
+    `ProviderType`=='00701' ~ 'Licensed group family child care homes',
+    `ProviderType`=='00703' ~ 'Licensed child care centers',
+    `ProviderType`=='00706' ~ 'Licensed before and after school programs',
+    `ProviderType`=='00752' ~ 'In process of getting registered',
+    `ProviderType`=='00758' ~ 'In process of licensing')) %>%
+  
   #remove in process
   subset(`Provider Type`!='In process of licensing') %>%
   subset(`Provider Type`!='In process of getting registered') %>%
@@ -574,13 +599,9 @@ schoolage_county_slots <- childcaredata %>%
   
   #update the category names and remove the total (we can calculate total)
   subset(!is.na(`Provider Type`)) %>%
-  mutate(category=case_when(
-    `Provider Type`=='Licensed Day Care Center' ~ 'Licensed child care centers',
-    `Provider Type`=='Registered Family Day Care' ~ 'Registered family child care homes',
-    `Provider Type`=='Licensed Group Family Day Care' ~ 'Licensed group family child care homes',
-    `Provider Type`=='Licensed before and after school care' ~ 'Licensed before and after school programs')) %>%
-  rename(data=`Authorized Slots`,
-         location=`County Name`) %>%
+  rename(data=`Sum of AuthorizedSlots`,
+         location=`CountyName`,
+         category=`Provider Type`) %>%
   select(location,category,data) %>%
   
   #merge with all possible options of county and category
