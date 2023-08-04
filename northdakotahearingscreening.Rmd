@@ -43,7 +43,7 @@ library(readxl)
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 statename <- "North Dakota"
-year <- "2021"
+year <- "2022"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
