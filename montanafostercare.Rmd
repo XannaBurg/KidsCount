@@ -34,8 +34,8 @@ library(naniar)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2021'
-year_short <- '21'
+year <- '2022'
+year_short <- '22'
 
 statefile <- 'montana'
 statename <- 'Montana'
@@ -56,7 +56,7 @@ regionids$county <- as.character(regionids$county)
 
 #fostercaredata_0to5 <- read_excel(path=paste0("./Input/safety/montana_",year_short,"_fostercaredata.xlsx"),sheet='Ages 0-5',skip=3) 
 
-fostercaredata <- read_excel(path=paste0("./Input/safety/montana_",year_short,"_fostercaredata.xlsx"),sheet='2021 Unduplicated Kids in Care') 
+fostercaredata <- read_excel(path=paste0("./Input/safety/montana_",year_short,"_fostercaredata.xlsx"),sheet='2022 Unduplicated Kids in Care') 
 ```
 
 
@@ -73,6 +73,7 @@ fostercaredata_0to17 <- fostercaredata %>%
   #new format in 2021
   rename(data=`Unduplicated kids in care 0-17`) %>%
   select(location,data) %>%
+  subset(!is.na(location)) %>%
   
   
   
@@ -262,6 +263,7 @@ fostercaredata_0to5 <- fostercaredata %>%
   #new format in 2021
   rename(data=`Unduplicated kids in care 0-5`) %>%
   select(location,data) %>%
+  subset(!is.na(location)) %>%
   
   
   
@@ -500,7 +502,7 @@ write.csv(excel0to5,'./Output/safety/MT Foster Care Excel/mt_fostercare_tocopy_0
 ## STEP 1: create the data file manually
 ```{r}
 #edit the data only
-data <- 562
+data <- 592
 
 #----
 location <- 'Montana'
