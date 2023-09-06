@@ -28,8 +28,8 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2019'
-fullyear <- '2019/20' 
+year <- '2022'
+fullyear <- '2022/23' 
 statefile <- 'southdakota'
 statename <- 'South Dakota'
 
@@ -49,12 +49,12 @@ countylist$county <- as.character(countylist$county)
 
 ## STEP 1: IMPORT AND CLEAN DATA
 ```{r}
-frl_data <- read_excel(paste0("./Input/education/southdakota_",year,"_frl.xls"),sheet='SORT BY COUNTY - PUBLIC ONLY') %>%
+frl_data <- read_excel(paste0("./Input/education/southdakota_",year,"_frl.xls"),sheet='Sort by County - PUBLIC ONLY') %>%
   
   #fix data so only the totals are included for each county
   replace_with_na(replace=list(County='County Subtotal')) %>%
   fill(County) %>%
-  rename(school='School/Agency Name',
+  rename(school='School / Agency Name',
          studentenrollment='Student Enrollment') %>%
   subset(is.na(school)) %>%
   
@@ -67,6 +67,9 @@ frl_data <- read_excel(paste0("./Input/education/southdakota_",year,"_frl.xls"),
     mutate(location=replace(location, 
                           location=='Mcpherson', 
                           'McPherson')) %>%
+  mutate(location=replace(location, 
+                          location=='Oglala Lakota County', 
+                          'Oglala Lakota')) %>%
   
   
   #keep only needed variables
@@ -136,7 +139,7 @@ dbWriteTable(con,statefile,frl_data,append=TRUE,row.names=FALSE)
 ```{r}
 #write query from database to get needed format for KC data center
 
-upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", statefile," WHERE timeframe='",year,"' AND varname='freereducedlunch' AND locationtype='County';")
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", statefile," WHERE timeframe='",fullyear,"' AND varname='freereducedlunch' AND locationtype='County';")
 
 upload_datacenter <- dbGetQuery(con,upload_sql) %>%
   rename(LocationId=locationid,
