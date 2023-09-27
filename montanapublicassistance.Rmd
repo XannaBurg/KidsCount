@@ -43,10 +43,10 @@ library(stringr)
 ```{r}
 
 ####UPDATE to reflect the current year data working with
-year <- '2022'
+year <- '2023'
 statename <- 'Montana'
 #input the number that matches Missoula CITY for Medicaid children
-missoulavalue <- ''
+missoulavalue <- '7123'
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
