@@ -1348,8 +1348,8 @@ write.csv(upload_data_graduation,file=paste0("./Output/education/southdakota_",y
 ```{r}
 #MANUALLY INPUT THE RACE DATA USING THE REPORT CARD
 race <- c('American Indian/Alaska Native','Asian','Black or African American','Hispanic or Latino','White','All Races','Two or more races')
-graduation <- c(.458,.8902,.7586,.6892,.8954,.8215,.7279)
-completion <- c(.6925,.9157,.8712,.7882,.9461,.9037,.8486)
+graduation <- c(.4836,.9539,.8247,.6972,.9055,.8405,.7932)
+completion <- c(.6802,.9563,.8411,.7917,.9482,.9051,.8878)
 
 df_graduation_race <- data.frame(race,graduation) %>%
   rename(data=graduation) %>%
