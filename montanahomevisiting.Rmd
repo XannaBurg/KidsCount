@@ -30,7 +30,7 @@ library(naniar)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2020'
+year <- '2022'
 
 statefile <- 'montana'
 statename <- 'Montana'
@@ -63,11 +63,19 @@ homevisitingdata2 <- homevisitingdata %>%
          families_2019=`FAMILIES SERVED...6`,
          children_2019=`CHILDREN SERVED...7`,
          families_2020=`FAMILIES SERVED...8`,
-         children_2020=`CHILDREN SERVED...9`) %>%
+         children_2020=`CHILDREN SERVED...9`,
+         families_2021=`FAMILIES SERVED...10`,
+         children_2021=`CHILDREN SERVED...11`,
+         families_2022=`FAMILIES SERVED...12`,
+         children_2022=`CHILDREN SERVED...13`) %>%
   
   #remove footnotes
   subset(location!='Notes:') %>%
   subset(!is.na(location)) %>%
+  
+  #select only most recent year
+  select(c(location,paste0("families_",year),paste0("children_",year))) %>%
+  
   #update locations
   mutate(location=replace(location,location=='TOTAL','Montana')) %>%
   mutate(locationtype=ifelse(location=='Montana','State','County')) %>%
@@ -78,18 +86,17 @@ homevisitingdata2 <- homevisitingdata %>%
   
   left_join(locationids,by=c('location'='Location')) %>%
   rename(locationid=LocationId) %>%
-    
+  
   #pivot longer
-  mutate(families_2017=as.numeric(paste(families_2017))) %>%
-  mutate(families_2020=as.numeric(paste(families_2020))) %>%
-  mutate(children_2020=as.numeric(paste(children_2020))) %>%
-  pivot_longer(cols=c(families_2017,children_2017,families_2018,children_2018,families_2019,children_2019,families_2020,children_2020),names_to='category',values_to='data') %>%
+  pivot_longer(cols=c(paste0("families_",year),paste0("children_",year)),names_to='category',values_to='data') %>%
   
   #split category to include the date
   separate(category,into=c('category','timeframe'),sep=-4) %>%
   mutate(category=case_when(
     category=='families_' ~ 'Families',
-    category=='children_' ~ 'Children'))
+    category=='children_' ~ 'Children')) %>%
+  
+  mutate(data=as.numeric(paste(data)))
   
 
 
