@@ -40,7 +40,7 @@ library(gt)
 
 
 ```{r}
-year <- "2021"
+year <- "2022"
 statename <- 'North Dakota'
 
 #county and state names that match fips codes (from tidycensus package)
@@ -90,7 +90,7 @@ countylist$Location <- as.character(countylist$Location)
 ```{r}
 #import the data
 afcars <- read.csv(paste0("./Input/safety/northdakota_afcars_",year,".csv")) %>%
-  subset(X_2RptPerEnd==202109)
+  subset(X_2RptPerEnd==202209)
 
 ############
 #COUNTY DATA
@@ -222,13 +222,13 @@ temp_checkregions <- afcars_all %>%
   left_join(regionids,by=c('location'='county')) %>%
   
   #******ADD IN THE REGION HERE
-  subset(region=='Planning Region 4') %>%
+  subset(region=='Planning Region 1') %>%
   arrange(data)
 View(temp_checkregions)
 
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
-#afcars_all$data[afcars_all$location=='Pembina'] <- NA
+#afcars_all$data[afcars_all$location=='McKenzie'] <- NA
 
   
 ```
