@@ -42,8 +42,8 @@ library(stringr)
 ```{r}
 
 ####UPDATE to reflect the current year data working with
-year <- '2022'
-year_short <- '22'
+year <- '2023'
+year_short <- '23'
 statename <- 'South Dakota'
 
 
@@ -372,6 +372,7 @@ snapparticipants_percent <- snap_percents_0to4 %>%
   bind_rows(snap_percents_5to13) %>%
   bind_rows(snap_percents_14to17) %>%
   bind_rows(snap_percents_under18)
+View(snapparticipants_percent)
 ```
 
 ```{r}
@@ -605,6 +606,8 @@ tanf_percents_0to17 <- tanf_0to17 %>%
   rename(data=percent) %>%
   mutate(dataformat='Percent') %>%
   arrange(location,timeframe)
+
+View(tanf_percents_0to17)
 
 ```
 
@@ -850,6 +853,8 @@ medicaidparticipants_percent <- medicaid_percents_0to5 %>%
   bind_rows(medicaid_percents_6to13) %>%
   bind_rows(medicaid_percents_14to18) %>%
   bind_rows(medicaid_percents_under19)
+
+View(medicaidparticipants_percent)
 ```
 
 ```{r}
