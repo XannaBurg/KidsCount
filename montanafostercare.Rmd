@@ -95,8 +95,8 @@ fostercaredata_0to17 <- fostercaredata %>%
   mutate(timeframe=year) %>%  
   
   
-  #suppress if less than 4
-  mutate(data=replace(data,data<4,NA))
+  #suppress if less than 10
+  mutate(data=replace(data,data<10,NA))
   
 
 
@@ -114,8 +114,8 @@ if (sum(is.na(fostercaredata_0to17$locationid))>=1) {
 }
 
 
-#2. Check that no values are less than 4
-temp_suppresscheck <- fostercaredata_0to17 %>% subset(data<4)
+#2. Check that no values are less than 10
+temp_suppresscheck <- fostercaredata_0to17 %>% subset(data<10)
 temp_rows <- as.numeric(nrow(temp_suppresscheck))
 if (temp_rows==0) {
   'data suppression followed at individual location level'
@@ -285,8 +285,8 @@ fostercaredata_0to5 <- fostercaredata %>%
     
   mutate(timeframe=year) %>%
 
-  #suppress if less than 4
-  mutate(data=replace(data,data<4,NA))
+  #suppress if less than 10
+  mutate(data=replace(data,data<10,NA))
   
 
 
@@ -304,8 +304,8 @@ if (sum(is.na(fostercaredata_0to5$locationid))>=1) {
 }
 
 
-#2. Check that no values are less than 4
-temp_suppresscheck <- fostercaredata_0to5 %>% subset(data<4)
+#2. Check that no values are less than 10
+temp_suppresscheck <- fostercaredata_0to5 %>% subset(data<10)
 temp_rows <- as.numeric(nrow(temp_suppresscheck))
 if (temp_rows==0) {
   'data suppression followed at individual location level'
@@ -445,8 +445,8 @@ excel0to17_sql <- paste0("SELECT locationid, location, timeframe, dataformat, da
 
 excel0to17_county <- dbGetQuery(con,excel0to17_sql) %>%
   pivot_wider(names_from='timeframe',values_from='data') %>%
-  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021')) %>%
-  select(c(`location`,`2021_Number`,`2021_Rate`,
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022')) %>%
+  select(c(`location`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
            `2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,
            `2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
   subset(location != 'Montana') %>%
@@ -454,8 +454,8 @@ excel0to17_county <- dbGetQuery(con,excel0to17_sql) %>%
 
 excel0to17_state <- dbGetQuery(con,excel0to17_sql) %>%
   pivot_wider(names_from='timeframe',values_from='data') %>%
-  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021')) %>%
-  select(c(`location`,`2021_Number`,`2021_Rate`,
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022')) %>%
+  select(c(`location`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
            `2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,
            `2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
   subset(location == 'Montana') %>%
@@ -471,8 +471,8 @@ excel0to5_sql <- paste0("SELECT locationid, location, timeframe, dataformat, dat
 
 excel0to5_county <- dbGetQuery(con,excel0to5_sql) %>%
   pivot_wider(names_from='timeframe',values_from='data') %>%
-  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021')) %>%
-  select(c(`location`,`2021_Number`,`2021_Rate`,
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022')) %>%
+  select(c(`location`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
            `2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,
            `2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
   subset(location != 'Montana') %>%
@@ -480,8 +480,8 @@ excel0to5_county <- dbGetQuery(con,excel0to5_sql) %>%
 
 excel0to5_state <- dbGetQuery(con,excel0to5_sql) %>%
   pivot_wider(names_from='timeframe',values_from='data') %>%
-  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021')) %>%
-  select(c(`location`,`2021_Number`,`2021_Rate`,
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022')) %>%
+  select(c(`location`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
            `2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,
            `2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
   subset(location == 'Montana') %>%
