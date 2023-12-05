@@ -28,29 +28,32 @@ library(stringr)
 
 ```{r}
 #UPDATE to reflect the current year data working with
-year <- '2022'
+year <- '2023'
 state <- 'northdakota'
 
 year_shortened <- substr(year,3,4)
 
 #only need to change if using a different month than February
 month <- '2'
+
+#read in the codes for county name
+countymatch <- read.csv("./Documentation/Indicator Documentation/North Dakota Data Requests/ND County Codes_for childcare.csv")
 ```
 
 ```{r}
 #read in the child care data
-child_data <- read_excel(path=paste0("./Input/education/northdakota_",year,"_childcaredata.xlsx"),sheet=paste0(month,"-1-",year_shortened," Providers"))
+child_data <- read_excel(paste0("./Input/education/northdakota_",year,"_childcaredata_may.xlsx"))
 
 #read in the quality data
-quality_data <- read_excel(path=paste0("./Input/education/northdakota_",year,"_childcarequality.xlsx"))
+quality_data <- read_excel(path=paste0("./Input/education/northdakota_",year,"_childcarequality_may.xlsx"))
 
-#read in the codes for county name
-countymatch <- read.csv("./Documentation/Indicator Documentation/North Dakota Data Requests/ND County Codes_for childcare.csv")
+
 
 
 #create a dataset that has all combinations of county and category for final provider type categories
 #this is to account for the fact that some combinations will be 0
-providertype_kc_category <- c('Licensed','Licensed School Age','Self-declaration Providers','Registered Tribal','Approved Relative')
+providertype_kc_category <- c('Licensed','Licensed School Age','Self-declaration Providers')
+#providertype_kc_category <- c('Licensed','Licensed School Age','Self-declaration Providers','Registered Tribal','Approved Relative')
 providertype_kc_categorylist <- as.data.frame(providertype_kc_category)
 county_provider_categorylist <- crossing(countymatch,providertype_kc_categorylist) %>%
   select(-c(ndcounty_number))
@@ -75,34 +78,44 @@ regionids <- read.csv("./Input/ND KC Region List.csv")
 child_data_2 <- child_data %>%
   
   #clean up the data
-  #remove cases where License Type is 'School Age Child Care' and `Max Number of Children` is 'Not Listed'
-  subset(`License Type`!='School Age Child Care' | `Max Number of Children`!='Not Listed') %>%
-  
-  #update incorrect label 'Group in a Home' to 'Group Child Care Home'
-  mutate(`License Type`=replace(`License Type`,`License Type`=='Group in a Home','Group Child Care Home')) %>%
-  
-  #remove any military base programs, these are not licensed
-  subset(`Max Number of Children` != 'Military Base - not listed') %>%
-  
-  #re-assign tribal programs to tribal registration
-  mutate(`License Type`=replace(`License Type`,`Max Number of Children`=='Tribal - not listed','Tribal Registration')) %>%
+  #remove any programs that do not have a license number, so we cannot match to county
+  subset(!is.na(`File Number`)) %>%
   
   #create new variable matching to KC categories
+  #check next year for this next line, in 2023 all the public approvals were school age programs denoted by a K in the license number
+  mutate(`Type`=replace(`Type`,`Type`=='Public Approval - License Exempt','School Age License')) %>%
   mutate(category=case_when(
-    `License Type`=='Child Care Center' | `License Type`=='Family Child Care' | 
-      `License Type`=='Group Child Care Facility' | `License Type`=='Group Child Care Home' | 
-      `License Type`=='Multiple Licensed Facility' | 
-      `License Type`=='Preschool Education Facility' ~ 'Licensed',
-    `License Type`=='School Age Child Care' ~ 'Licensed School Age',
-    `License Type`=='Self-declaration' ~ 'Self-declaration Providers',
-    `License Type`=='Tribal Registration' ~ 'Registered Tribal',
-    `License Type`=='Approved Relative' ~ 'Approved Relative')) %>%
+    `Type`=='Center License' | `Type`=='Family License' | 
+      `Type`=='Group License-Facility' | `Type`=='Group License-Home' | 
+      `Type`=='Multiple License' | 
+      `Type`=='Preschool License' ~ 'Licensed',
+    `Type`=='School Age License' ~ 'Licensed School Age',
+    `Type`=='Self Declared Certificate' ~ 'Self-declaration Providers',
+    `Type`=='Public Approval - License Exempt' ~ 'License Exempt')) %>%
   
-  #remove self-declaration capacity - we do not report unlicensed capacity
-  mutate(`Max Number of Children`=replace(`Max Number of Children`,category=='Self-declaration Providers','Unlicensed')) %>%
+  mutate(capacity=as.numeric(paste(`Capacity`))) %>%
   
-  #create new capacity variable that drops unknowns, changes to numeric
-  mutate(capacity=as.numeric(paste(`Max Number of Children`)))
+  #merge in county from license number
+  mutate(ndcounty_number1=substr(`File Number`,1,2))
+
+child_data_fix <- child_data_2 %>% subset(ndcounty_number1=='0-' | ndcounty_number1=='1-' | ndcounty_number1=='2-' | ndcounty_number1=='3-' | ndcounty_number1=='4-' | ndcounty_number1=='5-') %>%
+  mutate(`File Number 2`=str_sub(`File Number`,3)) %>%
+  mutate(`File Number 2`=replace(`File Number 2`,`File Number`=='0-0-01898-F','36')) %>%
+  mutate(`File Number 2`=replace(`File Number 2`,`File Number`=='1-5-00442-H','05')) %>%
+  
+  mutate(ndcounty_number2=substr(`File Number 2`,1,2)) %>%
+  select(c(`File Number`,ndcounty_number2))
+
+
+child_data_3 <- child_data_2 %>%
+  left_join(child_data_fix,by=c('File Number'='File Number')) %>%
+  mutate(ndcounty_number=case_when(
+    is.na(ndcounty_number2) ~ ndcounty_number1,
+    !is.na(ndcounty_number2) ~ ndcounty_number2)) %>%
+  
+  mutate(ndcounty_number=as.numeric(paste(ndcounty_number))) %>%
+  left_join(countymatch, by=c('ndcounty_number'='ndcounty_number'))
+
 ```
 
 
@@ -111,21 +124,21 @@ child_data_2 <- child_data %>%
 NOTE: SCHOOL AGE INCLUDED
 ```{r}
 #COUNTY DATA
-countysums_providerscapacity <- child_data_2 %>%
+countysums_providerscapacity <- child_data_3 %>%
 
-  group_by(County,category) %>%
+  group_by(county,category) %>%
   summarise(providers = n(),
             capacity=sum(capacity),.groups='keep') %>%
   
   #fill in missing county/group combinations
-  right_join(county_provider_categorylist,by=c('County'='county','category'='providertype_kc_category')) %>%
+  right_join(county_provider_categorylist,by=c('county'='county','category'='providertype_kc_category')) %>%
   
   #for the missing combinations that are NA, make them zero
   mutate(providers = replace_na(providers, 0),
          capacity= replace_na(capacity,0)) %>%
   
   #fix kc naming
-  rename(location=County) %>%
+  rename(location=county) %>%
   mutate(locationtype='County') 
 
 
@@ -262,10 +275,12 @@ NOTE: SCHOOL AGE NOT INCLUDED
 ```{r}
 ####CREATE COUNTY SUMMARY COUNT OF CHILD CARE
 countysums_quality <- quality_data %>%
+  
+  select(-c(`...5`,`Row Labels`,`Count of Org Id`)) %>%
 
-  rename(category=`Quality Rating`,
+  rename(category=`Qris Level Name`,
          location=County,
-         capacity=`Licensed Capacity`) %>%
+         capacity=`Capacity`) %>%
   mutate(capacity=as.numeric(paste(capacity))) %>%
   group_by(location,category) %>%
   summarise(providers = n(),
@@ -274,6 +289,7 @@ countysums_quality <- quality_data %>%
   
   #join with shell to make sure all county/quality categories are represented
   right_join(county_quality_categorylist,by=c('location'='county','category'='quality')) %>%
+
 
   mutate(providers = replace_na(providers, 0),
          capacity= replace_na(capacity,0)) %>%
@@ -348,6 +364,7 @@ regionsums_quality <- countysums_quality_combined %>%
 ```
 
 Combine with licensed data from Kids Count database to calculate those not participating
+##Data is not accurate to really do this anymore
 ```{r}
 licensedproviders_sql <- paste0("SELECT location,data FROM northdakota WHERE timeframe = '",year,"' AND varname='childcareprovidersbytype' AND category='Licensed' AND dataformat='Number';")
 licensedproviders <- dbGetQuery(con,licensedproviders_sql) %>%
@@ -379,16 +396,16 @@ notparticipatinginquality <- countysums_quality_combined %>%
   mutate(category='Not participating in QRIS')
   
   
+```
 
-
+Format the Kids Count Data Center
+```{r}
 #COMBINE ALL DATA
 quality_data_combined <- countysums_quality_combined %>%
   bind_rows(statesums_quality) %>%
   bind_rows(regionsums_quality) %>%
-  bind_rows(notparticipatinginquality) %>%
   subset(category != 'Total participating in QRIS') %>%
   arrange(location,category)
-
 
 #format to database count child care
 childcareprovidersbyquality <- quality_data_combined %>%
@@ -443,7 +460,7 @@ dbWriteTable(con,'northdakota',childcareprovidersbyquality,append=TRUE,row.names
 dbWriteTable(con,'northdakota',childcarecapacitybyquality,append=TRUE,row.names=FALSE)
 ```
 
-
+##Data is not accurate enough to do this anymore
 ```{r}
 #calculate percentages out of all licensed facilities
 qualityproviders_sql <- paste0("SELECT locationid,locationtype,location,category,timeframe,dataformat,data FROM northdakota WHERE timeframe = '",year,"' AND varname='childcareprovidersbyquality' AND dataformat='Number';")
@@ -536,14 +553,7 @@ View(quality_percent_capacity)
 
 ```
 
-
-
-```{r}
-#add to database count of child care
-dbWriteTable(con,'northdakota',quality_percent_providers,append=TRUE,row.names=FALSE)
-dbWriteTable(con,'northdakota',quality_percent_capacity,append=TRUE,row.names=FALSE)
-```
-
+Export to upload to Data Center
 ```{r}
 #write query from database to get needed format for KC data center
 #PROVIDERS
