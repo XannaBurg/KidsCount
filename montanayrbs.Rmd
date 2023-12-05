@@ -76,6 +76,7 @@ locationids <- read.csv("./Input/MT KC Location IDs.csv")
 year_prior <- as.character(as.numeric(year)-2)
 
 
+
 #delete the old rows of data
 dbGetQuery(con,paste0("DELETE FROM montana WHERE (varname='yrbs_sadhopelessamonghighschoolstudents' AND race='Multiple Race students' AND timeframe='",year_prior,"');"))
 
@@ -247,7 +248,7 @@ dbWriteTable(con,'montana',cigarette,append=TRUE,row.names=FALSE)
 upload_data_cigarette <- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montana WHERE timeframe = '",year,"' AND varname = 'yrbs_cigarettesmokingamonghighschoolstudents';"))
 
 #all years
-#upload_data_cigarette <- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montana WHERE varname = 'yrbs_cigarettesmokingamonghighschoolstudents';"))
+upload_data_cigarette <- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montana WHERE varname = 'yrbs_cigarettesmokingamonghighschoolstudents';"))
 
 upload_data_cigarette2 <- upload_data_cigarette %>%
   rename(LocationId=locationid,
@@ -303,7 +304,7 @@ upload_data_smokeless<- dbGetQuery(con,paste0("SELECT locationid,location,timefr
                      WHERE timeframe = '",year,"' AND varname = 'yrbs_smokelesstobaccoamonghighschoolstudents';"))
 
 #all years
-#upload_data_smokeless<- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montana WHERE varname = 'yrbs_smokelesstobaccoamonghighschoolstudents';"))
+upload_data_smokeless<- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montana WHERE varname = 'yrbs_smokelesstobaccoamonghighschoolstudents';"))
 
 upload_data_smokeless2 <- upload_data_smokeless %>%
   rename(LocationId=locationid,
@@ -360,7 +361,7 @@ upload_data_alcohol<- dbGetQuery(con,paste0("SELECT locationid,location,timefram
                      WHERE timeframe = '",year,"' AND varname = 'yrbs_alcoholuseamonghighschoolstudents';"))
 
 #all years
-#upload_data_alcohol<- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montana WHERE varname = 'yrbs_alcoholuseamonghighschoolstudents';"))
+upload_data_alcohol<- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montana WHERE varname = 'yrbs_alcoholuseamonghighschoolstudents';"))
 
 upload_data_alcohol2 <- upload_data_alcohol %>%
   rename(LocationId=locationid,
@@ -418,7 +419,7 @@ upload_data_marijuana<- dbGetQuery(con,paste0("SELECT locationid,location,timefr
                      WHERE timeframe = '",year,"' AND varname = 'yrbs_marijuanauseamonghighschoolstudents';"))
 
 #all years
-#upload_data_marijuana<- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montana WHERE varname = 'yrbs_marijuanauseamonghighschoolstudents';"))
+upload_data_marijuana<- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montana WHERE varname = 'yrbs_marijuanauseamonghighschoolstudents';"))
 
 upload_data_marijuana2 <- upload_data_marijuana %>%
   rename(LocationId=locationid,
@@ -474,7 +475,7 @@ upload_data_suicide <- dbGetQuery(con,paste0("SELECT locationid,location,timefra
                      WHERE timeframe = '",year,"' AND varname = 'yrbs_suicideattemptsamonghighschoolstudents';"))
 
 #all years
-#upload_data_suicide <- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montana WHERE varname = 'yrbs_suicideattemptsamonghighschoolstudents';"))
+upload_data_suicide <- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montana WHERE varname = 'yrbs_suicideattemptsamonghighschoolstudents';"))
 
 upload_data_suicide2 <- upload_data_suicide %>%
   rename(LocationId=locationid,
@@ -530,7 +531,7 @@ upload_data_noseatbelt <- dbGetQuery(con,paste0("SELECT locationid,location,time
                      WHERE timeframe = '",year,"' AND  varname = 'yrbs_noseatbeltamonghighschoolstudents';"))
 
 #all years
-#upload_data_noseatbelt <- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montana WHERE varname = 'yrbs_noseatbeltamonghighschoolstudents';"))
+upload_data_noseatbelt <- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montana WHERE varname = 'yrbs_noseatbeltamonghighschoolstudents';"))
 
 upload_data_noseatbelt2 <- upload_data_noseatbelt %>%
   rename(LocationId=locationid,
@@ -587,7 +588,7 @@ upload_data_drinkdrive <- dbGetQuery(con,paste0("SELECT locationid,location,time
                      WHERE timeframe = '",year,"' AND varname = 'yrbs_drinkdriveamonghighschoolstudents';"))
 
 #all years
-#upload_data_drinkdrive <- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montana WHERE varname = 'yrbs_drinkdriveamonghighschoolstudents';"))
+upload_data_drinkdrive <- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montana WHERE varname = 'yrbs_drinkdriveamonghighschoolstudents';"))
 
 upload_data_drinkdrive2 <- upload_data_drinkdrive %>%
   rename(LocationId=locationid,
@@ -642,7 +643,7 @@ upload_data_sadhopeless <- dbGetQuery(con,paste0("SELECT locationid,location,tim
                      WHERE timeframe = '",year,"' AND varname = 'yrbs_sadhopelessamonghighschoolstudents';"))
 
 #all years
-#upload_data_sadhopeless <- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montana WHERE varname = 'yrbs_sadhopelessamonghighschoolstudents';"))
+upload_data_sadhopeless <- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montana WHERE varname = 'yrbs_sadhopelessamonghighschoolstudents';"))
 
 upload_data_sadhopeless2 <- upload_data_sadhopeless %>%
   rename(LocationId=locationid,
@@ -699,7 +700,7 @@ upload_data_bullied <- dbGetQuery(con,paste0("SELECT locationid,location,timefra
                      WHERE timeframe = '",year,"' AND varname = 'yrbs_schoolbullyingamonghighschoolstudents';"))
 
 #all years
-#upload_data_bullied <- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montana WHERE varname = 'yrbs_schoolbullyingamonghighschoolstudents';"))
+upload_data_bullied <- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montana WHERE varname = 'yrbs_schoolbullyingamonghighschoolstudents';"))
 
 upload_data_bullied2 <- upload_data_bullied %>%
   rename(LocationId=locationid,
@@ -756,7 +757,7 @@ upload_data_ecigarette <- dbGetQuery(con,paste0("SELECT locationid,location,time
                      WHERE timeframe = '",year,"' AND varname = 'yrbs_electronicvaporuseamonghighschoolstudents';"))
 
 #all years
-#upload_data_ecigarette <- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montana WHERE varname = 'yrbs_electronicvaporuseamonghighschoolstudents';"))
+upload_data_ecigarette <- dbGetQuery(con,paste0("SELECT locationid,location,timeframe,dataformat,data,race FROM montana WHERE varname = 'yrbs_electronicvaporuseamonghighschoolstudents';"))
 
 upload_data_ecigarette2 <- upload_data_ecigarette %>%
   rename(LocationId=locationid,
