@@ -1,0 +1,552 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r}
+LFO <- c('001','920','930')
+lfo_key <- c('All','Individual Proprietorships','Partnerships')
+lfo_keydf <- data.frame(LFO,lfo_key)
+
+#NON EMPLOYERS
+## 2015
+childcare_2015 <- getCensus(name="nonemp",
+          vintage='2015',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","NESTAB"),
+          region=paste0("state:30"),
+          NAICS2012='6244') %>%
+  left_join(lfo_keydf,by=c("LFO"="LFO")) %>%
+  rename(timeframe=YEAR,
+         data=NESTAB,
+         category=lfo_key) %>%
+  select(timeframe,category,data) %>%
+  subset(category == "All") %>%
+  mutate(data=as.numeric(paste(data)))
+
+
+## 2016
+childcare_2016 <- getCensus(name="nonemp",
+          vintage='2016',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","NESTAB"),
+          region=paste0("state:30"),
+          NAICS2012='6244') %>%
+  left_join(lfo_keydf,by=c("LFO"="LFO")) %>%
+  rename(timeframe=YEAR,
+         data=NESTAB,
+         category=lfo_key) %>%
+  select(timeframe,category,data) %>%
+  subset(category == "All") %>%
+  mutate(data=as.numeric(paste(data)))
+
+
+## 2017
+childcare_2017 <- getCensus(name="nonemp",
+          vintage='2017',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","NESTAB"),
+          region=paste0("state:30"),
+          NAICS2017='6244') %>%
+  left_join(lfo_keydf,by=c("LFO"="LFO")) %>%
+  rename(timeframe=YEAR,
+         data=NESTAB,
+         category=lfo_key) %>%
+  select(timeframe,category,data) %>%
+  subset(category == "All") %>%
+  mutate(data=as.numeric(paste(data)))
+
+
+
+
+## 2018
+childcare_2018 <- getCensus(name="nonemp",
+          vintage='2018',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","NESTAB"),
+          region=paste0("state:30"),
+          NAICS2017='6244') %>%
+  left_join(lfo_keydf,by=c("LFO"="LFO")) %>%
+  rename(timeframe=YEAR,
+         data=NESTAB,
+         category=lfo_key) %>%
+  select(timeframe,category,data) %>%
+  subset(category == "All") %>%
+  mutate(data=as.numeric(paste(data)))
+
+
+
+## 2019
+childcare_2019 <- getCensus(name="nonemp",
+          vintage='2019',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","NESTAB"),
+          region=paste0("state:30"),
+          NAICS2017='6244') %>%
+  left_join(lfo_keydf,by=c("LFO"="LFO")) %>%
+  rename(timeframe=YEAR,
+         data=NESTAB,
+         category=lfo_key) %>%
+  select(timeframe,category,data) %>%
+  subset(category == "All") %>%
+  mutate(data=as.numeric(paste(data)))
+
+
+
+
+#EMPLOYERS
+## 2015
+childcare2_2015 <- getCensus(name="cbp",
+          vintage='2015',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","ESTAB"),
+          region=paste0("state:30"),
+          NAICS2012='6244',
+          LFO='001') %>%
+  mutate(category='Employers') %>%
+  rename(timeframe=YEAR,
+         data=ESTAB) %>%
+  select(timeframe,category,data) 
+  
+  
+
+## 2016
+childcare2_2016 <- getCensus(name="cbp",
+          vintage='2016',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","ESTAB"),
+          region=paste0("state:30"),
+          NAICS2012='6244',
+          LFO='001') %>%
+  mutate(category='Employers') %>%
+  rename(timeframe=YEAR,
+         data=ESTAB) %>%
+  select(timeframe,category,data) 
+
+
+## 2017
+childcare2_2017 <- getCensus(name="cbp",
+          vintage='2017',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","ESTAB"),
+          region=paste0("state:30"),
+          NAICS2017='6244',
+          LFO='001') %>%
+  mutate(category='Employers') %>%
+  rename(timeframe=YEAR,
+         data=ESTAB) %>%
+  select(timeframe,category,data) 
+
+
+## 2018
+childcare2_2018 <- getCensus(name="cbp",
+          vintage='2018',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","ESTAB"),
+          region=paste0("state:30"),
+          NAICS2017='6244',
+          LFO='001') %>%
+  mutate(category='Employers') %>%
+  rename(timeframe=YEAR,
+         data=ESTAB) %>%
+  select(timeframe,category,data) 
+
+## 2019
+childcare2_2019 <- getCensus(name="cbp",
+          vintage='2019',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","ESTAB"),
+          region=paste0("state:30"),
+          NAICS2017='6244',
+          LFO='001') %>%
+  mutate(category='Employers') %>%
+  rename(timeframe=YEAR,
+         data=ESTAB) %>%
+  select(timeframe,category,data) 
+
+## 2020
+childcare2_2020 <- getCensus(name="cbp",
+          vintage='2020',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","ESTAB"),
+          region=paste0("state:30"),
+          NAICS2017='6244',
+          LFO='001') %>%
+  mutate(category='Employers') %>%
+  rename(timeframe=YEAR,
+         data=ESTAB) %>%
+  select(timeframe,category,data) 
+
+childcare_allyears <- childcare_2015 %>%
+  bind_rows(childcare_2016) %>%
+  bind_rows(childcare_2017) %>%
+  bind_rows(childcare_2018) %>%
+  bind_rows(childcare_2019) %>%
+  bind_rows(childcare2_2015) %>%
+  bind_rows(childcare2_2016) %>%
+  bind_rows(childcare2_2017) %>%
+  bind_rows(childcare2_2018) %>%
+  bind_rows(childcare2_2019) %>%
+  bind_rows(childcare2_2020)
+```
+
+
+
+```{r}
+LFO <- c('001','920','930')
+lfo_key <- c('All','Individual Proprietorships','Partnerships')
+lfo_keydf <- data.frame(LFO,lfo_key)
+
+#NON EMPLOYERS
+## 2015
+childcare_2015 <- getCensus(name="nonemp",
+          vintage='2015',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","NESTAB"),
+          region=paste0("state:38"),
+          NAICS2012='6244') %>%
+  left_join(lfo_keydf,by=c("LFO"="LFO")) %>%
+  rename(timeframe=YEAR,
+         data=NESTAB,
+         category=lfo_key) %>%
+  select(timeframe,category,data) %>%
+  subset(category == "All") %>%
+  mutate(data=as.numeric(paste(data)))
+
+
+## 2016
+childcare_2016 <- getCensus(name="nonemp",
+          vintage='2016',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","NESTAB"),
+          region=paste0("state:38"),
+          NAICS2012='6244') %>%
+  left_join(lfo_keydf,by=c("LFO"="LFO")) %>%
+  rename(timeframe=YEAR,
+         data=NESTAB,
+         category=lfo_key) %>%
+  select(timeframe,category,data) %>%
+  subset(category == "All") %>%
+  mutate(data=as.numeric(paste(data)))
+
+
+## 2017
+childcare_2017 <- getCensus(name="nonemp",
+          vintage='2017',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","NESTAB"),
+          region=paste0("state:38"),
+          NAICS2017='6244') %>%
+  left_join(lfo_keydf,by=c("LFO"="LFO")) %>%
+  rename(timeframe=YEAR,
+         data=NESTAB,
+         category=lfo_key) %>%
+  select(timeframe,category,data) %>%
+  subset(category == "All") %>%
+  mutate(data=as.numeric(paste(data)))
+
+
+
+
+## 2018
+childcare_2018 <- getCensus(name="nonemp",
+          vintage='2018',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","NESTAB"),
+          region=paste0("state:38"),
+          NAICS2017='6244') %>%
+  left_join(lfo_keydf,by=c("LFO"="LFO")) %>%
+  rename(timeframe=YEAR,
+         data=NESTAB,
+         category=lfo_key) %>%
+  select(timeframe,category,data) %>%
+  subset(category == "All") %>%
+  mutate(data=as.numeric(paste(data)))
+
+## 2019
+childcare_2019 <- getCensus(name="nonemp",
+          vintage='2019',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","NESTAB"),
+          region=paste0("state:38"),
+          NAICS2017='6244') %>%
+  left_join(lfo_keydf,by=c("LFO"="LFO")) %>%
+  rename(timeframe=YEAR,
+         data=NESTAB,
+         category=lfo_key) %>%
+  select(timeframe,category,data) %>%
+  subset(category == "All") %>%
+  mutate(data=as.numeric(paste(data)))
+
+
+
+
+#EMPLOYERS
+## 2015
+childcare2_2015 <- getCensus(name="cbp",
+          vintage='2015',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","ESTAB"),
+          region=paste0("state:38"),
+          NAICS2012='6244',
+          LFO='001') %>%
+  mutate(category='Employers') %>%
+  rename(timeframe=YEAR,
+         data=ESTAB) %>%
+  select(timeframe,category,data) 
+  
+  
+
+## 2016
+childcare2_2016 <- getCensus(name="cbp",
+          vintage='2016',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","ESTAB"),
+          region=paste0("state:38"),
+          NAICS2012='6244',
+          LFO='001') %>%
+  mutate(category='Employers') %>%
+  rename(timeframe=YEAR,
+         data=ESTAB) %>%
+  select(timeframe,category,data) 
+
+
+## 2017
+childcare2_2017 <- getCensus(name="cbp",
+          vintage='2017',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","ESTAB"),
+          region=paste0("state:38"),
+          NAICS2017='6244',
+          LFO='001') %>%
+  mutate(category='Employers') %>%
+  rename(timeframe=YEAR,
+         data=ESTAB) %>%
+  select(timeframe,category,data) 
+
+
+## 2018
+childcare2_2018 <- getCensus(name="cbp",
+          vintage='2018',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","ESTAB"),
+          region=paste0("state:38"),
+          NAICS2017='6244',
+          LFO='001') %>%
+  mutate(category='Employers') %>%
+  rename(timeframe=YEAR,
+         data=ESTAB) %>%
+  select(timeframe,category,data) 
+
+
+## 2019
+childcare2_2019 <- getCensus(name="cbp",
+          vintage='2019',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","ESTAB"),
+          region=paste0("state:38"),
+          NAICS2017='6244',
+          LFO='001') %>%
+  mutate(category='Employers') %>%
+  rename(timeframe=YEAR,
+         data=ESTAB) %>%
+  select(timeframe,category,data) 
+
+## 2020
+childcare2_2020 <- getCensus(name="cbp",
+          vintage='2020',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","ESTAB"),
+          region=paste0("state:38"),
+          NAICS2017='6244',
+          LFO='001') %>%
+  mutate(category='Employers') %>%
+  rename(timeframe=YEAR,
+         data=ESTAB) %>%
+  select(timeframe,category,data) 
+
+childcare_allyears <- childcare_2015 %>%
+  bind_rows(childcare_2016) %>%
+  bind_rows(childcare_2017) %>%
+  bind_rows(childcare_2018) %>%
+  bind_rows(childcare_2019) %>%
+  bind_rows(childcare2_2015) %>%
+  bind_rows(childcare2_2016) %>%
+  bind_rows(childcare2_2017) %>%
+  bind_rows(childcare2_2018) %>%
+  bind_rows(childcare2_2019) %>%
+  bind_rows(childcare2_2020) 
+```
+
+
+
+```{r}
+LFO <- c('001','920','930')
+lfo_key <- c('All','Individual Proprietorships','Partnerships')
+lfo_keydf <- data.frame(LFO,lfo_key)
+
+#NON EMPLOYERS
+## 2015
+childcare_2015 <- getCensus(name="nonemp",
+          vintage='2015',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","NESTAB"),
+          region=paste0("state:46"),
+          NAICS2012='6244') %>%
+  left_join(lfo_keydf,by=c("LFO"="LFO")) %>%
+  rename(timeframe=YEAR,
+         data=NESTAB,
+         category=lfo_key) %>%
+  select(timeframe,category,data) %>%
+  subset(category == "All") 
+
+
+## 2016
+childcare_2016 <- getCensus(name="nonemp",
+          vintage='2016',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","NESTAB"),
+          region=paste0("state:46"),
+          NAICS2012='6244') %>%
+  left_join(lfo_keydf,by=c("LFO"="LFO")) %>%
+  rename(timeframe=YEAR,
+         data=NESTAB,
+         category=lfo_key) %>%
+  select(timeframe,category,data) %>%
+  subset(category == "All") 
+
+
+## 2017
+childcare_2017 <- getCensus(name="nonemp",
+          vintage='2017',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","NESTAB"),
+          region=paste0("state:46"),
+          NAICS2017='6244') %>%
+  left_join(lfo_keydf,by=c("LFO"="LFO")) %>%
+  rename(timeframe=YEAR,
+         data=NESTAB,
+         category=lfo_key) %>%
+  select(timeframe,category,data) %>%
+  subset(category == "All")
+
+
+
+
+## 2018
+childcare_2018 <- getCensus(name="nonemp",
+          vintage='2018',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","NESTAB"),
+          region=paste0("state:46"),
+          NAICS2017='6244') %>%
+  left_join(lfo_keydf,by=c("LFO"="LFO")) %>%
+  rename(timeframe=YEAR,
+         data=NESTAB,
+         category=lfo_key) %>%
+  select(timeframe,category,data) %>%
+  subset(category == "All") 
+
+## 2019
+childcare_2019 <- getCensus(name="nonemp",
+          vintage='2019',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","NESTAB"),
+          region=paste0("state:46"),
+          NAICS2017='6244') %>%
+  left_join(lfo_keydf,by=c("LFO"="LFO")) %>%
+  rename(timeframe=YEAR,
+         data=NESTAB,
+         category=lfo_key) %>%
+  select(timeframe,category,data) %>%
+  subset(category == "All") 
+
+
+
+#EMPLOYERS
+## 2015
+childcare2_2015 <- getCensus(name="cbp",
+          vintage='2015',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","ESTAB"),
+          region=paste0("state:46"),
+          NAICS2012='6244',
+          LFO='001') %>%
+  mutate(category='Employers') %>%
+  rename(timeframe=YEAR,
+         data=ESTAB) %>%
+  select(timeframe,category,data) %>%
+  mutate(data=as.character(paste(data)))
+  
+  
+
+## 2016
+childcare2_2016 <- getCensus(name="cbp",
+          vintage='2016',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","ESTAB"),
+          region=paste0("state:46"),
+          NAICS2012='6244',
+          LFO='001') %>%
+  mutate(category='Employers') %>%
+  rename(timeframe=YEAR,
+         data=ESTAB) %>%
+  select(timeframe,category,data) %>%
+  mutate(data=as.character(paste(data)))
+
+
+## 2017
+childcare2_2017 <- getCensus(name="cbp",
+          vintage='2017',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","ESTAB"),
+          region=paste0("state:46"),
+          NAICS2017='6244',
+          LFO='001') %>%
+  mutate(category='Employers') %>%
+  rename(timeframe=YEAR,
+         data=ESTAB) %>%
+  select(timeframe,category,data) %>%
+  mutate(data=as.character(paste(data)))
+
+
+## 2018
+childcare2_2018 <- getCensus(name="cbp",
+          vintage='2018',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","ESTAB"),
+          region=paste0("state:46"),
+          NAICS2017='6244',
+          LFO='001') %>%
+  mutate(category='Employers') %>%
+  rename(timeframe=YEAR,
+         data=ESTAB) %>%
+  select(timeframe,category,data) %>%
+  mutate(data=as.character(paste(data)))
+
+## 2019
+childcare2_2019 <- getCensus(name="cbp",
+          vintage='2019',
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("YEAR","LFO","ESTAB"),
+          region=paste0("state:46"),
+          NAICS2017='6244',
+          LFO='001') %>%
+  mutate(category='Employers') %>%
+  rename(timeframe=YEAR,
+         data=ESTAB) %>%
+  select(timeframe,category,data) %>%
+  mutate(data=as.character(paste(data)))
+
+
+childcare_allyears <- childcare_2015 %>%
+  bind_rows(childcare_2016) %>%
+  bind_rows(childcare_2017) %>%
+  bind_rows(childcare_2018) %>%
+  bind_rows(childcare_2019) %>%
+  bind_rows(childcare2_2015) %>%
+  bind_rows(childcare2_2016) %>%
+  bind_rows(childcare2_2017) %>%
+  bind_rows(childcare2_2018) %>%
+  bind_rows(childcare2_2019)
+```

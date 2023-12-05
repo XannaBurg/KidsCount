@@ -1,0 +1,45 @@
+---
+title: "Montana Child Care Supplemental Analysis"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+```
+
+
+```{r}
+dataMT <- dbGetQuery(con,"SELECT * from montana")
+
+mt_ruralstatus <- read.csv('../Input/MT Rural Urban Status.csv')
+```
+
+
+```{r}
+capacitypercentworking <- dataMT %>% 
+  subset(varname=='percentofchildrenunder6withparentsworkingservedbyececapacity') %>%
+  subset(timeframe=='2020') %>%
+  subset(dataformat=='Percent') %>%
+  subset(locationtype=='County') %>%
+  left_join(mt_ruralstatus, by=c('location'='county')) %>%
+  
+  mutate(data=as.numeric(paste(data))) %>%
+  
+  group_by(type) %>%
+  summarise(meanpercent=mean(data))
+
+
+capacitypercentworking2 <- dataMT %>% 
+  subset(varname=='percentofchildrenunder6withparentsworkingservedbyececapacity') %>%
+  subset(timeframe=='2020') %>%
+  subset(dataformat=='Percent') %>%
+  subset(locationtype=='County') %>%
+  left_join(mt_ruralstatus, by=c('location'='county')) %>%
+  
+  mutate(data=as.numeric(paste(data))) %>%
+  
+  group_by(centerforamericanprogressdesignation) %>%
+  summarise(meanpercent=mean(data))
+
+
+```

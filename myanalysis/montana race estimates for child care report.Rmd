@@ -1,0 +1,62 @@
+---
+title: "Montana Race Estimates for Child Care Report"
+output: html_document
+date: "2022-11-30"
+---
+
+#to calculate race estimates for single year of age to update in report
+```{r}
+library(tidyverse)
+fulldata <- read.csv(paste0("./Input/demographics/DATADELIVERY_ Vintage 2021 Population Estimates20221021073707/v2021_co_res_char11_mt.csv"))
+
+############
+#COUNTY DATA
+#subset for state of interest, and age range 0-24
+populationdata <- fulldata %>%
+  subset(AGE<=5) %>%
+  subset(AGE>=0) %>%
+  
+  #remove data for April Census estimates
+  subset(DATE == 4) %>%
+  
+  #get data for all sexes
+  subset(SEX==0) %>%
+  
+
+  subset(HISP !=0) %>%
+  
+  
+  subset(RACE11 != 0) %>%
+  subset(RACE11 != 7) %>%
+  subset(RACE11 != 8) %>%
+  subset(RACE11 != 9) %>%
+  subset(RACE11 != 10) %>%
+  subset(RACE11 != 11) %>%
+  
+  
+  #format to KC variable names
+  mutate(timeframe=case_when(
+    DATE==4 ~ '2021')) %>% 
+  
+  mutate(race=case_when(
+    RACE11==1 & HISP==1 ~ 'NH - White',
+    RACE11==2 & HISP==1 ~ 'NH - Black or African American',
+    RACE11==3 & HISP==1 ~ 'NH - American Indian and Alaska Native',
+    RACE11==4 & HISP==1 ~ 'NH - Asian',
+    RACE11==5 & HISP==1 ~ 'NH - Native Hawaiian and Other Pacific Islander',
+    RACE11==6 & HISP==1 ~ 'NH - Two or more races',
+    HISP==2 ~ 'Hispanic')) %>%
+  
+    
+    #sum across ages
+    group_by(timeframe,race) %>%
+    summarise(data=sum(POP)) 
+
+
+
+write.csv(populationdata,file="/Users/xannaburg/Documents/Analysis/Child Care Report/Montana/2022 Report Update/References/populationage0to5_byrace_ethnicity.csv",row.names=FALSE)
+
+
+
+
+```

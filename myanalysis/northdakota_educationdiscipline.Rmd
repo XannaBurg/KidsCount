@@ -1,0 +1,482 @@
+---
+title: "North Dakota Discipline Analysis"
+output: word_document
+date: '2022-08-26'
+---
+
+
+**Created by:** Xanna Burg
+**Date:** August 2022
+**Updated by:**
+
+**Data Source:** North Dakota Department of Public Instruction
+**Purpose:** Clean and analyze data from one-time data request on discipline in schools.
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+library(stringr)
+
+
+#import the lookup table for county name
+countyids <- read.csv("../Documentation/Indicator Documentation/North Dakota Data Requests/ND County Codes.csv")
+```
+
+## Step 1: Calculate enrollment by race by county using row-level enrollment data for all grades and for grades 6-12 only. 
+* Race categories are: Am Ind, Asian, Black, Hispanic, Pacific, White
+
+```{r}
+#read in the data
+enrollment_data <- read.csv("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND_Enrollment_21-22_Edited with Race.csv")
+
+#create dataset that crosses county with each race category possibility
+countylist <- countyids %>% select(ndcounty_name)
+race_category <- c('Am Ind','Asian','Black','Hispanic','Pacific','White')
+categorylist <- as.data.frame(race_category)
+county_racelist <-crossing(countylist,categorylist)
+
+
+############
+#COUNTY DATA
+enrollment_county <- enrollment_data %>%
+  
+  #change County to numeric in order to join
+  mutate(County=as.numeric(paste(County))) %>%
+  #import county name
+  left_join(countyids,by=c("County"="ndcounty_number")) %>%
+
+  #remove nonpublic schools (district ID >200) and students not enrolled in a school
+  separate(SchoolStateIssuedID,c('county','district','school'),sep="-") %>%
+  mutate(district=as.numeric(paste(district))) %>%
+  subset(district<200) %>%
+  subset(!is.na(school)) %>%
+  
+  #remove non counties
+  subset(!is.na(ndcounty_name)) %>%
+  
+  #create an indicator variable for counting total population
+  mutate(enroll_indicator=case_when(
+    !is.na(GradeName) ~ 1)) %>%
+
+  #sum by county
+  group_by(ndcounty_name,CalcEthnicity) %>%
+  summarise(totalenroll=sum(enroll_indicator)) %>%
+  ungroup %>%
+  
+  rename(race_category=CalcEthnicity) %>%
+  
+  #merge in county-race list to add zeros where categories do not show up
+  full_join(county_racelist,
+            by=c('ndcounty_name'='ndcounty_name','race_category'='race_category')) %>%
+  #change NA to zeros for those merged in
+  mutate(totalenroll=replace(totalenroll,is.na(totalenroll),0)) %>%
+  arrange(ndcounty_name,race_category)
+  
+
+###########
+#STATE DATA
+#start with  cleaned county data
+enrollment_state <- enrollment_county %>%
+  mutate(ndcounty_name='North Dakota') %>%
+  group_by(ndcounty_name,race_category) %>%
+  summarise(totalenroll=sum(totalenroll)) %>%
+  ungroup 
+
+
+enrollment_cleaned <- enrollment_state %>%
+  bind_rows(enrollment_county)
+
+
+enrollment_sumallraces <- enrollment_cleaned %>%
+  group_by(ndcounty_name) %>%
+  summarise(totalenroll_sum=sum(totalenroll))
+
+
+enrollment_final <- enrollment_cleaned %>%
+  left_join(enrollment_sumallraces,by=c('ndcounty_name'='ndcounty_name')) %>%
+  #calculate race percents
+  mutate(totalenroll_percent=totalenroll/totalenroll_sum) %>%
+  select(-c(totalenroll_sum))
+
+
+```
+
+## Step 2: Calculate enrollment by IEP by county using row-level enrollment data for all grades and for grades 6-12 only. 
+* IEP categories are: IEP, No IEP
+
+```{r}
+#read in the data
+
+#create dataset that crosses county with each IEP category possibility
+iep_category <- c('IEP','No IEP')
+iep_categorylist <- as.data.frame(iep_category)
+county_ieplist <-crossing(countylist,iep_categorylist)
+
+
+############
+#COUNTY DATA
+enrollment_county_iep <- enrollment_data %>%
+  
+  #change County to numeric in order to join
+  mutate(County=as.numeric(paste(County))) %>%
+  #import county name
+  left_join(countyids,by=c("County"="ndcounty_number")) %>%
+
+  #remove nonpublic schools (district ID >200) and students not enrolled in a school
+  separate(SchoolStateIssuedID,c('county','district','school'),sep="-") %>%
+  mutate(district=as.numeric(paste(district))) %>%
+  subset(district<200) %>%
+  subset(!is.na(school)) %>%
+  
+  #remove non counties
+  subset(!is.na(ndcounty_name)) %>%
+  
+  #create an indicator variable for counting total population
+  mutate(enroll_indicator=case_when(
+    !is.na(GradeName) ~ 1)) %>%
+  
+  #change IEP variable from indicator to character
+  mutate(IEP=case_when(
+    IEP==1 ~ 'IEP',
+    IEP==0 ~ 'No IEP')) %>%
+
+  #sum by county
+  group_by(ndcounty_name,IEP) %>%
+  summarise(totalenroll=sum(enroll_indicator)) %>%
+  ungroup %>%
+  
+  rename(iep_category=IEP) %>%
+  
+  #merge in county-race list to add zeros where categories do not show up
+  full_join(county_ieplist,
+            by=c('ndcounty_name'='ndcounty_name','iep_category'='iep_category')) %>%
+  #change NA to zeros for those merged in
+  mutate(totalenroll=replace(totalenroll,is.na(totalenroll),0)) %>%
+  arrange(ndcounty_name,iep_category)
+  
+
+###########
+#STATE DATA
+#start with  cleaned county data
+enrollment_state_iep <- enrollment_county_iep %>%
+  mutate(ndcounty_name='North Dakota') %>%
+  group_by(ndcounty_name,iep_category) %>%
+  summarise(totalenroll=sum(totalenroll)) %>%
+  ungroup 
+
+
+enrollment_cleaned_iep <- enrollment_state_iep %>%
+  bind_rows(enrollment_county_iep)
+
+
+enrollment_sumalliep <- enrollment_cleaned_iep %>%
+  group_by(ndcounty_name) %>%
+  summarise(totalenroll_sum=sum(totalenroll))
+
+
+enrollment_final_iep <- enrollment_cleaned_iep %>%
+  left_join(enrollment_sumalliep,by=c('ndcounty_name'='ndcounty_name')) %>%
+  #calculate iep percents
+  mutate(totalenroll_percent=totalenroll/totalenroll_sum) %>%
+  select(-c(totalenroll_sum)) %>%
+  rename(race_category=iep_category)
+
+
+```
+
+
+* Combine enrollment files
+```{r}
+enrollment <- enrollment_final %>%
+  bind_rows(enrollment_final_iep) %>%
+  rename(category=race_category) %>%
+  arrange(ndcounty_name,category)
+```
+
+
+## Step 3: Clean up the discipline data in order to merge
+* Start with out of school suspension days for all grades
+
+```{r}
+#read in suspension data
+suspension_data <- read_excel(path="/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Discipline_Suppressed - 21-22.xlsx",sheet='Out-of-Sch Susp Days All Grades') %>%
+  select(-c(CountyCode)) %>%
+  rename(ndcounty_name=County,
+         suspensiondays=`Total Out-of-School Suspension Days`,
+         race_category=`Student Group`) 
+
+suspension_total <- suspension_data %>%
+  subset(race_category=='All') %>%
+  rename(total_suspensiondays=suspensiondays) %>%
+  select(-c(race_category))
+
+suspension_county <- suspension_data %>%
+  subset(race_category != 'All') %>%
+  left_join(suspension_total,by=c('ndcounty_name'='ndcounty_name'))
+
+suspension_total_state <- suspension_total %>%
+  mutate(ndcounty_name='North Dakota') %>%
+  group_by(ndcounty_name) %>%
+  summarise(total_suspensiondays=sum(total_suspensiondays))
+
+suspension_state <- suspension_county %>%
+  mutate(ndcounty_name='North Dakota') %>%
+  group_by(ndcounty_name,race_category) %>%
+  summarise(suspensiondays=sum(suspensiondays)) %>%
+  left_join(suspension_total_state,by=c('ndcounty_name'='ndcounty_name'))
+
+suspension_combined <- suspension_state %>%
+  bind_rows(suspension_county) %>%
+  mutate(suspensiondays_percent=suspensiondays/total_suspensiondays) %>%
+  mutate(category=case_when(
+    race_category=='Asian' ~ 'Asian',
+    race_category=='Black' ~ 'Black',
+    race_category=='Hispanic' ~ 'Hispanic',
+    race_category=='Native Am' ~ 'Am Ind',
+    race_category=='Pac Islander' ~ 'Pacific',
+    race_category=='White' ~ 'White',
+    race_category=='IEP' ~ 'IEP',
+    race_category=='No IEP' ~ 'No IEP')) %>%
+  select(-c(race_category))
+
+```
+
+
+* Referrals, all grades
+
+```{r}
+#read in referral data
+referral_data <- read_excel(path="/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Discipline_Suppressed - 21-22.xlsx",sheet='Referrals All Grades') %>%
+  select(-c(`County Code`)) %>%
+  rename(ndcounty_name=County,
+         referrals_unduplicated=`Students w/ Referrals`,
+         race_category=`Student Group`) %>%
+  select(-c(Referrals)) %>%
+  #remove IEP which is mostly all suppressed
+  subset(race_category != 'IEP') %>%
+  subset(race_category != 'no IEP') 
+
+referral_total <- referral_data %>%
+  subset(race_category=='All') %>%
+  rename(total_referrals_unduplicated=referrals_unduplicated) %>%
+  select(-c(race_category)) %>%
+  mutate(total_referrals_unduplicated=as.numeric(paste(total_referrals_unduplicated)))
+
+referral_county <- referral_data %>%
+  subset(race_category != 'All') %>%
+  left_join(referral_total,by=c('ndcounty_name'='ndcounty_name')) %>%
+  arrange(ndcounty_name,race_category) %>%
+  mutate(referrals_unduplicated=as.numeric(paste(referrals_unduplicated)))
+
+referral_total_state <- referral_total %>%
+  mutate(ndcounty_name='North Dakota') %>%
+  group_by(ndcounty_name) %>%
+  summarise(total_referrals_unduplicated=sum(total_referrals_unduplicated))
+
+referral_state <- referral_county %>%
+  mutate(ndcounty_name='North Dakota') %>%
+  group_by(ndcounty_name,race_category) %>%
+  summarise(referrals_unduplicated=sum(referrals_unduplicated)) %>%
+  left_join(referral_total_state,by=c('ndcounty_name'='ndcounty_name'))
+
+referral_combined <- referral_state %>%
+  bind_rows(referral_county) %>%
+  mutate(referral_percent=referrals_unduplicated/total_referrals_unduplicated) %>%
+  
+  #match race categories to enrollment data
+  mutate(category=case_when(
+    race_category=='Asian' ~ 'Asian',
+    race_category=='Black' ~ 'Black',
+    race_category=='Hispanic' ~ 'Hispanic',
+    race_category=='Native Am' ~ 'Am Ind',
+    race_category=='Pac Islander' ~ 'Pacific',
+    race_category=='White' ~ 'White')) %>%
+  select(-c(race_category))
+
+
+```
+
+
+
+## Step 4: combine enrollment and discipline data
+```{r}
+discipline_data <- enrollment %>%
+  left_join(suspension_combined,
+            by=c('ndcounty_name'='ndcounty_name','category'='category')) %>%
+  left_join(referral_combined,by=c('ndcounty_name'='ndcounty_name','category'='category'))
+
+
+discipline_data_suppressed <- discipline_data %>%
+  
+  #suppress if denominator is less than 10
+  mutate(suppress_denominator=if_else(totalenroll<10 | is.na(totalenroll),1,0)) %>%
+  subset(suppress_denominator==0) %>%
+  
+  #suppress suspension percentages
+ 
+  #suppress percentages of 0-1 if more than 300 in denominator
+  mutate(suppress_0to1_300=if_else(totalenroll>300 & suspensiondays_percent<=.01,1,0)) %>%
+  #suppress percentages of 99-100 if more than 300 in denominator
+  mutate(suppress_99to100_300=if_else(totalenroll>300 & suspensiondays_percent>=.99,1,0)) %>%
+
+  
+  #suppress percentages of 0-2 if between 101 to 300 in denominator
+  mutate(suppress_0to2_101=if_else((totalenroll>100 & totalenroll<=300) & 
+                                     suspensiondays_percent<=0.02,1,0)) %>%
+  #suppress percentages of 98-100 if between 101 to 300 in denominator
+  mutate(suppress_98to100_101=if_else((totalenroll>100 & totalenroll<=300) & 
+                                     suspensiondays_percent>=0.98,1,0)) %>%
+  
+  #suppress percentages of 0-5 if between 41 to 100 in denominator
+  mutate(suppress_0to5_41=if_else((totalenroll>40 & totalenroll<=100) & 
+                                     suspensiondays_percent<=0.05,1,0)) %>%
+  #suppress percentages of 95-100 if between 41 to 100 in denominator
+  mutate(suppress_95to100_41=if_else((totalenroll>40 & totalenroll<=100) & 
+                                     suspensiondays_percent>=0.95,1,0)) %>%
+  
+  #suppress percentages of 0-10 if between 21 to 40 in denominator
+  mutate(suppress_0to10_21=if_else((totalenroll>20 & totalenroll<=40) & 
+                                     suspensiondays_percent<=0.10,1,0)) %>%
+  #suppress percentages of 90-100 if between 21 to 40 in denominator
+  mutate(suppress_90to100_21=if_else((totalenroll>20 & totalenroll<=40) & 
+                                     suspensiondays_percent>=0.90,1,0)) %>%
+  
+  #suppress percentages of 0-20 if between 10 to 20 in denominator
+  mutate(suppress_0to20_10=if_else((totalenroll>=10 & totalenroll<=20) & 
+                                     suspensiondays_percent<=0.20,1,0)) %>%
+  #suppress percentages of 80-100 if between 10 to 20 in denominator
+  mutate(suppress_80to100_10=if_else((totalenroll>=10 & totalenroll<=20) & 
+                                     suspensiondays_percent>=0.80,1,0)) %>%
+  
+  #create updated percent and number based on suppression rules
+  mutate(suspensiondays_percent=as.character(paste(suspensiondays_percent))) %>%
+  mutate(suspensiondays_percent_suppressed=case_when(
+    suppress_denominator==1 ~ 'NA',
+    suppress_0to1_300==1 ~ "<= 1%",
+    suppress_99to100_300==1 ~ ">= 99%",
+    suppress_0to2_101==1 ~ "<= 2%",
+    suppress_98to100_101==1 ~ ">= 98%",
+    suppress_0to5_41==1 ~ "<= 5%",
+    suppress_95to100_41==1 ~ ">= 95%",
+    suppress_0to10_21==1 ~ "<= 10%",
+    suppress_90to100_21==1 ~ ">= 90%",
+    suppress_0to20_10==1 ~ "<= 20%",
+    suppress_80to100_10==1 ~ ">= 80%",
+    suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
+      suppress_0to2_101==0 & suppress_98to100_101==0 & 
+      suppress_0to5_41==0 & suppress_95to100_41==0 & 
+      suppress_0to10_21==0 & suppress_90to100_21==0 & 
+      suppress_0to20_10==0 & suppress_80to100_10==0 ~ suspensiondays_percent)) %>%
+  
+  mutate(suspensiondays=as.character(paste(suspensiondays))) %>%
+  mutate(suspensiondays_suppressed=case_when(
+    suppress_denominator==1 | suppress_0to1_300==1 | suppress_99to100_300==1 | 
+    suppress_0to2_101==1 |  suppress_98to100_101==1 |  suppress_0to5_41==1 | 
+    suppress_95to100_41==1 | suppress_0to10_21==1 | suppress_90to100_21==1 | 
+    suppress_0to20_10==1 |   suppress_80to100_10==1 ~ 'NA',
+    suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
+      suppress_0to2_101==0 & suppress_98to100_101==0 & 
+      suppress_0to5_41==0 & suppress_95to100_41==0 & 
+      suppress_0to10_21==0 & suppress_90to100_21==0 & 
+      suppress_0to20_10==0 & suppress_80to100_10==0 ~ suspensiondays)) %>%
+  
+  
+  #suppress referral percentages
+ 
+  #suppress percentages of 0-1 if more than 300 in denominator
+  mutate(suppress_0to1_300=if_else(totalenroll>300 & referral_percent<=.01,1,0)) %>%
+  #suppress percentages of 99-100 if more than 300 in denominator
+  mutate(suppress_99to100_300=if_else(totalenroll>300 & referral_percent>=.99,1,0)) %>%
+
+  
+  #suppress percentages of 0-2 if between 101 to 300 in denominator
+  mutate(suppress_0to2_101=if_else((totalenroll>100 & totalenroll<=300) & 
+                                     referral_percent<=0.02,1,0)) %>%
+  #suppress percentages of 98-100 if between 101 to 300 in denominator
+  mutate(suppress_98to100_101=if_else((totalenroll>100 & totalenroll<=300) & 
+                                     referral_percent>=0.98,1,0)) %>%
+  
+  #suppress percentages of 0-5 if between 41 to 100 in denominator
+  mutate(suppress_0to5_41=if_else((totalenroll>40 & totalenroll<=100) & 
+                                     referral_percent<=0.05,1,0)) %>%
+  #suppress percentages of 95-100 if between 41 to 100 in denominator
+  mutate(suppress_95to100_41=if_else((totalenroll>40 & totalenroll<=100) & 
+                                     referral_percent>=0.95,1,0)) %>%
+  
+  #suppress percentages of 0-10 if between 21 to 40 in denominator
+  mutate(suppress_0to10_21=if_else((totalenroll>20 & totalenroll<=40) & 
+                                     referral_percent<=0.10,1,0)) %>%
+  #suppress percentages of 90-100 if between 21 to 40 in denominator
+  mutate(suppress_90to100_21=if_else((totalenroll>20 & totalenroll<=40) & 
+                                     referral_percent>=0.90,1,0)) %>%
+  
+  #suppress percentages of 0-20 if between 10 to 20 in denominator
+  mutate(suppress_0to20_10=if_else((totalenroll>=10 & totalenroll<=20) & 
+                                     referral_percent<=0.20,1,0)) %>%
+  #suppress percentages of 80-100 if between 10 to 20 in denominator
+  mutate(suppress_80to100_10=if_else((totalenroll>=10 & totalenroll<=20) & 
+                                     referral_percent>=0.80,1,0)) %>%
+  
+  #create updated percent and number based on suppression rules
+  mutate(referral_percent=as.character(paste(referral_percent))) %>%
+  mutate(referral_percent_suppressed=case_when(
+    suppress_denominator==1 ~ 'NA',
+    suppress_0to1_300==1 ~ "<= 1%",
+    suppress_99to100_300==1 ~ ">= 99%",
+    suppress_0to2_101==1 ~ "<= 2%",
+    suppress_98to100_101==1 ~ ">= 98%",
+    suppress_0to5_41==1 ~ "<= 5%",
+    suppress_95to100_41==1 ~ ">= 95%",
+    suppress_0to10_21==1 ~ "<= 10%",
+    suppress_90to100_21==1 ~ ">= 90%",
+    suppress_0to20_10==1 ~ "<= 20%",
+    suppress_80to100_10==1 ~ ">= 80%",
+    suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
+      suppress_0to2_101==0 & suppress_98to100_101==0 & 
+      suppress_0to5_41==0 & suppress_95to100_41==0 & 
+      suppress_0to10_21==0 & suppress_90to100_21==0 & 
+      suppress_0to20_10==0 & suppress_80to100_10==0 ~ referral_percent)) %>%
+  
+  mutate(referrals_unduplicated=as.character(paste(referrals_unduplicated))) %>%
+  mutate(referrals_unduplicated_suppressed=case_when(
+    suppress_denominator==1 | suppress_0to1_300==1 | suppress_99to100_300==1 | 
+    suppress_0to2_101==1 |  suppress_98to100_101==1 |  suppress_0to5_41==1 | 
+    suppress_95to100_41==1 | suppress_0to10_21==1 | suppress_90to100_21==1 | 
+    suppress_0to20_10==1 |   suppress_80to100_10==1 ~ 'NA',
+    suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
+      suppress_0to2_101==0 & suppress_98to100_101==0 & 
+      suppress_0to5_41==0 & suppress_95to100_41==0 & 
+      suppress_0to10_21==0 & suppress_90to100_21==0 & 
+      suppress_0to20_10==0 & suppress_80to100_10==0 ~ referrals_unduplicated)) %>%
+  select(c(ndcounty_name,category,totalenroll,totalenroll_percent,suspensiondays_suppressed,suspensiondays_percent_suppressed,referrals_unduplicated_suppressed,referral_percent_suppressed))
+  
+
+#remove data that is suppressed for both indicators
+discipline_data_suppressed_clean <- discipline_data_suppressed %>%
+subset(!is.na(suspensiondays_percent_suppressed) | !is.na(referral_percent_suppressed))
+
+
+#referral data separately
+referral_data_suppressed_clean <- discipline_data_suppressed_clean %>%
+  subset(!is.na(referral_percent_suppressed)) %>%
+  select(-c(suspensiondays_suppressed,suspensiondays_percent_suppressed))
+
+#suspension data separately
+suspension_data_suppressed_clean <- discipline_data_suppressed_clean %>%
+  subset(!is.na(suspensiondays_percent_suppressed)) %>%
+  select(-c(referrals_unduplicated_suppressed,referral_percent_suppressed))
+
+
+#write data to external files
+write.csv(referral_data_suppressed_clean,file="../Output/datarequests/northdakota_referraldata_byraceandcounty_21-22.csv",row.names=FALSE)
+write.csv(suspension_data_suppressed_clean,file="../Output/datarequests/northdakota_suspensiondata_byraceandcounty_21-22.csv",row.names=FALSE)
+
+
+```
+
+
+

@@ -1,0 +1,187 @@
+---
+title: "North Dakota ICWA Analysis"
+output: html_document
+date: "2022-09-16"
+---
+
+```{r}
+#load required packages
+library(tidyverse)
+library(tidycensus)
+library(censusapi)
+library(stringr)
+library(gt)
+library(sas7bdat)
+
+```
+
+
+```{r}
+year <- "2021"
+year_short <- "21"
+pop_year <- 'POP2021'
+statename <- 'North Dakota'
+database_state <- 'northdakota'
+
+#county and state names that match fips codes (from tidycensus package)
+fips <- fips_codes
+
+
+#import the region match file matching the correct state (for MT, ND, and SD; DO NOT EDIT)
+regionids <-  read.csv("../Input/ND KC Region List.csv") 
+
+#import a file that lists all the counties
+countylist <- read.csv("../Input/ND County List.csv")
+countylist$Location <- as.character(countylist$Location)
+```
+
+## ####################### ##
+## CHILDREN IN FOSTER CARE ##
+## ####################### ##
+
+```{r}
+#CALCULATE FOSTER CARE PERCENTS
+afcars <- read.csv(paste0("../Input/safety/northdakota_afcars_",year,".csv")) %>% 
+  mutate(rowindicator=1) %>%
+  
+  #2021 file had two report periods
+  subset(X_2RptPerEnd==202109)
+
+
+totalcount <- sum(afcars$rowindicator)
+totalcount_validrace <- totalcount-sum(afcars$X_8fChRcUnab)
+
+race_counts <- afcars %>%
+  mutate(location='North Dakota') %>%
+  mutate(timeframe=year) %>%
+  
+  #create singular race grouping
+  mutate(race=case_when(
+    X_8aChRcNat==1 & X_8bChRcAsn==0 & X_8cChRcBl==0 & X_8dChRcPac==0 & X_8eChRcWh==0 & X_8fChRcUnab==0 ~ 'American Indian and Alaska Native',
+    X_8aChRcNat==0 & X_8bChRcAsn==1 & X_8cChRcBl==0 & X_8dChRcPac==0 & X_8eChRcWh==0 & X_8fChRcUnab==0 ~ 'Asian',
+    X_8aChRcNat==0 & X_8bChRcAsn==0 & X_8cChRcBl==1 & X_8dChRcPac==0 & X_8eChRcWh==0 & X_8fChRcUnab==0 ~ 'Black or African American',
+    X_8aChRcNat==0 & X_8bChRcAsn==0 & X_8cChRcBl==0 & X_8dChRcPac==1 & X_8eChRcWh==0 & X_8fChRcUnab==0 ~ 'Native Hawaiian and Other Pacific Islander',
+    X_8aChRcNat==0 & X_8bChRcAsn==0 & X_8cChRcBl==0 & X_8dChRcPac==0 & X_8eChRcWh==1 & X_8fChRcUnab==0 ~ 'White',
+    X_8aChRcNat==0 & X_8bChRcAsn==0 & X_8cChRcBl==0 & X_8dChRcPac==0 & X_8eChRcWh==0 & X_8fChRcUnab==1 ~ 'Unknown',
+    TRUE ~ 'Two or more races')) %>%
+  
+  #count each singular race group
+  group_by(location,timeframe,race) %>%
+  summarise(fostercare_count=sum(rowindicator)) %>%
+  mutate(totalcount=totalcount) %>%
+  mutate(totalcount_validrace=totalcount_validrace) %>%
+  
+  #calculate foster care percentages
+  mutate(fosterpercent=fostercare_count/totalcount,
+         fosterpercent_validrace=fostercare_count/totalcount_validrace) %>%
+  
+  mutate(fosterpercent_validrace=replace(fosterpercent_validrace,race=='Unknown',NA))
+
+#Check ages in dataset - should be ages 0-20, but may pick up a case of 21 if the birthday is Oct.-Dec.
+age_check <- afcars %>%
+  mutate(birthyear=as.numeric(paste(substr(X_6ChDOB,1,4)))) %>%
+  mutate(reportyear=2021) %>%
+  mutate(age=reportyear-birthyear) %>%
+  select(c(birthyear,reportyear,age,X_6ChDOB))
+summarytools::freq(age_check$age)
+```
+
+```{r}
+#POPULATION PERCENTS BY RACE FOR CHILDREN AGE 0-19
+childpop_sql <- paste0("SELECT location, race, data, dataformat FROM northdakota WHERE (timeframe='",year,"' AND vintageyear='",year,"') AND varname='childpopulationbyrace' AND location='North Dakota';")
+
+childpop <- dbGetQuery(con,childpop_sql) %>%
+  pivot_wider(names_from='dataformat', values_from='data') %>%
+  rename(population=Number,
+         population_percent=Percent)
+```
+
+```{r}
+#combine both datasets
+final_data <- race_counts %>%
+  left_join(childpop,by=c('race'='race','location'='location'))
+
+write.csv(final_data,file=paste0("../Output/datarequests/northdakota_",year,"_fostercarebyrace.csv"),row.names=FALSE)
+```
+
+
+
+
+
+
+
+#secondary analysis by county
+```{r}
+#CALCULATE FOSTER CARE PERCENTS
+afcars <- read.csv(paste0("../Input/safety/northdakota_afcars_",year,".csv")) %>% 
+  mutate(rowindicator=1) %>%
+  
+  #2021 file had two report periods
+  subset(X_2RptPerEnd==202109)
+
+
+totalcount <- sum(afcars$rowindicator)
+totalcount_validrace <- totalcount-sum(afcars$X_8fChRcUnab)
+
+race_counts <- afcars %>%
+  
+  separate(col=X_3LocalFIPS,into=c('state_code','county_code'),sep=2) %>%
+  left_join(fips,by=c('state_code'='state_code',
+                      'county_code'='county_code')) %>%
+  #remove word county
+  mutate(location=gsub("\\s*\\w*$", "", county)) %>%
+  mutate(timeframe=year) %>%
+  
+  #create singular race grouping
+  mutate(race=case_when(
+    X_8aChRcNat==1 & X_8bChRcAsn==0 & X_8cChRcBl==0 & X_8dChRcPac==0 & X_8eChRcWh==0 & X_8fChRcUnab==0 ~ 'American Indian and Alaska Native',
+    X_8aChRcNat==0 & X_8bChRcAsn==1 & X_8cChRcBl==0 & X_8dChRcPac==0 & X_8eChRcWh==0 & X_8fChRcUnab==0 ~ 'Asian',
+    X_8aChRcNat==0 & X_8bChRcAsn==0 & X_8cChRcBl==1 & X_8dChRcPac==0 & X_8eChRcWh==0 & X_8fChRcUnab==0 ~ 'Black or African American',
+    X_8aChRcNat==0 & X_8bChRcAsn==0 & X_8cChRcBl==0 & X_8dChRcPac==1 & X_8eChRcWh==0 & X_8fChRcUnab==0 ~ 'Native Hawaiian and Other Pacific Islander',
+    X_8aChRcNat==0 & X_8bChRcAsn==0 & X_8cChRcBl==0 & X_8dChRcPac==0 & X_8eChRcWh==1 & X_8fChRcUnab==0 ~ 'White',
+    X_8aChRcNat==0 & X_8bChRcAsn==0 & X_8cChRcBl==0 & X_8dChRcPac==0 & X_8eChRcWh==0 & X_8fChRcUnab==1 ~ 'Unknown',
+    TRUE ~ 'Two or more races'))
+
+race_counts1 <- race_counts %>%
+  
+  #count each singular race group
+  group_by(location,timeframe,race) %>%
+  summarise(fostercare_count=sum(rowindicator))
+
+race_counts2 <- race_counts %>%
+  group_by(location,timeframe) %>%
+  summarise(totalcount=sum(rowindicator),
+            totalcount_validrace=sum(rowindicator)-sum(X_8fChRcUnab))
+
+race_data <- race_counts1 %>%
+  left_join(race_counts2) %>%
+  
+    #calculate foster care percentages
+  mutate(fosterpercent=fostercare_count/totalcount,
+         fosterpercent_validrace=fostercare_count/totalcount_validrace) %>%
+  
+  mutate(fosterpercent_validrace=replace(fosterpercent_validrace,race=='Unknown',NA))
+
+
+```
+
+
+```{r}
+#POPULATION PERCENTS BY RACE FOR CHILDREN AGE 0-19
+childpop_sql <- paste0("SELECT location, race, data, dataformat FROM northdakota WHERE (timeframe='",year,"' AND vintageyear='",year,"') AND varname='childpopulationbyrace' AND locationtype='County';")
+
+childpop <- dbGetQuery(con,childpop_sql) %>%
+  pivot_wider(names_from='dataformat', values_from='data') %>%
+  rename(population=Number,
+         population_percent=Percent)
+```
+
+```{r}
+#combine both datasets
+final_data <- race_data %>%
+  left_join(childpop,by=c('race'='race','location'='location'))
+
+write.csv(final_data,file=paste0("../Output/datarequests/northdakota_",year,"_fostercarebyrace_county.csv"),row.names=FALSE)
+```
+
+

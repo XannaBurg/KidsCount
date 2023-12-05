@@ -1,0 +1,51 @@
+---
+title: "ND Child Care Supplemental Analysis"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+```
+
+
+```{r}
+dataND <- dbGetQuery(con,"SELECT * from northdakota")
+
+nd_ruralstatus <- read.csv('../Input/ND Rural Urban Status.csv')
+```
+
+
+```{r}
+capacitypercentworking <- dataND %>% 
+  subset(varname=='percentofchildrenunder6withparentsworkingservedbyececapacity') %>%
+  subset(timeframe=='2020') %>%
+  subset(dataformat=='Percent') %>%
+  subset(locationtype=='County') %>%
+  left_join(nd_ruralstatus, by=c('location'='county')) %>%
+  
+  mutate(data=as.numeric(paste(data))) %>%
+  
+  group_by(type) %>%
+  summarise(meanpercent=mean(data))
+
+
+capacitypercentworking2 <- dataND %>% 
+  subset(varname=='percentofchildrenunder6withparentsworkingservedbyececapacity') %>%
+  subset(timeframe=='2020') %>%
+  subset(dataformat=='Percent') %>%
+  subset(locationtype=='County') %>%
+  left_join(nd_ruralstatus, by=c('location'='county')) %>%
+  
+  mutate(data=as.numeric(paste(data))) %>%
+  mutate(type2=case_when(
+    type=='Rural' ~ 'Rural',
+    type!='Rural' ~ 'Not Rural')) %>%
+  
+  group_by(type2) %>%
+  summarise(meanpercent=mean(data))
+
+
+
+
+
+```

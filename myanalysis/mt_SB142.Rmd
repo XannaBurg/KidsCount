@@ -1,0 +1,310 @@
+---
+title: "Child Care SB 142 Analysis"
+output: html_document
+---
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(tidycensus)
+library(censusapi)
+library(stringr)
+
+#county and state names that match fips codes (from tidycensus package)
+fips <- fips_codes
+```
+
+
+```{r}
+
+####UPDATE to reflect the current year data working with
+year <- '2020'
+statename <- 'Montana'
+
+
+#run this code to create an object needed for the database (DO NOT EDIT)
+database_state <- 'montana'
+
+#input location ID file for MT
+locationids <- read.csv("./Input/MT KC Location IDs.csv")
+locationids$Location <- as.character(locationids$Location)
+
+#county list to have full list of counties available for merging
+countylist <- read.csv("./Input/MT County List.csv")
+```
+
+```{r}
+#CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
+#state should match exactly as is in FIPS code in order for code to correctly run
+#this matches the current state fiscal year data for child care data
+year <- "2020" 
+
+
+## - DO NOT EDIT - ##
+year_minus1 <- as.character(as.numeric(year)-1)
+statename <- "Montana"
+database_state <- 'montana'
+
+#import the location ids matching the correct state (for MT, ND, and SD; DO NOT EDIT)
+locationids <-  read.csv("../Input/MT KC Location IDs.csv")
+locationids$Location <- as.character(locationids$Location) #assign as character instead of factor for merging
+
+
+#RUN THIS CODE, BUT NOT REQUIRED TO CHANGE ANYTHING
+#the api will subset data to each state based on the state FIPS code: MT=30, North Dakota=38, South Dakota=46
+statecode <- as.numeric(unique(fips$state_code[fips$state_name==statename]))
+```
+
+```{r}
+##UNDER THE getCensus() FUNCTION, ADD YOUR OWN CENSUS API KEY IN ORDER TO USE THIS CODE. OR FOLLOW THE INSTRUCTIONS ON THE PACKAGE DOCUMENTATION TO SET YOUR API KEY IN YOUR R ENVIRONMENT
+#https://cran.r-project.org/web/packages/censusapi/vignettes/getting-started.html
+
+
+#[year]/acs/acs5 table is: ACS 5-year estimates for detailed tables (those beginning with B) for the year specified
+#see lookup table for categorical vars: https://api.census.gov/data/2018/acs/acs5/variables.html 
+
+############
+#COUNTY DATA
+acs_county <- getCensus(name="acs/acs5",
+          vintage=year_minus1,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("B23008_002E","B23008_002M","B23008_004E","B23008_004M",
+                 "B23008_010E","B23008_010M","B23008_013E","B23008_013M",
+                 "B23008_015E","B23008_015M","B23008_017E","B23008_017M",
+                 "B23008_023E","B23008_023M","B23008_026E","B23008_026M"),
+          region="county:*",
+          regionin=paste0("state:",statecode)) %>%
+  
+  #clean the data that's been imported
+  
+  #assign location type to county
+  mutate(locationtype='County') %>%
+  
+  #add in county name from fips codes, remove word 'county', add in state name
+  left_join(fips,by=c('county'='county_code','state'='state_code')) %>% 
+  mutate(county=gsub("\\s*\\w*$", "", county.y)) %>%
+  
+  #calculate the sums and percent
+  
+  #########################
+  #for children under 6
+  mutate(numerator_under6=(B23008_004E+B23008_010E+B23008_013E)) %>%
+  mutate(numerator_under6_moe=sqrt((B23008_004M^2)+(B23008_010M^2)+
+                                     (B23008_013M^2))) %>%
+  mutate(denominator_under6=B23008_002E) %>%
+  mutate(denominator_under6_moe=B23008_002M) %>%
+  
+  mutate(Number_under6=numerator_under6) %>%
+  mutate(number_under6_moe=numerator_under6_moe) %>%
+  mutate(Percent_under6=numerator_under6/denominator_under6) %>%
+  mutate(percent_under6_moe=(1/denominator_under6)*sqrt((numerator_under6_moe^2)-((Percent_under6^2)*(denominator_under6_moe^2)))) %>%
+  mutate(percent_under6_moe=if_else(is.na(percent_under6_moe),(1/denominator_under6)*sqrt((numerator_under6_moe^2)+((Percent_under6^2)*(denominator_under6_moe^2))),percent_under6_moe)) %>%
+
+ #calculate the relative standard error
+  mutate(number_under6_relativese=((number_under6_moe/1.645)/Number_under6)*100) %>%
+  mutate(percent_under6_relativese=((percent_under6_moe/1.645)/Percent_under6)*100) %>%
+  mutate(keep_under6=if_else(percent_under6_relativese>30 | number_under6_relativese>30,0,1)) %>%
+
+  
+  #select only needed variables and name to kids count database
+  select(c(county,locationtype,Number_under6,number_under6_moe,Percent_under6,percent_under6_moe,keep_under6)) %>%
+  
+  rename(location=county) %>%
+  mutate(state=statename) %>%
+  mutate(varname='childrenwithparentsinlaborforce')
+  
+
+    
+###########
+#STATE DATA
+acs_state <- getCensus(name="acs/acs5",
+          vintage=year_minus1,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("B23008_002E","B23008_002M","B23008_004E","B23008_004M",
+                 "B23008_010E","B23008_010M","B23008_013E","B23008_013M",
+                 "B23008_015E","B23008_015M","B23008_017E","B23008_017M",
+                 "B23008_023E","B23008_023M","B23008_026E","B23008_026M"),
+          region=paste0("state:",statecode)) %>%
+  
+  #clean the data that's been imported
+  
+  #assign location type to county
+  mutate(locationtype='State') %>%
+  mutate(location=statename) %>%
+  
+  #calculate the sums and percent
+  
+  #########################
+  #for children under 6
+  mutate(numerator_under6=(B23008_004E+B23008_010E+B23008_013E)) %>%
+  mutate(numerator_under6_moe=sqrt((B23008_004M^2)+(B23008_010M^2)+
+                                     (B23008_013M^2))) %>%
+  mutate(denominator_under6=B23008_002E) %>%
+  mutate(denominator_under6_moe=B23008_002M) %>%
+  
+  mutate(Number_under6=numerator_under6) %>%
+  mutate(number_under6_moe=numerator_under6_moe) %>%
+  mutate(Percent_under6=numerator_under6/denominator_under6) %>%
+  mutate(percent_under6_moe=(1/denominator_under6)*sqrt((numerator_under6_moe^2)-((Percent_under6^2)*(denominator_under6_moe^2)))) %>%
+  mutate(percent_under6_moe=if_else(is.na(percent_under6_moe),(1/denominator_under6)*sqrt((numerator_under6_moe^2)+((Percent_under6^2)*(denominator_under6_moe^2))),percent_under6_moe)) %>%
+
+ #calculate the relative standard error
+  mutate(number_under6_relativese=((number_under6_moe/1.645)/Number_under6)*100) %>%
+  mutate(percent_under6_relativese=((percent_under6_moe/1.645)/Percent_under6)*100) %>%
+  mutate(keep_under6=if_else(percent_under6_relativese>30 | number_under6_relativese>30,0,1)) %>%
+
+
+  #select only needed variables and name to kids count database
+  select(c(location,locationtype,Number_under6,number_under6_moe,Percent_under6,percent_under6_moe,keep_under6)) %>%
+  
+  mutate(state=statename) %>%
+  mutate(varname='childrenwithparentsinlaborforce')
+
+
+
+data_under6_percent <- acs_county %>%
+  bind_rows(acs_state) %>%
+  select(c(location,locationtype,state,Percent_under6,percent_under6_moe,keep_under6)) %>%
+  rename(data=Percent_under6,
+         moe=percent_under6_moe,
+         keep=keep_under6) %>%
+  
+  rename(percentworking=data,
+         percentworking_moe=moe) %>%
+  mutate(percentworking_lci=percentworking-percentworking_moe,
+         percentworking_uci=percentworking+percentworking_moe) %>%
+  subset(locationtype=='State' | locationtype=='County') %>%
+  select(-c(locationtype,state)) %>%
+  mutate(location=replace(location,location=='Lewis and Clark','Lewis & Clark'))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+#read in the data that was shared by DPHHS
+childcare_data <- read_excel(path=paste0("../Input/education/montana_childcaredata_2020.xlsx"),sheet=paste0("Indicator #1 & #2 SFY ",year),skip=21) 
+
+#create a county list with indicator variable
+countylist2 <- countylist %>%
+  mutate(countyindicator=1)
+
+#create all possible combos of categories and counties
+category <- c('Non STAR','STAR 1','STAR 2','STAR 3','STAR 4','STAR 5','STAR Participant','Total')
+categorylist <- as.data.frame(category)
+county_categorylist <-crossing(countylist,categorylist)
+
+#CLEAN THE DATA
+childcare_data2 <- childcare_data %>%
+  subset(`...1` != 'Grand Total') %>%
+  
+  #create location column
+  mutate(`...1`=replace(`...1`,`...1`=='Lewis and Clark','Lewis & Clark')) %>%
+  mutate(`...1`=replace(`...1`,`...1`=='Mccone','McCone')) %>%
+  left_join(countylist2,by=c('...1'='Location')) %>%
+  mutate(location=ifelse(countyindicator==1,`...1`,NA)) %>%
+  fill(location,.direction=c("down")) %>%
+  
+  #create category variable
+  mutate(category=ifelse(`...1`==location,'Total',`...1`)) %>%
+  
+  #rename columns of interest
+  rename(facilitycount_lrfh='Facility Count...8',
+         capacity_lrfh='Total Capacity...9',
+         infant_capacity_lrfh='Infant Capacity...10',
+         facilitycount_lrgh='Facility Count...11',
+         capacity_lrgh='Total Capacity...12',
+         infant_capacity_lrgh='Infant Capacity...13') %>%
+  
+  #select variables of interest
+  select(c(location,category,facilitycount_lrfh,capacity_lrfh,infant_capacity_lrfh,
+           facilitycount_lrgh,capacity_lrgh,infant_capacity_lrgh)) %>%
+  
+  #join to have all categories present for each location
+  full_join(county_categorylist,by=c('location'='Location','category'='category')) %>%
+   #assign missing counties to zero
+  replace(is.na(.),0) %>%
+  arrange(location,category)
+
+#CREATE STATE SUMS
+childcaredata_state <- childcare_data2 %>%
+  group_by(category) %>%
+  summarise(facilitycount_lrfh=sum(facilitycount_lrfh),
+            capacity_lrfh=sum(capacity_lrfh),
+            infant_capacity_lrfh=sum(infant_capacity_lrfh),
+            facilitycount_lrgh=sum(facilitycount_lrgh),
+            capacity_lrgh=sum(capacity_lrgh),
+            infant_capacity_lrgh=sum(infant_capacity_lrgh),.groups='keep') %>%
+  mutate(location='Montana')
+  
+```
+
+
+```{r}
+#calculate the additional capacity
+familyhomes <- childcare_data2 %>%
+  bind_rows(childcaredata_state) %>%
+  subset(category=='Total') %>%
+  
+  mutate(additionalcapacity_family=facilitycount_lrfh*4) %>%
+  select(c(location,additionalcapacity_family))
+
+grouphomes <- childcare_data2 %>%
+  bind_rows(childcaredata_state) %>%
+  subset(category=='Total') %>%
+  
+  mutate(additionalcapacity_group=facilitycount_lrgh*8) %>%
+  select(c(location,additionalcapacity_group))
+
+combo <- familyhomes %>%
+  left_join(grouphomes, by=c('location'='location')) %>%
+  mutate(additionalcapacity_total=additionalcapacity_family+additionalcapacity_group)
+
+#query population data
+#for child population ages 0-5
+childpop_sql <- paste0("SELECT location, timeframe, age_group, data FROM ", database_state," WHERE (timeframe='2019' AND vintageyear='2019') AND varname='childpopulationbysingleyearofage';") 
+
+childpop_data <- dbGetQuery(con,childpop_sql) %>%
+  mutate(age_group=as.numeric(paste(age_group)),
+         data=as.numeric(paste(data))) %>%
+  subset(age_group<=5) %>%
+  group_by(location) %>%
+  summarise(children_0to5=sum(data),.groups='keep') %>%
+  ungroup
+
+
+
+#for child care capacity data
+childcarecapacity_sql <- paste0("SELECT location, timeframe, data FROM ", database_state," WHERE timeframe='2020' AND varname='licensedchildcarecapacitybystarslevel' AND category='Total' AND dataformat='Number';") 
+childcarecapacity_data <- dbGetQuery(con,childcarecapacity_sql) %>%
+  rename(capacity=data) %>%
+  select(location,capacity) %>%
+  mutate(capacity=as.numeric(paste(capacity)))
+
+
+alldata <- combo %>%
+  left_join(childpop_data,by=c('location'='location')) %>%
+  left_join(childcarecapacity_data,by=c('location'='location')) %>%
+  left_join(data_under6_percent,by=c('location'='location')) %>%
+  
+  mutate(newcapacity_sb142=capacity+additionalcapacity_total,
+         percentcapacity_0to5=capacity/children_0to5,
+         newpercentcapacity_0to5=newcapacity_sb142/children_0to5,
+         capacityincrease=newpercentcapacity_0to5-percentcapacity_0to5,
+         percentcapacity_working=capacity/(children_0to5*percentworking),
+         newpercentcapacity_working=newcapacity_sb142/(children_0to5*percentworking),
+         capacityincrease_working=newpercentcapacity_working-percentcapacity_working)
+
+
+write.csv(alldata,file="../datarequests/montana_sb142analysis.csv",row.names=FALSE)
+```

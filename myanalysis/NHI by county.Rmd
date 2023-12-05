@@ -1,0 +1,69 @@
+---
+title: "Untitled"
+output: html_document
+date: "2023-11-15"
+---
+
+```{r,message=FALSE}
+#install required packages the first time you use this code
+#install.packages('tidyverse')
+#install.packages('tidycensus')
+#install.packages('censusapi')
+#install.packages('stringr')
+
+#load required packages
+library(tidyverse)
+library(tidycensus)
+library(censusapi)
+library(stringr)
+```
+
+```{r}
+#metadata for available variables
+#acs_vars <- listCensusMetadata(name="2018/acs/acs5",
+                               #type="variables")
+
+
+#metadata for available geographies
+#acs_geos <- listCensusMetadata(name="2018/acs/acs5",
+                              # type="geography")
+
+
+#county and state names that match fips codes (from tidycensus package)
+fips <- fips_codes
+
+#import tribal fips code (from file on local drive)
+fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
+
+```
+
+
+```{r}
+countydata <- getCensus(name="acs/acs5/subject",
+          vintage=2021,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("S2701_C05_001E","S2701_C05_001M"),
+          region="county:*",
+          regionin="state:46") %>%
+  
+  #assign location type to county
+  mutate(locationtype='County') %>%
+  
+  #add in county name from fips codes, remove word 'county', add in state name
+  left_join(fips,by=c('county'='county_code','state'='state_code')) %>% 
+  mutate(county=gsub("\\s*\\w*$", "", county.y)) %>%
+  
+  #calculate relative SE
+  mutate(relative_se=((S2701_C05_001M/1.645)/S2701_C05_001E)*100) %>%
+  mutate(keep=if_else(relative_se>30,0,1)) %>%
+  
+  #identify the counties higher than overall using lower CI bound
+  mutate(lower_estimate=S2701_C05_001E-S2701_C05_001M) %>%
+  mutate(higher_than_overall=if_else(lower_estimate>9.9,1,0))
+
+
+write.csv(countydata,file=paste0("/Users/xannaburg/Documents/KidsCountData/Output/myanalysis/southdakota_nhi_bycounty.csv"),row.names=FALSE)
+
+
+```
+

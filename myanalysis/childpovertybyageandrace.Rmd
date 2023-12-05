@@ -1,0 +1,643 @@
+---
+title: "Poverty by Age and Race"
+output: html_document
+---
+
+**Created by:** Xanna Burg
+**Date:** February 2022
+**Updated by:**
+
+**Data Source:** U.S. Census Bureau, American Community Survey 5-year Estimates, Table B17001
+**Purpose:** Connect to Census ACS data, clean data, and output dataset to upload to KIDS COUNT Data Center.
+
+**Data format:** 
+
+**To use this code for a new year:**
+* Update the year and acsyear (5 year interval) in the third code chunk for variables 'year' and 'acsyear'
+* Update the state name (exactly as appears in FIPS) of interest
+* Check each dataset visually and through the report logs prior to commiting to the database.
+
+
+
+```{r,message=FALSE}
+#install required packages the first time you use this code
+#install.packages('tidyverse')
+#install.packages('tidycensus')
+#install.packages('censusapi')
+#install.packages('stringr')
+
+#load required packages
+library(tidyverse)
+library(tidycensus)
+library(censusapi)
+library(stringr)
+```
+
+```{r}
+#metadata for available variables
+#acs_vars <- listCensusMetadata(name="2018/acs/acs5",
+                               #type="variables")
+
+
+#metadata for available geographies
+#acs_geos <- listCensusMetadata(name="2018/acs/acs5",
+                              # type="geography")
+
+
+#county and state names that match fips codes (from tidycensus package)
+fips <- fips_codes
+
+#import tribal fips code (from file on local drive)
+fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
+
+```
+
+## UPDATE THIS CODE CHUNK
+```{r}
+#CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
+#state should match exactly as is in FIPS code in order for code to correctly run
+statename <- "South Dakota"
+year <- "2019"
+acsyear <- "2015-2019"
+
+
+#run this code to create an object needed for the database (DO NOT EDIT)
+if (statename=='Montana') {
+  database_state <- 'montana'
+} else if (statename=='North Dakota') {
+  database_state <- 'northdakota'
+} else if (statename=='South Dakota') {
+  database_state <- 'southdakota'
+}
+
+#import the location ids matching the correct state (for MT, ND, and SD; DO NOT EDIT)
+locationids <- if (statename=='Montana') {
+  read.csv("../Input/MT KC Location IDs.csv")
+} else if (statename=='North Dakota') {
+  read.csv("../Input/ND KC Location IDs.csv")
+} else if (statename=='South Dakota') {
+  read.csv("../Input/SD KC Location IDs.csv")
+}
+locationids$Location <- as.character(locationids$Location) #assign as character instead of factor for merging
+
+#import the region match file matching the correct state (for MT, ND, and SD; DO NOT EDIT)
+regionids <- if (statename=='Montana') {
+  read.csv("../Input/MT KC Region List.csv")
+} else if (statename=='North Dakota') {
+  read.csv("../Input/ND KC Region List.csv") 
+} else if (statename=='South Dakota') {
+  read.csv("../Input/SD KC Region List.csv")
+}
+regionids$county <- as.character(regionids$county)
+regionids$region <- as.character(regionids$region)
+
+
+#UPDATE THE BELOW FILE PATH IF USING THIS CODE OUTSIDE OF MT, ND, OR SD TO ADD LOCATION IDS
+#the csv file should have 2 columns: "LocationId" and "Location"
+#locationids <- read.csv("your_file_path_here.csv")
+
+#UPDATE THE BELOW FILE PATH IF USING THIS CODE OUTSIDE OF MT, ND, OR SD TO ADD REGIONS (GROUPS OF COUNTIES)
+#the csv file should have 2 columns: "county" and "region"
+#regionids <- read.csv("your_file_path_here.csv")
+
+
+#RUN THIS CODE, BUT NOT REQUIRED TO CHANGE ANYTHING
+#the api will subset data to each state based on the state FIPS code: MT=30, North Dakota=38, South Dakota=46
+statecode <- as.numeric(unique(fips$state_code[fips$state_name==statename]))
+```
+
+
+#FIRST CALCULATE OVERALL POVERTY FOR ALL RACE GROUPS
+```{r}
+overall_estimates <- getCensus(name="acs/acs5",
+          vintage=year,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("B17001_004E","B17001_005E","B17001_006E","B17001_007E","B17001_008E",
+                 "B17001_009E","B17001_010E","B17001_018E","B17001_019E","B17001_020E",
+                 "B17001_021E","B17001_022E","B17001_023E","B17001_024E","B17001_033E",
+                 "B17001_034E","B17001_035E","B17001_036E","B17001_037E","B17001_038E",
+                 "B17001_039E","B17001_047E","B17001_048E","B17001_049E","B17001_050E",
+                 "B17001_051E","B17001_052E","B17001_053E"),
+          region=paste0("state:",statecode))  
+
+overall_moe <- getCensus(name="acs/acs5",
+          vintage=year,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("B17001_004M","B17001_005M",
+                 "B17001_006M","B17001_007M","B17001_008M","B17001_009M","B17001_010M",
+                 "B17001_018M","B17001_019M","B17001_020M","B17001_021M","B17001_022M",
+                 "B17001_023M","B17001_024M","B17001_033M","B17001_034M","B17001_035M",
+                 "B17001_036M","B17001_037M","B17001_038M","B17001_039M","B17001_047M",
+                 "B17001_048M","B17001_049M","B17001_050M","B17001_051M","B17001_052M",
+                 "B17001_053M"),
+          region=paste0("state:",statecode))
+
+overall_poverty_0to17 <- overall_estimates %>%
+  left_join(overall_moe,by=c('state'='state')) %>%
+  
+  mutate(numerator=(B17001_004E+B17001_005E+B17001_006E+B17001_007E+B17001_008E+B17001_009E+B17001_018E+B17001_019E+B17001_020E+B17001_021E+B17001_022E+B17001_023E)) %>%
+  mutate(numerator_moe=sqrt((B17001_004M^2)+(B17001_005M^2)+(B17001_006M^2)+(B17001_007M^2)+(B17001_008M^2)+(B17001_009M^2)+(B17001_018M^2)+(B17001_019M^2)+(B17001_020M^2)+(B17001_021M^2)+(B17001_022M^2)+(B17001_023M^2))) %>%
+  mutate(denominator=B17001_004E+B17001_005E+B17001_006E+B17001_007E+B17001_008E+B17001_009E+B17001_018E+B17001_019E+B17001_020E+B17001_021E+B17001_022E+B17001_023E+B17001_033E+B17001_034E+ B17001_035E+B17001_036E+B17001_037E+ B17001_038E+B17001_047E+B17001_048E+B17001_049E+ B17001_050E+B17001_051E+B17001_052E) %>%
+  mutate(denominator_moe=sqrt((B17001_004M^2)+(B17001_005M^2)+(B17001_006M^2)+(B17001_007M^2)+(B17001_008M^2)+(B17001_009M^2)+(B17001_018M^2)+(B17001_019M^2)+(B17001_020M^2)+(B17001_021M^2)+(B17001_022M^2)+(B17001_023M^2)+(B17001_033M^2)+(B17001_034M^2)+(B17001_035M^2)+(B17001_036M^2)+(B17001_037M^2)+(B17001_038M^2)+(B17001_047M^2)+(B17001_048M^2)+(B17001_049M^2)+(B17001_050M^2)+(B17001_051M^2)+(B17001_052M^2))) %>%
+  
+  mutate(number=numerator) %>%
+  mutate(number_moe=numerator_moe) %>%
+  mutate(percent=numerator/denominator) %>%
+  mutate(percent_moe=(1/denominator)*sqrt((numerator_moe^2)-((percent^2)*(denominator_moe^2)))) %>%
+  mutate(percent_moe=if_else(is.na(percent_moe),(1/denominator)*sqrt((numerator_moe^2)+((percent^2)*(denominator_moe^2))),percent_moe)) %>%
+
+ #calculate the relative standard error
+  mutate(number_relativese=((number_moe/1.645)/number)*100) %>%
+  mutate(percent_relativese=((percent_moe/1.645)/percent)*100) %>%
+  mutate(keep=if_else(percent_relativese>30 | number_relativese>30,0,1)) %>%
+  
+  mutate(age_group="Age 0-17") %>%
+  mutate(race='All Races') %>%
+  select(c(age_group,race,percent,percent_moe,keep,number,number_moe,denominator,denominator_moe))
+```
+
+#NEXT CHANGE THE LETTER TO MATCH EACH RACE GROUP
+A=White (white)
+B=Black (black)
+C=American Indian Alaska Native (aian)
+D=Asian (asian)
+E=Native Hawaiian (nh)
+F=Other (other)
+G=two or more races (mult)
+I=Hispanic/Latino (hispanic)
+```{r}
+#RUN ONLY DESIRED LETTER AT A TIME
+letter <- "A"
+race_text <- "White"
+race_title <- "white"
+
+letter <- "B"
+race_text <- "Black"
+race_title <- "black"
+
+letter <- "C"
+race_text <- "American Indian Alaska Native"
+race_title <- "aian"
+
+letter <- "D"
+race_text <- "Asian"
+race_title <- "asian"
+
+letter <- "E"
+race_text <- "Native Hawaiian"
+race_title <- "nh"
+
+letter <- "F"
+race_text <- "Other"
+race_title <- "other"
+
+letter <- "G"
+race_text <- "two or more races"
+race_title <- "mult"
+
+letter <- "I"
+race_text <- "Hispanic/Latino"
+race_title <- "hisp"
+
+```
+
+```{r}
+census_variable_list1 <- paste0("B17001",letter,"_004E,B17001",letter,"_005E,B17001",letter,"_006E,B17001",letter,"_007E,B17001",letter,"_008E,B17001",letter,"_009E,B17001",letter,"_010E,B17001",letter,"_018E,B17001",letter,"_019E,B17001",letter,"_020E,B17001",letter,"_021E,B17001",letter,"_022E,B17001",letter,"_023E,B17001",letter,"_024E,B17001",letter,"_033E,B17001",letter,"_034E,B17001",letter,"_035E,B17001",letter,"_036E,B17001",letter,"_037E,B17001",letter,"_038E,B17001",letter,"_039E,B17001",letter,"_047E,B17001",letter,"_048E,B17001",letter,"_049E,B17001",letter,"_050E,B17001",letter,"_051E,B17001",letter,"_052E,B17001",letter,"_053E")
+
+census_variable_list2 <- paste0("B17001",letter,"_004M,B17001",letter,"_005M,B17001",letter,"_006M,B17001",letter,"_007M,B17001",letter,"_008M,B17001",letter,"_009M,B17001",letter,"_010M,B17001",letter,"_018M,B17001",letter,"_019M,B17001",letter,"_020M,B17001",letter,"_021M,B17001",letter,"_022M,B17001",letter,"_023M,B17001",letter,"_024M,B17001",letter,"_033M,B17001",letter,"_034M,B17001",letter,"_035M,B17001",letter,"_036M,B17001",letter,"_037M,B17001",letter,"_038M,B17001",letter,"_039M,B17001",letter,"_047M,B17001",letter,"_048M,B17001",letter,"_049M,B17001",letter,"_050M,B17001",letter,"_051M,B17001",letter,"_052M,B17001",letter,"_053M")
+
+
+df_estimates <- getCensus(name="acs/acs5",
+          vintage=year,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=census_variable_list1,
+          region=paste0("state:",statecode)) 
+
+df_moe <- getCensus(name="acs/acs5",
+          vintage=year,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=census_variable_list2,
+          region=paste0("state:",statecode)) 
+
+df <- df_estimates %>%
+  left_join(df_moe,by=c('state'='state')) %>%
+  mutate(numerator=(get(noquote(paste0("B17001",letter,"_004E")))+
+                      get(noquote(paste0("B17001",letter,"_005E")))+
+                      get(noquote(paste0("B17001",letter,"_006E")))+
+                      get(noquote(paste0("B17001",letter,"_007E")))+
+                      get(noquote(paste0("B17001",letter,"_008E")))+
+                      get(noquote(paste0("B17001",letter,"_009E")))+
+                      get(noquote(paste0("B17001",letter,"_018E")))+
+                      get(noquote(paste0("B17001",letter,"_019E")))+
+                      get(noquote(paste0("B17001",letter,"_020E")))+
+                      get(noquote(paste0("B17001",letter,"_021E")))+
+                      get(noquote(paste0("B17001",letter,"_022E")))+
+                      get(noquote(paste0("B17001",letter,"_023E"))))) %>%
+  mutate(numerator_moe=sqrt((get(noquote(paste0("B17001",letter,"_004M")))^2)+
+                            (get(noquote(paste0("B17001",letter,"_005M")))^2)+
+                            (get(noquote(paste0("B17001",letter,"_006M")))^2)+
+                            (get(noquote(paste0("B17001",letter,"_007M")))^2)+
+                            (get(noquote(paste0("B17001",letter,"_008M")))^2)+
+                            (get(noquote(paste0("B17001",letter,"_009M")))^2)+
+                            (get(noquote(paste0("B17001",letter,"_018M")))^2)+
+                            (get(noquote(paste0("B17001",letter,"_019M")))^2)+
+                            (get(noquote(paste0("B17001",letter,"_020M")))^2)+
+                            (get(noquote(paste0("B17001",letter,"_021M")))^2)+
+                            (get(noquote(paste0("B17001",letter,"_022M")))^2)+
+                            (get(noquote(paste0("B17001",letter,"_023M")))^2))) %>%
+  mutate(denominator=get(noquote(paste0("B17001",letter,"_004E")))+
+           get(noquote(paste0("B17001",letter,"_005E")))+
+           get(noquote(paste0("B17001",letter,"_006E")))+
+           get(noquote(paste0("B17001",letter,"_007E")))+
+           get(noquote(paste0("B17001",letter,"_008E")))+
+           get(noquote(paste0("B17001",letter,"_009E")))+
+           get(noquote(paste0("B17001",letter,"_018E")))+
+           get(noquote(paste0("B17001",letter,"_019E")))+
+           get(noquote(paste0("B17001",letter,"_020E")))+
+           get(noquote(paste0("B17001",letter,"_021E")))+
+           get(noquote(paste0("B17001",letter,"_022E")))+
+           get(noquote(paste0("B17001",letter,"_023E")))+
+           get(noquote(paste0("B17001",letter,"_033E")))+
+           get(noquote(paste0("B17001",letter,"_034E")))+ 
+           get(noquote(paste0("B17001",letter,"_035E")))+
+           get(noquote(paste0("B17001",letter,"_036E")))+
+           get(noquote(paste0("B17001",letter,"_037E")))+ 
+           get(noquote(paste0("B17001",letter,"_038E")))+
+           get(noquote(paste0("B17001",letter,"_047E")))+
+           get(noquote(paste0("B17001",letter,"_048E")))+
+           get(noquote(paste0("B17001",letter,"_049E")))+ 
+           get(noquote(paste0("B17001",letter,"_050E")))+
+           get(noquote(paste0("B17001",letter,"_051E")))+
+           get(noquote(paste0("B17001",letter,"_052E")))) %>%
+  mutate(denominator_moe=sqrt((get(noquote(paste0("B17001",letter,"_004M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_005M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_006M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_007M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_008M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_009M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_018M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_019M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_020M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_021M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_022M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_023M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_033M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_034M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_035M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_036M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_037M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_038M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_047M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_048M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_049M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_050M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_051M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_052M")))^2))) %>%
+  
+  mutate(number=numerator) %>%
+  mutate(number_moe=numerator_moe) %>%
+  mutate(percent=numerator/denominator) %>%
+  mutate(percent_moe=(1/denominator)*sqrt((numerator_moe^2)-((percent^2)*(denominator_moe^2)))) %>%
+  mutate(percent_moe=if_else(is.na(percent_moe),(1/denominator)*sqrt((numerator_moe^2)+((percent^2)*(denominator_moe^2))),percent_moe)) %>%
+
+ #calculate the relative standard error
+  mutate(number_relativese=((number_moe/1.645)/number)*100) %>%
+  mutate(percent_relativese=((percent_moe/1.645)/percent)*100) %>%
+  mutate(keep=if_else(percent_relativese>30 | number_relativese>30,0,1)) %>%
+  
+  mutate(age_group="Age 0-17") %>%
+  mutate(race=race_text) %>%
+  select(c(age_group,race,percent,percent_moe,keep,number,number_moe,denominator,denominator_moe))
+ 
+assign(paste0(letter,"_poverty_0to17"),df)
+
+```
+
+#Print dataset for the specified year
+```{r}
+#combine multiple, other, 2+
+poverty_combined <- E_poverty_0to17 %>%
+  bind_rows(F_poverty_0to17) %>%
+  bind_rows(G_poverty_0to17) %>%
+  mutate(combined_percent=sum(number)/sum(denominator)) %>%
+  mutate(combined_number=sum(number)) %>%
+  mutate(combined_number_moe=sqrt(sum(number_moe^2))) %>%
+  mutate(combined_denominator=sum(denominator)) %>%
+  mutate(combined_denominator_moe=sqrt(sum(denominator_moe^2))) %>%
+  mutate(combined_percent_moe=(1/combined_denominator)*sqrt((combined_number_moe^2)-((combined_percent^2)*(combined_denominator_moe^2)))) %>%
+  
+  mutate(combined_number_relativese=((combined_number_moe/1.645)/combined_number)*100) %>%
+  mutate(combined_percent_relativese=((combined_percent_moe/1.645)/combined_percent)*100) %>%
+  mutate(combined_keep=if_else(combined_percent_relativese>30 | combined_number_relativese>30,0,1)) %>%
+  
+  subset(race=='Other') %>%
+  mutate(race='Multiple Races or Other Race') %>%
+  
+  select(age_group,race,combined_percent,combined_percent_moe,combined_keep,combined_number,combined_number_moe,combined_denominator,combined_denominator_moe) %>%
+  rename(percent=combined_percent,
+         percent_moe=combined_percent_moe,
+         keep=combined_keep,
+         number=combined_number,
+         number_moe=combined_number_moe,
+         denominator=combined_denominator,
+         denominator_moe=combined_denominator_moe)
+
+poverty_0to17 <- overall_poverty_0to17 %>%
+  bind_rows(A_poverty_0to17) %>%
+  bind_rows(B_poverty_0to17) %>%
+  bind_rows(C_poverty_0to17) %>%
+  bind_rows(D_poverty_0to17) %>%
+  bind_rows(poverty_combined) %>%
+  bind_rows(I_poverty_0to17) %>%
+  
+  mutate(timeframe=paste0(as.numeric(year)-4,"-",year)) 
+
+
+#write.csv(poverty_0to17,file=paste0("/Users/xannaburg/Documents/Analysis/Race for Results - State Companion/North Dakota/povertychildren_",year,".csv"),row.names=FALSE)
+write.csv(poverty_0to17,file=paste0("/Users/xannaburg/Documents/KidsCountData/Output/datarequests/povertychildren_",year,".csv"),row.names=FALSE)
+```
+
+
+#Get data for every state
+```{r}
+fips2 <- fips %>%
+  select(c(state_code,state_name)) %>%
+  distinct()
+
+
+state_estimates <- getCensus(name="acs/acs5",
+          vintage=year,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("B17001_004E","B17001_005E","B17001_006E","B17001_007E","B17001_008E",
+                 "B17001_009E","B17001_010E","B17001_018E","B17001_019E","B17001_020E",
+                 "B17001_021E","B17001_022E","B17001_023E","B17001_024E","B17001_033E",
+                 "B17001_034E","B17001_035E","B17001_036E","B17001_037E","B17001_038E",
+                 "B17001_039E","B17001_047E","B17001_048E","B17001_049E","B17001_050E",
+                 "B17001_051E","B17001_052E","B17001_053E"),
+          region="state:*")  
+
+state_moe <- getCensus(name="acs/acs5",
+          vintage=year,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("B17001_004M","B17001_005M",
+                 "B17001_006M","B17001_007M","B17001_008M","B17001_009M","B17001_010M",
+                 "B17001_018M","B17001_019M","B17001_020M","B17001_021M","B17001_022M",
+                 "B17001_023M","B17001_024M","B17001_033M","B17001_034M","B17001_035M",
+                 "B17001_036M","B17001_037M","B17001_038M","B17001_039M","B17001_047M",
+                 "B17001_048M","B17001_049M","B17001_050M","B17001_051M","B17001_052M",
+                 "B17001_053M"),
+          region="state:*")
+
+state_poverty_0to17 <- state_estimates %>%
+  left_join(state_moe,by=c('state'='state')) %>%
+  
+  mutate(numerator=(B17001_004E+B17001_005E+B17001_006E+B17001_007E+B17001_008E+B17001_009E+B17001_018E+B17001_019E+B17001_020E+B17001_021E+B17001_022E+B17001_023E)) %>%
+  mutate(numerator_moe=sqrt((B17001_004M^2)+(B17001_005M^2)+(B17001_006M^2)+(B17001_007M^2)+(B17001_008M^2)+(B17001_009M^2)+(B17001_018M^2)+(B17001_019M^2)+(B17001_020M^2)+(B17001_021M^2)+(B17001_022M^2)+(B17001_023M^2))) %>%
+  mutate(denominator=B17001_004E+B17001_005E+B17001_006E+B17001_007E+B17001_008E+B17001_009E+B17001_018E+B17001_019E+B17001_020E+B17001_021E+B17001_022E+B17001_023E+B17001_033E+B17001_034E+ B17001_035E+B17001_036E+B17001_037E+ B17001_038E+B17001_047E+B17001_048E+B17001_049E+ B17001_050E+B17001_051E+B17001_052E) %>%
+  mutate(denominator_moe=sqrt((B17001_004M^2)+(B17001_005M^2)+(B17001_006M^2)+(B17001_007M^2)+(B17001_008M^2)+(B17001_009M^2)+(B17001_018M^2)+(B17001_019M^2)+(B17001_020M^2)+(B17001_021M^2)+(B17001_022M^2)+(B17001_023M^2)+(B17001_033M^2)+(B17001_034M^2)+(B17001_035M^2)+(B17001_036M^2)+(B17001_037M^2)+(B17001_038M^2)+(B17001_047M^2)+(B17001_048M^2)+(B17001_049M^2)+(B17001_050M^2)+(B17001_051M^2)+(B17001_052M^2))) %>%
+  
+  mutate(number=numerator) %>%
+  mutate(number_moe=numerator_moe) %>%
+  mutate(percent=numerator/denominator) %>%
+  mutate(percent_moe=(1/denominator)*sqrt((numerator_moe^2)-((percent^2)*(denominator_moe^2)))) %>%
+  mutate(percent_moe=if_else(is.na(percent_moe),(1/denominator)*sqrt((numerator_moe^2)+((percent^2)*(denominator_moe^2))),percent_moe)) %>%
+
+ #calculate the relative standard error
+  mutate(number_relativese=((number_moe/1.645)/number)*100) %>%
+  mutate(percent_relativese=((percent_moe/1.645)/percent)*100) %>%
+  mutate(keep=if_else(percent_relativese>30 | number_relativese>30,0,1)) %>%
+  
+  mutate(age_group="Age 0-17") %>%
+  mutate(race='All Races') %>%
+  left_join(fips2,by=c('state'='state_code')) %>%
+  select(c(state_name,age_group,race,percent,percent_moe,keep,number,number_moe,denominator,denominator_moe)) %>%
+  subset(state_name != "District of Columbia") %>%
+  subset(state_name != "Puerto Rico") %>%
+  arrange(percent)
+
+
+write.csv(state_poverty_0to17,file=paste0("/Users/xannaburg/Documents/Analysis/Race for Results - State Companion/North Dakota/povertychildren_allstates_",year,".csv"),row.names=FALSE)
+  
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+#OLD
+df <- getCensus(name="acs/acs5",
+          vintage=year,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c(paste0("B17001",letter,"_004E"),
+                 paste0("B17001",letter,"_005E"),
+                 paste0("B17001",letter,"_006E"),
+                 paste0("B17001",letter,"_007E"),
+                 paste0("B17001",letter,"_008E"),
+                 paste0("B17001",letter,"_009E"),
+                 paste0("B17001",letter,"_010E"),
+                 paste0("B17001",letter,"_018E"),
+                 paste0("B17001",letter,"_019E"),
+                 paste0("B17001",letter,"_020E"),
+                 paste0("B17001",letter,"_021E"),
+                 paste0("B17001",letter,"_022E"),
+                 paste0("B17001",letter,"_023E"),
+                 paste0("B17001",letter,"_024E"),
+                 paste0("B17001",letter,"_033E"),
+                 paste0("B17001",letter,"_034E"),
+                 paste0("B17001",letter,"_035E"),
+                 paste0("B17001",letter,"_036E"),
+                 paste0("B17001",letter,"_037E"),
+                 paste0("B17001",letter,"_038E"),
+                 paste0("B17001",letter,"_039E"),
+                 paste0("B17001",letter,"_047E"),
+                 paste0("B17001",letter,"_048E"),
+                 paste0("B17001",letter,"_049E"),
+                 paste0("B17001",letter,"_050E"),
+                 paste0("B17001",letter,"_051E"),
+                 paste0("B17001",letter,"_052E"),
+                 paste0("B17001",letter,"_053E"),
+                 paste0("B17001",letter,"_004M"),
+                 paste0("B17001",letter,"_005M"),
+                 paste0("B17001",letter,"_006M"),
+                 paste0("B17001",letter,"_007M"),
+                 paste0("B17001",letter,"_008M"),
+                 paste0("B17001",letter,"_009M"),
+                 paste0("B17001",letter,"_010M"),
+                 paste0("B17001",letter,"_018M"),
+                 paste0("B17001",letter,"_019M"),
+                 paste0("B17001",letter,"_020M"),
+                 paste0("B17001",letter,"_021M"),
+                 paste0("B17001",letter,"_022M"),
+                 paste0("B17001",letter,"_023M"),
+                 paste0("B17001",letter,"_024M"),
+                 paste0("B17001",letter,"_033M"),
+                 paste0("B17001",letter,"_034M"),
+                 paste0("B17001",letter,"_035M"),
+                 paste0("B17001",letter,"_036M"),
+                 paste0("B17001",letter,"_037M"),
+                 paste0("B17001",letter,"_038M"),
+                 paste0("B17001",letter,"_039M"),
+                 paste0("B17001",letter,"_047M"),
+                 paste0("B17001",letter,"_048M"),
+                 paste0("B17001",letter,"_049M"),
+                 paste0("B17001",letter,"_050M"),
+                 paste0("B17001",letter,"_051M"),
+                 paste0("B17001",letter,"_052M"),
+                 paste0("B17001",letter,"_053M")),
+          region=paste0("state:",statecode))  
+
+df <- df %>%
+  
+  mutate(numerator=(get(noquote(paste0("B17001",letter,"_004E")))+
+                      get(noquote(paste0("B17001",letter,"_005E")))+
+                      get(noquote(paste0("B17001",letter,"_006E")))+
+                      get(noquote(paste0("B17001",letter,"_007E")))+
+                      get(noquote(paste0("B17001",letter,"_008E")))+
+                      get(noquote(paste0("B17001",letter,"_009E")))+
+                      get(noquote(paste0("B17001",letter,"_018E")))+
+                      get(noquote(paste0("B17001",letter,"_019E")))+
+                      get(noquote(paste0("B17001",letter,"_020E")))+
+                      get(noquote(paste0("B17001",letter,"_021E")))+
+                      get(noquote(paste0("B17001",letter,"_022E")))+
+                      get(noquote(paste0("B17001",letter,"_023E"))))) %>%
+  mutate(numerator_moe=sqrt((get(noquote(paste0("B17001",letter,"_004M")))^2)+
+                            (get(noquote(paste0("B17001",letter,"_005M")))^2)+
+                            (get(noquote(paste0("B17001",letter,"_006M")))^2)+
+                            (get(noquote(paste0("B17001",letter,"_007M")))^2)+
+                            (get(noquote(paste0("B17001",letter,"_008M")))^2)+
+                            (get(noquote(paste0("B17001",letter,"_009M")))^2)+
+                            (get(noquote(paste0("B17001",letter,"_018M")))^2)+
+                            (get(noquote(paste0("B17001",letter,"_019M")))^2)+
+                            (get(noquote(paste0("B17001",letter,"_020M")))^2)+
+                            (get(noquote(paste0("B17001",letter,"_021M")))^2)+
+                            (get(noquote(paste0("B17001",letter,"_022M")))^2)+
+                            (get(noquote(paste0("B17001",letter,"_023M")))^2))) %>%
+  mutate(denominator=get(noquote(paste0("B17001",letter,"_004E")))+
+           get(noquote(paste0("B17001",letter,"_005E")))+
+           get(noquote(paste0("B17001",letter,"_006E")))+
+           get(noquote(paste0("B17001",letter,"_007E")))+
+           get(noquote(paste0("B17001",letter,"_008E")))+
+           get(noquote(paste0("B17001",letter,"_009E")))+
+           get(noquote(paste0("B17001",letter,"_018E")))+
+           get(noquote(paste0("B17001",letter,"_019E")))+
+           get(noquote(paste0("B17001",letter,"_020E")))+
+           get(noquote(paste0("B17001",letter,"_021E")))+
+           get(noquote(paste0("B17001",letter,"_022E")))+
+           get(noquote(paste0("B17001",letter,"_023E")))+
+           get(noquote(paste0("B17001",letter,"_033E")))+
+           get(noquote(paste0("B17001",letter,"_034E")))+ 
+           get(noquote(paste0("B17001",letter,"_035E")))+
+           get(noquote(paste0("B17001",letter,"_036E")))+
+           get(noquote(paste0("B17001",letter,"_037E")))+ 
+           get(noquote(paste0("B17001",letter,"_038E")))+
+           get(noquote(paste0("B17001",letter,"_047E")))+
+           get(noquote(paste0("B17001",letter,"_048E")))+
+           get(noquote(paste0("B17001",letter,"_049E")))+ 
+           get(noquote(paste0("B17001",letter,"_050E")))+
+           get(noquote(paste0("B17001",letter,"_051E")))+
+           get(noquote(paste0("B17001",letter,"_052E")))) %>%
+  mutate(denominator_moe=sqrt((get(noquote(paste0("B17001",letter,"_004M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_005M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_006M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_007M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_008M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_009M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_018M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_019M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_020M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_021M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_022M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_023M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_033M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_034M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_035M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_036M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_037M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_038M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_047M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_048M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_049M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_050M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_051M")))^2)+
+                                (get(noquote(paste0("B17001",letter,"_052M")))^2))) %>%
+  
+  mutate(number=numerator) %>%
+  mutate(number_moe=numerator_moe) %>%
+  mutate(percent=numerator/denominator) %>%
+  mutate(percent_moe=(1/denominator)*sqrt((numerator_moe^2)-((percent^2)*(denominator_moe^2)))) %>%
+  mutate(percent_moe=if_else(is.na(percent_moe),(1/denominator)*sqrt((numerator_moe^2)+((percent^2)*(denominator_moe^2))),percent_moe)) %>%
+
+ #calculate the relative standard error
+  mutate(number_relativese=((number_moe/1.645)/number)*100) %>%
+  mutate(percent_relativese=((percent_moe/1.645)/percent)*100) %>%
+  mutate(keep=if_else(percent_relativese>30 | number_relativese>30,0,1)) %>%
+  
+  mutate(age_group="Age 0-17") %>%
+  mutate(race=race_text) %>%
+  select(c(age_group,race,percent,percent_moe,keep,number,number_moe,denominator,denominator_moe))
+ 
+assign(paste0(letter,"_poverty_0to17"),df)
+ 
+```
+
+#Print dataset for the specified year
+```{r}
+#combine multiple, other, 2+
+poverty_combined <- nh_poverty_0to17 %>%
+  bind_rows(other_poverty_0to17) %>%
+  bind_rows(mult_poverty_0to17) %>%
+  mutate(combined_percent=sum(number)/sum(denominator)) %>%
+  mutate(combined_number=sum(number)) %>%
+  mutate(combined_number_moe=sqrt(sum(number_moe^2))) %>%
+  mutate(combined_denominator=sum(denominator)) %>%
+  mutate(combined_denominator_moe=sqrt(sum(denominator_moe^2))) %>%
+  mutate(combined_percent_moe=(1/combined_denominator)*sqrt((combined_number_moe^2)-((combined_percent^2)*(combined_denominator_moe^2)))) %>%
+  
+  mutate(combined_number_relativese=((combined_number_moe/1.645)/combined_number)*100) %>%
+  mutate(combined_percent_relativese=((combined_percent_moe/1.645)/combined_percent)*100) %>%
+  mutate(combined_keep=if_else(combined_percent_relativese>30 | combined_number_relativese>30,0,1)) %>%
+  
+  subset(race=='Other') %>%
+  mutate(race='Multiple Races or Other Race') %>%
+  
+  select(age_group,race,combined_percent,combined_percent_moe,combined_keep,combined_number,combined_number_moe,combined_denominator,combined_denominator_moe) %>%
+  rename(percent=combined_percent,
+         percent_moe=combined_percent_moe,
+         keep=combined_keep,
+         number=combined_number,
+         number_moe=combined_number_moe,
+         denominator=combined_denominator,
+         denominator_moe=combined_denominator_moe)
+
+poverty_0to17 <- overall_poverty_0to17 %>%
+  bind_rows(white_poverty_0to17) %>%
+  bind_rows(black_poverty_0to17) %>%
+  bind_rows(aian_poverty_0to17) %>%
+  bind_rows(poverty_combined) %>%
+  bind_rows(hispanic_poverty_0to17) %>%
+  
+  mutate(timeframe=paste0(as.numeric(year)-4,"-",year)) 
+
+
+write.csv(poverty_0to17,file=paste0("/Users/xannaburg/Documents/Analysis/Race for Results - State Companion/North Dakota/povertychildren_",year,".csv"),row.names=FALSE)
+```
+
