@@ -31,7 +31,7 @@ library(naniar)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2022'
+year <- '2023'
 
 statefile <- 'montana'
 statename <- 'Montana'
@@ -48,13 +48,13 @@ regionids$county <- as.character(regionids$county)
 
 ## IMPORT THE DATA FILES THAT WILL BE USED
 ```{r}
-wic_countydata <- read_excel(path=paste0("./Input/economics/montana_",year,"_wicparticipants.xlsx"),sheet='All Participants - by County') 
+wic_countydata <- read_excel(path=paste0("./Input/economics/montana_",year,"_wicparticipants.xlsx"),sheet='All Participants - By County') 
 
-wic_statedata <- read_excel(path=paste0("./Input/economics/montana_",year,"_wicparticipants.xlsx"),sheet='All Participants - statewide') 
+wic_statedata <- read_excel(path=paste0("./Input/economics/montana_",year,"_wicparticipants.xlsx"),sheet='All Participants - Statewide') 
 
-wic_countydata_children <- read_excel(path=paste0("./Input/economics/montana_",year,"_wicparticipants.xlsx"),sheet='Child and Infant - by County') 
+wic_countydata_children <- read_excel(path=paste0("./Input/economics/montana_",year,"_wicparticipants.xlsx"),sheet='Child and Infant - By County') 
 
-wic_statedata_children <- read_excel(path=paste0("./Input/economics/montana_",year,"_wicparticipants.xlsx"),sheet='Child and Infant - statewide') 
+wic_statedata_children <- read_excel(path=paste0("./Input/economics/montana_",year,"_wicparticipants.xlsx"),sheet='Child and Infant - Statewide') 
 ```
 
 

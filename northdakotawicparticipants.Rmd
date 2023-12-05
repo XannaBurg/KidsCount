@@ -30,7 +30,7 @@ library(sas7bdat)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2022'
+year <- '2023'
 
 statefile <- 'northdakota'
 statename <- 'North Dakota'
@@ -56,7 +56,10 @@ wicdata <- read.csv(paste0("./Input/Health/northdakota_",year,"_wicparticipants.
   mutate(Location=as.character(paste(Location))) %>%
   
   mutate(Location=replace(Location,Location=='Mclean','McLean')) %>%
-  mutate(Location=replace(Location,Location=='Lamoure','LaMoure')) 
+  mutate(Location=replace(Location,Location=='Lamoure','LaMoure')) %>%
+  mutate(Location=replace(Location,Location=='Mchenry','McHenry')) %>%
+  mutate(Location=replace(Location,Location=='Mcintosh','McIntosh')) %>%
+  mutate(Location=replace(Location,Location=='Mckenzie','McKenzie')) 
   
 
 #county data
