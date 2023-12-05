@@ -1,0 +1,220 @@
+---
+title: "North Dakota Monthly Child Care"
+output: html_document
+date: '2022-08-09'
+---
+
+**Created by:** Xanna Burg
+**Date:** August 2022
+**Updated by:**
+
+**Data Source:** North Dakota Department of Human Services 
+**Purpose:** Clean the monthly child care data provided by the Department of Human Services.
+
+**Data format:** 
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+library(stringr)
+library(ggplot2)
+library(knitr)
+library(scales)
+```
+
+```{r}
+#read in all the available data files
+filenames <- list.files('./Input/education/ND monthly child care',pattern="*.xlsx",full.names=TRUE)
+
+data_frames=lapply(filenames,function(i){
+  ret <- read_excel(i)
+  ret$month <- gsub("./Input/education/ND monthly child care","", i)
+  ret
+})
+
+monthlydata=do.call(rbind,data_frames) %>%
+  mutate(date=substring(month,16,22)) %>%
+  mutate(datev2=paste0(substring(date,1,2),"/01/",substring(date,4,7))) %>%
+  
+  #create category from License instead of using category provided
+  mutate(category_letter=str_sub(`Provider License #`,-1,-1)) %>%
+  
+  #remove licenses without letter and those without a license
+  subset(!is.na(`Provider License #`)) %>%
+  subset(!category_letter %in% c(1,2,3,4,5,6,7,8,9)) %>%
+  
+  #remove cases where `Max Number of Children` is 'Not Listed' or zero
+  subset(`Number of Children`!='Not Listed') %>%
+  subset(`Number of Children` != '0') %>%
+  
+  #remove any military base programs, these are not licensed
+  subset(`Number of Children` != 'Military Base - not listed') %>%
+  
+  #re-assign tribal programs to tribal registration
+  mutate(`License Type`=replace(`License Type`,`Number of Children`=='Tribal - not listed','Tribal Registration')) %>%
+  #tribal registration not consistently reported, remove
+  subset(`License Type`!='Tribal Registration') %>%
+  #approved relative not consistently reported, remove
+  subset(`License Type`!='Approved Relative') %>%
+  
+  #create new capacity variable that drops unknowns, changes to numeric
+  mutate(capacity=as.numeric(paste(`Number of Children`))) %>%
+  
+  #label the category letters
+  mutate(category_name=case_when(
+    category_letter=='C' ~ 'Child Care Center',
+    category_letter=='E' ~ 'Preschool',
+    category_letter=='F' ~ 'Family Child Care',
+    category_letter=='G' ~ 'Group Child Care in a home',
+    category_letter=='H' ~ 'Group Child Care in a facility',
+    category_letter=='K' ~ 'School Age Care',
+    category_letter=='M' ~ 'Multiple License',
+    category_letter=='S' ~ 'Self Declaration')) %>%
+  
+  #assign date as date within R
+  mutate(datev2=as.Date(datev2,"%m/%d/%Y"))
+
+
+
+#TABLES OF DATA
+
+#print the total facilities and total capacity by month
+totalcapacity_table1 <- monthlydata %>%
+  group_by(datev2) %>%
+  summarise(number_facilities=n(),
+            number_capacity=sum(capacity)) %>%
+  ungroup %>%
+  arrange(datev2)
+
+View(totalcapacity_table1)
+kable(totalcapacity_table1)
+write.csv(totalcapacity_table1,"/Users/xannaburg/Documents/Analysis/Child Care Report/North Dakota/2022 Report Updating/References/childcarecapacity_bymonth_9-21_11-22.csv",row.names=FALSE)
+
+
+#print the total facilities and total capacity by month and facility type
+totalcapacity_table2 <- monthlydata %>%
+  group_by(datev2,category_name) %>%
+  summarise(number_facilities=n(),
+            number_capacity=sum(capacity)) %>%
+  ungroup %>%
+  arrange(category_name,datev2)
+
+kable(totalcapacity_table2)
+
+
+#GRAPHS
+#total line chart
+theme_set(theme_classic())
+
+totalfacilities_graph <- totalcapacity_table1 %>% 
+  ggplot( aes(x=datev2, y=number_facilities)) +
+  geom_line(color="firebrick") +
+  geom_point(color="firebrick") +
+  scale_x_date(date_breaks="2 months",date_labels="%b-%Y") +
+  scale_y_continuous(limits=c(800,1500),breaks=seq(800,1500,by=100)) +
+  annotate("rect",xmin=as.Date(c("2022-03-01")),xmax=as.Date(c("2022-08-01")),ymin=800,ymax=1500,alpha=.1,fill="blue") +
+  labs(x = NULL, y = "Facilities") +
+  geom_text(aes(label=scales::comma(number_facilities)),vjust=-1.5,size=3.5) +
+  ggtitle("Number of Child Care Facilities in North Dakota")
+totalfacilities_graph
+
+totalcapacity_graph <- totalcapacity_table1 %>% 
+  ggplot( aes(x=datev2, y=number_capacity)) +
+  geom_line(color="firebrick") +
+  geom_point(color="firebrick") +
+  scale_x_date(date_breaks="2 months",date_labels="%b-%Y") +
+  scale_y_continuous(limits=c(30000,45000),breaks=seq(30000,45000,by=5000)) +
+  annotate("rect",xmin=as.Date(c("2022-03-01")),xmax=as.Date(c("2022-08-01")),ymin=30000,ymax=45000,alpha=.1,fill="blue") +
+  labs(x = NULL, y = "Capacity") +
+  geom_text(aes(label=scales::comma(number_capacity)),vjust=-1.5,size=3.5) +
+  ggtitle("Number of Child Care Slots in North Dakota")
+totalcapacity_graph
+
+
+
+#Number of providers by facility type
+totalfacilities_graph2 <- totalcapacity_table2 %>% 
+  ggplot( aes(x=datev2, y=number_facilities,group=category_name,color=category_name)) +
+  geom_line() +
+  geom_point() +
+  scale_x_date(date_breaks="2 months",date_labels="%b-%Y") +
+  scale_y_continuous(limits=c(0,800),breaks=seq(0,800,by=100)) +
+  annotate("rect",xmin=as.Date(c("2022-03-01")),xmax=as.Date(c("2022-08-01")),ymin=0,ymax=800,alpha=.1,fill="blue") +
+  labs(x = NULL, y = "Facilities") +
+  #geom_text(aes(label=scales::comma(number_facilities)),vjust=-1.5,size=3.5,check_overlap = TRUE) +
+  ggtitle("Number of Child Care Facilities in North Dakota by Type of License")
+totalfacilities_graph2
+
+
+#Capacity by facility type
+totalcapacity_graph2 <- totalcapacity_table2 %>% 
+  ggplot( aes(x=datev2, y=number_capacity,group=category_name,color=category_name)) +
+  geom_line() +
+  geom_point() +
+  scale_x_date(date_breaks="2 months",date_labels="%b-%Y") +
+  scale_y_continuous(limits=c(0,15000),breaks=seq(0,15000,by=1000)) +
+  annotate("rect",xmin=as.Date(c("2022-03-01")),xmax=as.Date(c("2022-08-01")),ymin=0,ymax=15000,alpha=.1,fill="blue") +
+  labs(x = NULL, y = "Capacity") +
+  geom_text(aes(label=scales::comma(number_capacity)),vjust=-1.5,size=3.5) +
+  ggtitle("Number of Child Care Slots in North Dakota by Type of License")
+totalcapacity_graph2
+
+
+```
+
+
+
+#Create a file that sums by zip code
+```{r}
+library(zipcodeR)
+
+#all zip codes in ND
+zipcodes_all <- search_state('ND') %>%
+  mutate(zipcode=as.numeric(paste(zipcode)))
+
+zipcode_data <- monthlydata %>%
+  
+  #remove school age
+  subset(category_name != 'School Age Care') %>%
+  
+  group_by(`Street Zip`,datev2) %>%
+  summarise(facilities=n(),
+            capacity=sum(capacity)) %>%
+  ungroup 
+
+
+zipcode_change <- zipcode_data %>%
+  select(c(`Street Zip`,datev2,capacity)) %>%
+  pivot_wider(names_from='datev2',values_from='capacity') %>%
+  replace(is.na(.),0) %>%
+  mutate(change_capacity=`2022-09-01`-`2021-09-01`) %>%
+  
+  full_join(zipcodes_all,by=c(`Street Zip`='zipcode')) %>%
+  
+  mutate(capacity_change_category=case_when(
+    change_capacity <0 & change_capacity > -50 ~ 'Lost 0-50 slots',
+    change_capacity <= -50 & change_capacity > -100 ~ 'Lost 50-100 slots',
+    change_capacity <= -100, 'Lost 100+ slots',
+    change_capacity >0 & change_capacity <50 ~ 'Gained 0-50 slots',
+    change_capacity >=50 & change_capacity <100 ~ 'Gained 50-100 slots',
+    change_capacity >=100 ~ 'Gained 100+ slots',
+    change_capacity == 0 ~ 'No change',
+    TRUE ~ NA))
+
+write.csv(zipcode_change,'./Output/datarequests/northdakotachildcarechangebyzipcode.csv',row.names=FALSE)
+
+
+
+
+
+
+```
+
+
+
+
+
