@@ -59,8 +59,8 @@ fips <- fips_codes
 ```{r}
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
-statename <- "North Dakota"
-year <- "2021"
+statename <- "South Dakota"
+year <- "2022"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -880,6 +880,7 @@ write.csv(saipe_kcdatacenter,file="your path/goes here/nameyourcsv.csv",row.name
 ## CHILDREN IN POVERTY BY SCHOOL DISTRICT ##
 ## ###################################### ##
 
+#SOUTH DAKOTA
 # STEP 1: CALCULATE FOR AGE GROUP 5-17
 ```{r}
 ##UNDER THE getCensus() FUNCTION, ADD YOUR OWN CENSUS API KEY IN ORDER TO USE THIS CODE. OR FOLLOW THE INSTRUCTIONS ON THE PACKAGE DOCUMENTATION TO SET YOUR API KEY IN YOUR R ENVIRONMENT
