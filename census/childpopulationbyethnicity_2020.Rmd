@@ -62,7 +62,7 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 ```{r}
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
-statename <- "South Dakota"
+statename <- "Montana"
 year <- "2020"
 
 
@@ -329,7 +329,11 @@ totalpop_region <- totalpop_county %>%
 
 totalpop <- totalpop_county %>%
   bind_rows(totalpop_state) %>%
-  bind_rows(totalpop_region)
+  bind_rows(totalpop_region) %>%
+
+ mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) 
 
 
 pop_percentages <- pop %>%
