@@ -45,10 +45,10 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '22_23'
-fullyear <- '2022/23' 
-year_prior <- '2021/22' #for dropout data
-year_dropout <- '21_22'
+year <- '23_24'
+fullyear <- '2023/24' 
+year_prior <- '2022/23' #for dropout data
+year_dropout <- '22_23'
 calyearformat <- '2023'
 statefile <- 'southdakota'
 statename <- 'South Dakota'
@@ -125,6 +125,8 @@ enrollment_district <- df_enrollment %>%
                          'Highmore-Harrold School District 34-2',location)) %>%
     mutate(location=ifelse(location=='Hitchcock-Tulare',
                          'Hitchcock-Tulare School District 56-6',location)) %>%
+   mutate(location=ifelse(location=='Oldham-Ramona-Rutland School District 39-6',
+                         'Oldham-Ramona School District 39-5',location)) %>%
   
   
   left_join(locationids,by=c('location'='Location')) %>%
@@ -254,7 +256,7 @@ dbWriteTable(con,'southdakota',enrollment,append=TRUE,row.names=FALSE)
 
 **NON-PUBLIC SCHOOL ENROLLMENT GRADES PRE-K THROUGH 12**
 ```{r}
-state_data <- 16131
+state_data <- 15775
 #######
 
 #CALCULATE THE STATEWIDE DATA
