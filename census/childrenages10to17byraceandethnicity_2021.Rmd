@@ -35,7 +35,7 @@ library(sas7bdat)
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 statename <- "South Dakota"
-year <- "2021"
+year <- "2022"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -85,7 +85,7 @@ statecode <- as.numeric(unique(fips$state_code[fips$state_name==statename]))
 #ethnicity first
 ```{r}
 #South Dakota
-fulldata <- read.csv(paste0("../Input/demographics/DATADELIVERY_ Vintage 2021 Population Estimates20221021073707/v2021_co_res_char11_sd.csv"))
+fulldata <- read.csv(paste0("../Input/demographics/DATADELIVERY_ Vintage 2022 Population Estimates20230630085928/v2022_co_res_char11_sd.csv"))
 
 ############
 #COUNTY DATA
@@ -111,7 +111,8 @@ populationdata_county <- fulldata %>%
   #format to KC variable names
   mutate(timeframe=case_when(
     DATE==3 ~ '2020',
-    DATE==4 ~ '2021')) %>% 
+    DATE==4 ~ '2021',
+    DATE==5 ~ '2022')) %>% 
   
   mutate(race=case_when(
     HISP==1 ~ 'Non-Hispanic',
@@ -265,7 +266,7 @@ write.csv(upload_data_pop,file=paste0("../Output/demographics/",database_state,"
 #race 
 ```{r}
 #South Dakota
-fulldata <- read.csv(paste0("../Input/demographics/DATADELIVERY_ Vintage 2021 Population Estimates20221021073707/v2021_co_res_char11_sd.csv"))
+fulldata <- read.csv(paste0("../Input/demographics/DATADELIVERY_ Vintage 2022 Population Estimates20230630085928/v2022_co_res_char11_sd.csv"))
 
 ############
 #COUNTY DATA
@@ -296,7 +297,8 @@ populationdata_county <- fulldata %>%
   #format to KC variable names
   mutate(timeframe=case_when(
     DATE==3 ~ '2020',
-    DATE==4 ~ '2021')) %>% 
+    DATE==4 ~ '2021',
+    DATE==5 ~ '2022')) %>% 
   
   mutate(race=case_when(
     RACE11==1 ~ 'White',
