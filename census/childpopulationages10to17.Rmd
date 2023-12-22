@@ -31,7 +31,7 @@ library(zoo)
 
 ## STEP 1: IMPORT DATA FROM SQL DATABASE AND CLEAN
 ```{r}
-year <- '2021'
+year <- '2022'
 statename <- 'South Dakota'
 
 
