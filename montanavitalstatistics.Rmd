@@ -35,7 +35,7 @@ library(naniar)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2021'
+year <- '2022'
 
 year_minus3 <- as.character(as.numeric(year)-2)
 year_minus5 <- as.character(as.numeric(year)-4)
@@ -66,9 +66,9 @@ montana_3year <- read_excel(path=paste0("./Input/health/montana_",year_minus3,"_
 
 counties_3year <- read_excel(path=paste0("./Input/health/montana_",year_minus3,"_",year,"_vitalstatistics_KIDS_COUNT_",year_minus3,"_",year,".xlsx"),sheet='Counties',skip=3) 
 
-montana_5year <- read_excel(path=paste0("./Input/health/montana_",year_minus5,"_",year,"_vitalstatistics_KIDS_COUNT_",year_minus5,"_",year,"v2.xlsx"),sheet='Montana',skip=3) 
+montana_5year <- read_excel(path=paste0("./Input/health/montana_",year_minus5,"_",year,"_vitalstatistics_KIDS_COUNT_",year_minus5,"_",year,".xlsx"),sheet='Montana',skip=3) 
 
-counties_5year <- read_excel(path=paste0("./Input/health/montana_",year_minus5,"_",year,"_vitalstatistics_KIDS_COUNT_",year_minus5,"_",year,"v2.xlsx"),sheet='Counties',skip=3) 
+counties_5year <- read_excel(path=paste0("./Input/health/montana_",year_minus5,"_",year,"_vitalstatistics_KIDS_COUNT_",year_minus5,"_",year,".xlsx"),sheet='Counties',skip=3) 
 
 ```
 
@@ -99,7 +99,9 @@ births_county <- counties_1year %>%
   
   #fix the name on some counties
   mutate(location=replace(location,location=='Golden','Golden Valley')) %>%
-  mutate(location=replace(location,location=='Mccone','McCone'))
+  mutate(location=replace(location,location=='Mccone','McCone')) %>%
+  mutate(data=as.numeric(paste(data))) %>%
+  subset(location != '~Not Stated')
 
 
 #STATE DATA
@@ -245,7 +247,8 @@ births_county <- counties_1year %>%
   
   #fix the name on some counties
   mutate(location=replace(location,location=='Golden','Golden Valley')) %>%
-  mutate(location=replace(location,location=='Mccone','McCone'))
+  mutate(location=replace(location,location=='Mccone','McCone')) %>%
+  subset(location != '~Not Stated')
 
 
 #STATE DATA
@@ -379,7 +382,8 @@ births_county <- counties_3year %>%
   
   #fix the name on some counties
   mutate(location=replace(location,location=='Golden','Golden Valley')) %>%
-  mutate(location=replace(location,location=='Mccone','McCone'))
+  mutate(location=replace(location,location=='Mccone','McCone')) %>%
+  subset(location != '~Not Stated')
 
 
 #STATE DATA
@@ -556,7 +560,8 @@ births_county <- counties_5year %>%
   
   #fix the name on some counties
   mutate(location=replace(location,location=='Golden','Golden Valley')) %>%
-  mutate(location=replace(location,location=='Mccone','McCone'))
+  mutate(location=replace(location,location=='Mccone','McCone')) %>%
+  subset(location != '~Not Stated')
 
 
 #STATE DATA
@@ -686,7 +691,7 @@ if (temp_rows==0) {
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
 #**Suppress the three year percentage if there is exactly one NA during the five years
-#births_all$data[births_all$location=='Big Horn'] <- NA
+#births_all$data[births_all$location=='Lake'] <- NA
 ```
 
 ## STEP 3: ADD TO DATABASE
@@ -741,7 +746,8 @@ births_county <- counties_1year %>%
   
   #fix the name on some counties
   mutate(location=replace(location,location=='Golden','Golden Valley')) %>%
-  mutate(location=replace(location,location=='Mccone','McCone'))
+  mutate(location=replace(location,location=='Mccone','McCone')) %>%
+  subset(location != '~Not Stated')
 
 
 #STATE DATA
@@ -875,7 +881,8 @@ births_county <- counties_3year %>%
   
   #fix the name on some counties
   mutate(location=replace(location,location=='Golden','Golden Valley')) %>%
-  mutate(location=replace(location,location=='Mccone','McCone'))
+  mutate(location=replace(location,location=='Mccone','McCone')) %>%
+  subset(location != '~Not Stated')
 
 
 #STATE DATA
@@ -1052,7 +1059,8 @@ births_county <- counties_5year %>%
   
   #fix the name on some counties
   mutate(location=replace(location,location=='Golden','Golden Valley')) %>%
-  mutate(location=replace(location,location=='Mccone','McCone'))
+  mutate(location=replace(location,location=='Mccone','McCone')) %>%
+  subset(location != '~Not Stated')
 
 
 #STATE DATA
@@ -1238,7 +1246,8 @@ births_county <- counties_5year %>%
   
   #fix the name on some counties
   mutate(location=replace(location,location=='Golden','Golden Valley')) %>%
-  mutate(location=replace(location,location=='Mccone','McCone'))
+  mutate(location=replace(location,location=='Mccone','McCone')) %>%
+  subset(location != '~Not Stated')
 
 
 #STATE DATA
@@ -1372,7 +1381,8 @@ births_county <- counties_5year %>%
   
   #fix the name on some counties
   mutate(location=replace(location,location=='Golden','Golden Valley')) %>%
-  mutate(location=replace(location,location=='Mccone','McCone'))
+  mutate(location=replace(location,location=='Mccone','McCone')) %>%
+  subset(location != '~Not Stated')
 
 
 #STATE DATA
