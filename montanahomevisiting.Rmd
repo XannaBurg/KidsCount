@@ -30,7 +30,7 @@ library(naniar)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2022'
+year <- '2023'
 
 statefile <- 'montana'
 statename <- 'Montana'
@@ -67,7 +67,9 @@ homevisitingdata2 <- homevisitingdata %>%
          families_2021=`FAMILIES SERVED...10`,
          children_2021=`CHILDREN SERVED...11`,
          families_2022=`FAMILIES SERVED...12`,
-         children_2022=`CHILDREN SERVED...13`) %>%
+         children_2022=`CHILDREN SERVED...13`,
+         families_2023=`FAMILIES SERVED...14`,
+         children_2023=`CHILDREN SERVED...15`) %>%
   
   #remove footnotes
   subset(location!='Notes:') %>%
