@@ -32,7 +32,7 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2022'
+year <- '2023'
 statename <- 'South Dakota'
 
 #run this code to create an object needed for the database (DO NOT EDIT)
