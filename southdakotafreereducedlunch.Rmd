@@ -166,8 +166,8 @@ tribalschools <- read.csv("./Documentation/Indicator Documentation/South Dakota 
 tribalschools$school <- as.character(tribalschools$school)
 
 
-frl_data_tribal <- read_excel(paste0("./Input/education/southdakota_",year,"_frl.xls"),sheet='SORT BY SCHOOL DISTRICT') %>%
-  rename(school='School/Agency Name',
+frl_data_tribal <- read_excel(paste0("./Input/education/southdakota_",year,"_frl.xls"),sheet='Sort by District') %>%
+  rename(school='School / Agency Name',
          data='Free & Red Price Elig %',
          studentenrollment='Student Enrollment') %>%
   
