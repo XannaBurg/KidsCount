@@ -38,9 +38,10 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 ```
 
 
+### County Data for No Health Insurance
 ```{r}
 countydata <- getCensus(name="acs/acs5/subject",
-          vintage=2021,
+          vintage=2022,
           key=Sys.getenv("CENSUS_API_KEY"),
           vars=c("S2701_C05_001E","S2701_C05_001M"),
           region="county:*",
@@ -63,6 +64,39 @@ countydata <- getCensus(name="acs/acs5/subject",
 
 
 write.csv(countydata,file=paste0("/Users/xannaburg/Documents/KidsCountData/Output/myanalysis/southdakota_nhi_bycounty.csv"),row.names=FALSE)
+
+
+```
+
+
+### County Data for Poverty (B17024)
+```{r}
+countydata2 <- getCensus(name="acs/acs5",
+          vintage=2022,
+          key=Sys.getenv("CENSUS_API_KEY"),
+          vars=c("B17024_042E","B17024_043E","B17024_044E","B17024_045E","B17024_046E",
+                  "B17024_055E","B17024_056E","B17024_057E","B17024_058E","B17024_059E",
+                  "B17024_068E","B17024_069E","B17024_070E","B17024_071E","B17024_072E",
+                  "B17024_081E","B17024_082E","B17024_083E","B17024_084E","B17024_085E",
+                  "B17024_094E","B17024_095E","B17024_096E","B17024_097E","B17024_098E"),
+          region="county:*",
+          regionin="state:46") %>%
+  
+  #assign location type to county
+  mutate(locationtype='County') %>%
+  
+  #add in county name from fips codes, remove word 'county', add in state name
+  left_join(fips,by=c('county'='county_code','state'='state_code')) %>% 
+  mutate(county=gsub("\\s*\\w*$", "", county.y)) %>%
+  
+  #create sums
+  mutate(totalnumberbelow124=B17024_042E+B17024_043E+B17024_044E+B17024_045E+B17024_055E+B17024_056E+B17024_057E+B17024_058E+B17024_068E+B17024_069E+B17024_070E+B17024_071E+B17024_081E+B17024_082E+B17024_083E+B17024_084E+B17024_094E+B17024_095E+B17024_096E+B17024_097E,
+         totalnumberbelow150=B17024_042E+B17024_043E+B17024_044E+B17024_045E+B17024_046E+B17024_055E+B17024_056E+B17024_057E+B17024_058E+B17024_059E+B17024_068E+B17024_069E+B17024_070E+B17024_071E+B17024_072E+B17024_081E+B17024_082E+B17024_083E+B17024_084E+B17024_085E+B17024_094E+B17024_095E+B17024_096E+B17024_097E+B17024_098E) %>%
+  select(c(state,county,totalnumberbelow124,totalnumberbelow150))
+
+
+
+write.csv(countydata2,file=paste0("/Users/xannaburg/Documents/KidsCountData/Output/myanalysis/southdakota_poverty_bycounty.csv"),row.names=FALSE)
 
 
 ```
