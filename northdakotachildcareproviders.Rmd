@@ -28,7 +28,7 @@ library(stringr)
 
 ```{r}
 #UPDATE to reflect the current year data working with
-year <- '2023'
+year <- '2024'
 state <- 'northdakota'
 
 year_shortened <- substr(year,3,4)
@@ -42,10 +42,10 @@ countymatch <- read.csv("./Documentation/Indicator Documentation/North Dakota Da
 
 ```{r}
 #read in the child care data
-child_data <- read_excel(paste0("./Input/education/northdakota_",year,"_childcaredata_may.xlsx"))
+child_data <- read_excel(paste0("./Input/education/northdakota_",year,"_childcaredata.xlsx"))
 
 #read in the quality data
-quality_data <- read_excel(path=paste0("./Input/education/northdakota_",year,"_childcarequality_may.xlsx"))
+quality_data <- read_excel(path=paste0("./Input/education/northdakota_",year,"_childcarequality.xlsx"))
 
 
 
@@ -72,49 +72,61 @@ locationids <- read.csv("./Input/ND KC Location IDs.csv")
 
 #input region ID file for ND
 regionids <- read.csv("./Input/ND KC Region List.csv")
+
+#input ID file for county to city
+countyids <- read_excel("./Documentation/Indicator Documentation/North Dakota Data Requests/nd_city_county child care key v2.xlsx")
+
 ```
 
 ```{r}
 child_data_2 <- child_data %>%
   
   #clean up the data
-  #remove any programs that do not have a license number, so we cannot match to county
-  subset(!is.na(`File Number`)) %>%
+  #match counties using city and zip
+  
+  #need to fix capitalization of city
+  mutate(city_fixed=str_to_title(City)) %>%
+  mutate(zip_fixed=as.numeric(Zip)) %>%
+  
+  mutate(city_fixed=replace(city_fixed,city_fixed=='Lamoure',"LaMoure")) %>%
+  mutate(city_fixed=replace(city_fixed,city_fixed=='Mcville',"McVille")) %>%
+  mutate(city_fixed=replace(city_fixed,city_fixed=='Mcclusky',"McClusky")) %>%
+  
+  left_join(countyids,by=c('city_fixed'='City', 'zip_fixed'='Zipcode')) %>%
+  rename(county=County) %>%
   
   #create new variable matching to KC categories
-  #check next year for this next line, in 2023 all the public approvals were school age programs denoted by a K in the license number
-  mutate(`Type`=replace(`Type`,`Type`=='Public Approval - License Exempt','School Age License')) %>%
   mutate(category=case_when(
-    `Type`=='Center License' | `Type`=='Family License' | 
-      `Type`=='Group License-Facility' | `Type`=='Group License-Home' | 
-      `Type`=='Multiple License' | 
-      `Type`=='Preschool License' ~ 'Licensed',
-    `Type`=='School Age License' ~ 'Licensed School Age',
-    `Type`=='Self Declared Certificate' ~ 'Self-declaration Providers',
-    `Type`=='Public Approval - License Exempt' ~ 'License Exempt')) %>%
+    `License Type`=='Center License' | `License Type`=='Family License' | 
+      `License Type`=='Group License-Facility' | `License Type`=='Group License-Home' | 
+      `License Type`=='Multiple License' | 
+      `License Type`=='Preschool License' | `License Type`=='Provisional Group License' ~ 'Licensed',
+    `License Type`=='School Age License' ~ 'Licensed School Age',
+    `License Type`=='Self Declared Certificate' ~ 'Self-declaration Providers')) %>%
   
-  mutate(capacity=as.numeric(paste(`Capacity`))) %>%
+  
+  mutate(capacity=as.numeric(paste(`Capacity`))) 
   
   #merge in county from license number
-  mutate(ndcounty_number1=substr(`File Number`,1,2))
+  #mutate(ndcounty_number1=substr(`File Number`,1,2))
 
-child_data_fix <- child_data_2 %>% subset(ndcounty_number1=='0-' | ndcounty_number1=='1-' | ndcounty_number1=='2-' | ndcounty_number1=='3-' | ndcounty_number1=='4-' | ndcounty_number1=='5-') %>%
-  mutate(`File Number 2`=str_sub(`File Number`,3)) %>%
-  mutate(`File Number 2`=replace(`File Number 2`,`File Number`=='0-0-01898-F','36')) %>%
-  mutate(`File Number 2`=replace(`File Number 2`,`File Number`=='1-5-00442-H','05')) %>%
+#child_data_fix <- child_data_2 %>% subset(ndcounty_number1=='0-' | ndcounty_number1=='1-' | ndcounty_number1=='2-' | ndcounty_number1=='3-' | ndcounty_number1=='4-' | ndcounty_number1=='5-') %>%
+ # mutate(`File Number 2`=str_sub(`File Number`,3)) %>%
+#  mutate(`File Number 2`=replace(`File Number 2`,`File Number`=='0-0-01898-F','36')) %>%
+ # mutate(`File Number 2`=replace(`File Number 2`,`File Number`=='1-5-00442-H','05')) %>%
   
-  mutate(ndcounty_number2=substr(`File Number 2`,1,2)) %>%
-  select(c(`File Number`,ndcounty_number2))
+  #mutate(ndcounty_number2=substr(`File Number 2`,1,2)) %>%
+  #select(c(`File Number`,ndcounty_number2))
 
 
-child_data_3 <- child_data_2 %>%
-  left_join(child_data_fix,by=c('File Number'='File Number')) %>%
-  mutate(ndcounty_number=case_when(
-    is.na(ndcounty_number2) ~ ndcounty_number1,
-    !is.na(ndcounty_number2) ~ ndcounty_number2)) %>%
+#child_data_3 <- child_data_2 %>%
+ # left_join(child_data_fix,by=c('File Number'='File Number')) %>%
+#  mutate(ndcounty_number=case_when(
+ #   is.na(ndcounty_number2) ~ ndcounty_number1,
+  #  !is.na(ndcounty_number2) ~ ndcounty_number2)) %>%
   
-  mutate(ndcounty_number=as.numeric(paste(ndcounty_number))) %>%
-  left_join(countymatch, by=c('ndcounty_number'='ndcounty_number'))
+ # mutate(ndcounty_number=as.numeric(paste(ndcounty_number))) %>%
+  #left_join(countymatch, by=c('ndcounty_number'='ndcounty_number'))
 
 ```
 
@@ -124,7 +136,7 @@ child_data_3 <- child_data_2 %>%
 NOTE: SCHOOL AGE INCLUDED
 ```{r}
 #COUNTY DATA
-countysums_providerscapacity <- child_data_3 %>%
+countysums_providerscapacity <- child_data_2 %>%
 
   group_by(county,category) %>%
   summarise(providers = n(),
@@ -275,12 +287,10 @@ NOTE: SCHOOL AGE NOT INCLUDED
 ```{r}
 ####CREATE COUNTY SUMMARY COUNT OF CHILD CARE
 countysums_quality <- quality_data %>%
-  
-  select(-c(`...5`,`Row Labels`,`Count of Org Id`)) %>%
 
-  rename(category=`Qris Level Name`,
+  rename(category=`Quality Rating`,
          location=County,
-         capacity=`Capacity`) %>%
+         capacity=`Licensed Capacity`) %>%
   mutate(capacity=as.numeric(paste(capacity))) %>%
   group_by(location,category) %>%
   summarise(providers = n(),
@@ -293,25 +303,14 @@ countysums_quality <- quality_data %>%
 
   mutate(providers = replace_na(providers, 0),
          capacity= replace_na(capacity,0)) %>%
-  mutate(locationtype='County') 
-
-#create an overall category that shows total participating in QRIS, so we can compute the opposite later
-countysums_quality2 <- countysums_quality %>%
-  group_by(location,locationtype) %>%
-  summarise(providers=sum(providers),
-            capacity=sum(capacity),.groups='keep') %>%
-  mutate(category='Total participating in QRIS')
-
-#combine all groups
-countysums_quality_combined <- countysums_quality %>%
-  bind_rows(countysums_quality2) %>%
+  mutate(locationtype='County') %>%
   arrange(location,category)
 
 
 
 
 ####CREATE STATEWIDE SUMMARY COUNT OF CHILD CARE
-statesums_quality <- countysums_quality_combined %>%
+statesums_quality <- countysums_quality %>%
   group_by(category) %>%
   summarise(providers=sum(providers),
             capacity=sum(capacity),.groups='keep') %>%
@@ -349,7 +348,7 @@ category <- c('Step 1','Step 2','Step 3','Step 4','Total participating in QRIS',
               'Step 1','Step 2','Step 3','Step 4','Total participating in QRIS')
 regionshell <- data.frame(location,category)
 
-regionsums_quality <- countysums_quality_combined %>%
+regionsums_quality <- countysums_quality %>%
   left_join(regionids,by=c('location'='county')) %>%
   group_by(region,category) %>%
   summarise(providers = sum(providers),
@@ -361,10 +360,15 @@ regionsums_quality <- countysums_quality_combined %>%
          capacity = replace_na(capacity,0)) %>%
   mutate(locationtype='Planning Region') %>%
   rename(location=region)
+
+#combine all location types
+quality_data_combined <- countysums_quality %>%
+  bind_rows(statesums_quality) %>%
+  bind_rows(regionsums_quality)
+
 ```
 
-Combine with licensed data from Kids Count database to calculate those not participating
-##Data is not accurate to really do this anymore
+#Use licensed data to double check data quality, but no longer reporting percentages due to difference in reporting systems
 ```{r}
 licensedproviders_sql <- paste0("SELECT location,data FROM northdakota WHERE timeframe = '",year,"' AND varname='childcareprovidersbytype' AND category='Licensed' AND dataformat='Number';")
 licensedproviders <- dbGetQuery(con,licensedproviders_sql) %>%
@@ -376,37 +380,26 @@ licensedcapacity <- dbGetQuery(con,licensedcapacity_sql) %>%
   rename(totallicensedcapacity=data) %>%
   mutate(totallicensedcapacity=as.numeric(paste(totallicensedcapacity)))
 
-#join with full quality data
-notparticipatinginquality <- countysums_quality_combined %>%
-  bind_rows(statesums_quality) %>%
-  bind_rows(regionsums_quality) %>%
+compare_dataset <- quality_data_combined %>%
+  #create total
+  group_by(location) %>%
+  summarise(providers=sum(providers),
+            capacity=sum(capacity)) %>%
   
-  #only look at total
-  subset(category=='Total participating in QRIS') %>%
+  left_join(licensedproviders) %>%
+  left_join(licensedcapacity) %>%
   
-  left_join(licensedproviders,by=c('location'='location')) %>%
-  left_join(licensedcapacity,by=c('location'='location')) %>%
-  
-  #create column that is those not participating
-  mutate(providers_notparticipating=totallicensedproviders-providers,
-         capacity_notparticipating=totallicensedcapacity-capacity) %>%
-  select(c(location,locationtype,providers_notparticipating,capacity_notparticipating)) %>%
-  rename(providers=providers_notparticipating,
-         capacity=capacity_notparticipating) %>%
-  mutate(category='Not participating in QRIS')
-  
-  
+  #create new variables that indicate where quality data is greater than licensed data
+  mutate(providerdiff=totallicensedproviders-providers) %>%
+  mutate(capacitydiff=totallicensedcapacity-capacity) %>%
+  subset(providerdiff<0 | capacitydiff<0)
+
+View(compare_dataset)
+
 ```
 
 Format the Kids Count Data Center
 ```{r}
-#COMBINE ALL DATA
-quality_data_combined <- countysums_quality_combined %>%
-  bind_rows(statesums_quality) %>%
-  bind_rows(regionsums_quality) %>%
-  subset(category != 'Total participating in QRIS') %>%
-  arrange(location,category)
-
 #format to database count child care
 childcareprovidersbyquality <- quality_data_combined %>%
   select(-c(capacity)) %>%
@@ -460,99 +453,6 @@ dbWriteTable(con,'northdakota',childcareprovidersbyquality,append=TRUE,row.names
 dbWriteTable(con,'northdakota',childcarecapacitybyquality,append=TRUE,row.names=FALSE)
 ```
 
-##Data is not accurate enough to do this anymore
-```{r}
-#calculate percentages out of all licensed facilities
-qualityproviders_sql <- paste0("SELECT locationid,locationtype,location,category,timeframe,dataformat,data FROM northdakota WHERE timeframe = '",year,"' AND varname='childcareprovidersbyquality' AND dataformat='Number';")
-quality_providers <- dbGetQuery(con,qualityproviders_sql) %>%
-  rename(quality_providers=data)
-  
-
-licensedproviders_sql <- paste0("SELECT locationid,locationtype,location,timeframe,dataformat,data FROM northdakota WHERE timeframe = '",year,"' AND varname='childcareprovidersbytype' AND category='Licensed';")
-licensed_providers <- dbGetQuery(con,licensedproviders_sql) %>%
-  rename(licensed_providers=data)
-
-
-quality_percents <- quality_providers %>%
-  left_join(licensed_providers) %>%
-  arrange(location,category) %>%
-  mutate(quality_providers=as.numeric(paste(quality_providers)),
-         licensed_providers=as.numeric(paste(licensed_providers))) %>%
-  #calculate percentages
-  mutate(percent_providers=quality_providers/licensed_providers) %>%
-  
-  #add in KC variables
-  mutate(dataformat='Percent')
-
-
-quality_percent_providers <- quality_percents %>%
-  rename(data=percent_providers) %>%
-  select(c(locationid,locationtype,location,category,timeframe,dataformat,data)) %>%
-  mutate(varname='childcareprovidersbyquality')
-
-
-
-
-#calculate percentages out of all licensed facilities
-qualitycapacity_sql <- paste0("SELECT locationid,locationtype,location,category,timeframe,dataformat,data FROM northdakota WHERE timeframe = '",year,"' AND varname='childcarecapacitybyquality' AND dataformat='Number';")
-quality_capacity <- dbGetQuery(con,qualitycapacity_sql) %>%
-  rename(quality_capacity=data)
-  
-
-licensedcapacity_sql <- paste0("SELECT locationid,locationtype,location,timeframe,dataformat,data FROM northdakota WHERE timeframe = '",year,"' AND varname='childcarecapacitybytype' AND category='Licensed';")
-licensed_capacity <- dbGetQuery(con,licensedcapacity_sql) %>%
-  rename(licensed_capacity=data)
-
-
-quality_percents_capacity <- quality_capacity %>%
-  left_join(licensed_capacity) %>%
-  arrange(location,category) %>%
-  mutate(quality_capacity=as.numeric(paste(quality_capacity)),
-         licensed_capacity=as.numeric(paste(licensed_capacity))) %>%
-  #calculate percentages
-  mutate(percent_capacity=quality_capacity/licensed_capacity) %>%
-  
-  #add in KC variables
-  mutate(dataformat='Percent')
-
-
-quality_percent_capacity <- quality_percents_capacity %>%
-  rename(data=percent_capacity) %>%
-  select(c(locationid,locationtype,location,category,timeframe,dataformat,data)) %>%
-  mutate(varname='childcarecapacitybyquality')
-
-
-
-
-
-
-
-####################
-####################
-#DATA QUALITY CHECKS
-### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
-
-# 1. Print name of location that has a mismatched location ID
-if (sum(is.na(quality_percent_providers$locationid))>=1) {
-  print(quality_percent_providers$location[is.na(quality_percent_providers$locationid)])
-} else if (sum(is.na(quality_percent_providers$locationid))==0) {
-  'all locations match'
-}
-
-if (sum(is.na(quality_percent_capacity$locationid))>=1) {
-  print(quality_percent_capacity$location[is.na(quality_percent_capacity$locationid)])
-} else if (sum(is.na(quality_percent_capacity$locationid))==0) {
-  'all locations match'
-}
-
-
-
-#2. Visually inspect data
-View(quality_percent_providers)
-View(quality_percent_capacity)
-
-```
-
 Export to upload to Data Center
 ```{r}
 #write query from database to get needed format for KC data center
@@ -588,76 +488,3 @@ upload_data_qualitycapacity <- dbGetQuery(con,upload_data_qualitycapacity_sql) %
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
 write.csv(upload_data_qualitycapacity,file=paste0("./Output/education/",state,"_",year,"_childcarecapacitybyquality.csv"),row.names=FALSE)
 ```
-
-
-
-## OLD CODE USED TO CALCULATE THE PERCENTAGES FOR 1998-2020
-```{r}
-#FOR  CHILD CARE CAPACITY
-#create percentages using ACS data in database
-#variable needed for denominator calculation is childrenages0to13parentsinlaborforce
-#need denominator variable for two years prior
-year_minus1 <- as.character(as.numeric(year)-1)
-year_minus5 <- as.character(as.numeric(year)-5)
-
-children_estimates_sql <- paste0("SELECT locationid,data FROM northdakota WHERE timeframe='",year_minus5,"-",year_minus1,"' AND varname='childrenages0to13parentsinlaborforce' AND dataformat='Number' AND age_group='0 to 13';")
-children_estimates <- dbGetQuery(con,children_estimates_sql) %>%
-  rename(children_estimate=data) %>%
-  mutate(children_estimate=as.numeric(paste(children_estimate)))
-
-childcarecapacitybytype2 <- childcarecapacitybytype %>%
-  mutate(data=as.numeric(paste(data))) %>%
-  group_by(location,locationtype,state,locationid,timeframe,dataformat) %>%
-  summarise(childcare_estimate=sum(data)) %>%
-  ungroup %>%
-  mutate(dataformat='Percent') %>%
-  left_join(children_estimates,by='locationid') %>%
-  mutate(data=(childcare_estimate/children_estimate)) %>%
-  mutate(state='North Dakota') %>%
-  select(-children_estimate) %>%
-  select(-childcare_estimate) %>%
-  mutate(varname='percentofchildrenages0to13withparentsworkingservedbyececapacity_oldmethodology')
-
-####################
-####################
-#DATA QUALITY CHECKS
-### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
-
-# 1. Print name of location that has a mismatched location ID
-if (sum(is.na(childcarecapacitybytype2$locationid))>=1) {
-  print(childcarecapacitybytype2$location[is.na(childcarecapacitybytype2$locationid)])
-} else if (sum(is.na(childcarecapacitybytype2$locationid))==0) {
-  'all locations match'
-}
-
-#2. Visually inspect data
-View(childcarecapacitybytype2)
-
-```
-
-```{r}
-#add to database
-dbWriteTable(con,'northdakota',childcarecapacitybytype2,append=TRUE,row.names=FALSE)
-```
-
-```{r}
-#write query from database to get needed format for KC data center
-
-upload_data_capacity_sql <- paste0("SELECT locationid,location,timeframe,dataformat,data
-                     FROM northdakota
-                     WHERE timeframe = '",year,"' AND varname = 'percentofchildrenages0to13withparentsworkingservedbyececapacity_oldmethodology';")
-upload_data_capacity <- dbGetQuery(con,upload_data_capacity_sql) %>%
-  rename(LocationId=locationid,
-         Location=location,
-         TimeFrame=timeframe,
-         DataFormat=dataformat,
-         Data=data) %>%
-  subset(Data!='NA')
-
-
-#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
-write.csv(upload_data_capacity,file=paste0("./Output/education/",state,"_",year,"_childcarecapacitybytype_percent.csv"),row.names=FALSE)
-```
-
-
-
