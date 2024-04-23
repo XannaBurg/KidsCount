@@ -119,9 +119,9 @@ homeless_county <- homeless_data %>%
 homeless_state <- homeless_county %>%
   mutate(location='North Dakota') %>%
   group_by(location) %>%
-  summarise(homeless_number_state=sum(homeless_number),
-      totalenroll_state=sum(totalenroll),
-      homeless_percent=sum(homeless_number)/sum(totalenroll)) %>%
+  summarise(homeless_number_state=sum(homeless_number, na.rm=TRUE),
+      totalenroll_state=sum(totalenroll,na.rm=TRUE),
+      homeless_percent=sum(homeless_number,na.rm=TRUE)/sum(totalenroll,na.rm=TRUE)) %>%
   ungroup %>%
   rename(homeless_number=homeless_number_state,
          totalenroll=totalenroll_state) %>%
