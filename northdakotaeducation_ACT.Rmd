@@ -44,7 +44,7 @@ library(readxl)
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 statename <- "North Dakota"
-year <- "2022"
+year <- "2023"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -67,9 +67,7 @@ countyids <- read.csv("./Documentation/Indicator Documentation/North Dakota Data
 ## AVERAGE ACT COMPOSITE SCORES ##
 ## ############################ ##
 ```{r}
-act_composite <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ACT_Composite_HSgrades_",year,".xlsx")) %>%
-  #remove year from column name
-  rename(compositeaverage=paste0(year," Composite Average"))
+act_composite <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/7-ACT.xlsx"))
 
 ############
 #COUNTY DATA
@@ -78,7 +76,7 @@ act_composite_county <- act_composite %>%
   full_join(countyids,by=c('County'='ndcounty_number')) %>%
   select(-c(County)) %>%
   rename(location=ndcounty_name,
-         data=compositeaverage) %>%
+         data=`ACT Composite Avg`) %>%
   subset(location!='Grand Total') %>%
   mutate(locationtype='County') %>%
   mutate(state='North Dakota') %>%
@@ -89,7 +87,7 @@ act_composite_county <- act_composite %>%
 ###########
 #STATE DATA
 #pull the state composite score from the Class Profile pdf
-state_data <- 19.1
+state_data <- 19.6
 
 act_composite_state <- as.data.frame(state_data) %>%
   rename(data=state_data) %>%
@@ -161,7 +159,7 @@ write.csv(upload_data,file=paste0("./Output/education/",database_state,"_",year,
 ## STEP 1: IMPORT THE DATA AND CREATE NUMERATORS AND DENOMINATORS
 ```{r}
 #import the ACT data where each row is a student
-act_allstudents <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ACT_AllSubjects_",year,".xlsx")) %>%
+act_allstudents <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/7-ACT.xlsx"),sheet='22-23 Meeting ACT Benchmarks') %>%
   subset(SchoolYear==year) 
 
 #create English values

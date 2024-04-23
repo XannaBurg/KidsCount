@@ -43,10 +43,10 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '21-22'
-fullyear <- '2021/22' 
+year <- '22-23'
+fullyear <- '2022/23' 
 #fiscal year is the spring of reference school year
-fiscalyear <- '2022'
+fiscalyear <- '2023'
 
 
 statefile <- 'northdakota'
@@ -80,10 +80,12 @@ STEP 1: IMPORT AND CLEAN DATA
 year_periods <- paste0(substr(year,1,2),"-",substr(year,4,5))
 
 #import data
-homeless_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Homeless_",year,".xlsx")) %>%
+homeless_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/3-Homelessness.xlsx")) %>%
   #rename columns removing year
   rename(denominator=all_of(paste0("20",year_periods," Denominator")),
          numerator=all_of(paste0("20",year_periods," Homeless"))) %>%
+  mutate(denominator=as.numeric(paste(denominator))) %>%
+  mutate(numerator=as.numeric(paste(numerator))) %>%
   #remove first rows with information FYI only
   mutate(CountyCode=as.numeric(paste(CountyCode))) %>%
   subset(!is.na(CountyCode))
@@ -368,7 +370,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_stude
 STEP 1: IMPORT THE FINANCIALS DATA
 ```{r}
 #import data
-financials <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/FinancialData_",year,".csv"))
+financials <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/FinancialData_",year,".csv"))
 
 
 ############
@@ -538,7 +540,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_avgda
 STEP 1: IMPORT THE FINANCIALS DATA
 ```{r}
 #import data
-financials <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/FinancialData_",year,".csv"))
+financials <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/FinancialData_",year,".csv"))
 
 ############
 #COUNTY DATA
@@ -788,10 +790,11 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_avgex
 STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #import data
-grad_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Grad_Rates_",year,".xlsx")) %>%
+grad_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/4-Grade_Rates.xlsx")) %>%
   rename(ontime_Count='On-Time Grads',
          Total_Students='Cohort') %>%
-  subset(Race=='All')
+  subset(Race=='All') %>%
+  mutate(County=as.numeric(paste(County)))
 
 
 ############
@@ -1089,7 +1092,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_gradu
 ## FOUR-YEAR HIGH SCHOOL COHORT GRADUATION RATE BY RACE ##
 STEP 1: Import and Clean Data
 ```{r}
-grad_data2 <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Grad_Rates_",year,".xlsx")) %>%
+grad_data2 <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/4-Grade_Rates.xlsx")) %>%
   rename(ontime_Count='On-Time Grads',
          Total_Students='Cohort') %>%
 
@@ -1318,7 +1321,7 @@ fiscalyear_minus1 <- as.character(as.numeric(fiscalyear)-1)
 academicyear <- paste0(fiscalyear_minus1,"-",fiscalyear)
 
 #import data
-dropout_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Dropout_Rates_7th-12th_",year,".xlsx")) %>%
+dropout_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/5-DropOuts7-12.xlsx")) %>%
   #change county to numeric
   mutate(County=as.numeric(paste(County)))
 
@@ -1730,7 +1733,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_grade
 STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #import data
-assessment_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",year,".xlsx")) %>%
+assessment_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/6-ThirdGradeAssess.xlsx")) %>%
 
   
   #subset for all students
@@ -1745,12 +1748,11 @@ assessment_county <- assessment_data %>%
   #import county name
   mutate(County=as.numeric(paste(County))) %>%
   left_join(countyids,by=c("County"="ndcounty_number")) %>%
-  select(-c(FAY_Nbr_Students_Novice,FAY_Nbr_Students_Partially_Proficient,FAY_Nbr_Students_Proficient,FAY_Nbr_Students_Advanced)) %>%
   distinct() %>%
   
   #calculate numerator and denominator
-  mutate(proficientstudents=Nbr_Students_Proficient+Nbr_Students_Advanced) %>%
-  mutate(denominator=Nbr_Students_Novice+Nbr_Students_Partially_Proficient+Nbr_Students_Proficient+Nbr_Students_Advanced) %>%
+  mutate(proficientstudents=FAY_Nbr_Students_Proficient+FAY_Nbr_Students_Advanced) %>%
+  mutate(denominator=FAY_Nbr_Students_Novice+FAY_Nbr_Students_Partially_Proficient+FAY_Nbr_Students_Proficient+FAY_Nbr_Students_Advanced) %>%
   
   #sum by county
   group_by(ndcounty_name) %>%
@@ -1967,19 +1969,21 @@ yearfile3 <- year
 
 
 #import data
-assessment_data1 <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",yearfile1,".xlsx"),guess_max = 1048576) %>%
+assessment_data1 <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",yearfile1,".csv")) %>%
   
   #subset for all students
   subset(SubGroup_Desc=='All') %>%
-  subset(Subject=='Reading')
+  subset(Subject=='Reading') %>%
+  mutate(County=as.character(paste(County))) %>%
+  mutate(Entity_ID=as.character(paste(Entity_ID))) 
 
 assessment_data2 <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",yearfile2,".xlsx"),guess_max = 1048576) %>%
   
   #subset for all students
   subset(SubGroup_Desc=='All') %>%
-  subset(Subject=='Reading')
+  subset(Subject=='Reading') 
 
-assessment_data3 <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",yearfile3,".xlsx")) %>%
+assessment_data3 <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/6-ThirdGradeAssess.xlsx")) %>%
   
   #subset for all students
   subset(SubGroup_Desc=='All') %>%
@@ -2000,12 +2004,11 @@ assessment_county <- assessment_data %>%
   mutate(County=as.numeric(paste(County))) %>%
   left_join(countyids,by=c("County"="ndcounty_number")) %>%
   
-  select(-c(FAY_Nbr_Students_Novice,FAY_Nbr_Students_Partially_Proficient,FAY_Nbr_Students_Proficient,FAY_Nbr_Students_Advanced)) %>%
   distinct() %>%
   
   #calculate numerator and denominator
-  mutate(proficientstudents=Nbr_Students_Proficient+Nbr_Students_Advanced) %>%
-  mutate(denominator=Nbr_Students_Novice+Nbr_Students_Partially_Proficient+Nbr_Students_Proficient+Nbr_Students_Advanced) %>%
+  mutate(proficientstudents=FAY_Nbr_Students_Proficient+FAY_Nbr_Students_Advanced) %>%
+  mutate(denominator=FAY_Nbr_Students_Novice+FAY_Nbr_Students_Partially_Proficient+FAY_Nbr_Students_Proficient+FAY_Nbr_Students_Advanced) %>%
   
   #sum by county
   group_by(ndcounty_name) %>%
@@ -2181,7 +2184,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_third
 STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #import data
-assessment_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",year,".xlsx")) %>%
+assessment_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/6-ThirdGradeAssess.xlsx")) %>%
 
   
   #subset for reading
@@ -2203,12 +2206,11 @@ assessment_county <- assessment_data %>%
   mutate(County=as.numeric(paste(County))) %>%
   left_join(countyids,by=c("County"="ndcounty_number")) %>%
   
-  select(-c(FAY_Nbr_Students_Novice,FAY_Nbr_Students_Partially_Proficient,FAY_Nbr_Students_Proficient,FAY_Nbr_Students_Advanced)) %>%
   distinct() %>%
   
   #calculate numerator and denominator
-  mutate(proficientstudents=Nbr_Students_Proficient+Nbr_Students_Advanced) %>%
-  mutate(denominator=Nbr_Students_Novice+Nbr_Students_Partially_Proficient+Nbr_Students_Proficient+Nbr_Students_Advanced) %>%
+  mutate(proficientstudents=FAY_Nbr_Students_Proficient+FAY_Nbr_Students_Advanced) %>%
+  mutate(denominator=FAY_Nbr_Students_Novice+FAY_Nbr_Students_Partially_Proficient+FAY_Nbr_Students_Proficient+FAY_Nbr_Students_Advanced) %>%
   
   #sum by county and race
   group_by(ndcounty_name,race) %>%
