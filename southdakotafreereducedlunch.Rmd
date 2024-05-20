@@ -28,8 +28,8 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2022'
-fullyear <- '2022/23' 
+year <- '2023'
+fullyear <- '2023/24' 
 statefile <- 'southdakota'
 statename <- 'South Dakota'
 
@@ -49,12 +49,12 @@ countylist$county <- as.character(countylist$county)
 
 ## STEP 1: IMPORT AND CLEAN DATA
 ```{r}
-frl_data <- read_excel(paste0("./Input/education/southdakota_",year,"_frl.xls"),sheet='Sort by County - PUBLIC ONLY') %>%
+frl_data <- read_excel(paste0("./Input/education/southdakota_",year,"_frl.xls"),sheet='Sort by County- PUBLIC ONLY') %>%
   
   #fix data so only the totals are included for each county
   replace_with_na(replace=list(County='County Subtotal')) %>%
   fill(County) %>%
-  rename(school='School / Agency Name',
+  rename(school='School/Agency Name',
          studentenrollment='Student Enrollment') %>%
   subset(is.na(school)) %>%
   
@@ -73,11 +73,13 @@ frl_data <- read_excel(paste0("./Input/education/southdakota_",year,"_frl.xls"),
   
   
   #keep only needed variables
-  rename(data='Free & Red Price Elig %') %>%
+  rename(data='Free & Reduced-Price Eligibility Percentage') %>%
+  subset(is.na(`Claim Date`)) %>%
   select(c(location,data,studentenrollment)) %>%
   
   #remove state totals
   subset(location != 'State Totals') %>%
+  
   
   #assign NA value to those with **
   mutate(studentenrollment=as.numeric(paste(studentenrollment))) %>%
@@ -166,9 +168,9 @@ tribalschools <- read.csv("./Documentation/Indicator Documentation/South Dakota 
 tribalschools$school <- as.character(tribalschools$school)
 
 
-frl_data_tribal <- read_excel(paste0("./Input/education/southdakota_",year,"_frl.xls"),sheet='Sort by District') %>%
-  rename(school='School / Agency Name',
-         data='Free & Red Price Elig %',
+frl_data_tribal <- read_excel(paste0("./Input/education/southdakota_",year,"_frl.xls"),sheet='Sort By School District') %>%
+  rename(school='School/Agency Name',
+         data='Free & Reduced-Price Eligibility Percentage',
          studentenrollment='Student Enrollment') %>%
   
   #add in additional information about tribal schools
