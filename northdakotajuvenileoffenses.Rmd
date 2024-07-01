@@ -33,7 +33,7 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2022'
+year <- '2023'
 statename <- 'North Dakota'
 
 
@@ -60,21 +60,22 @@ countyids$ndcounty_name <- as.character(countyids$ndcounty_name)
 #xl_path <- paste0("./Input/safety/northdakota_",year,"_juvenilejustice.xlsx")
 #offenses <- read_excel(path=xl_path, guess_max = 1048576)
 
-offenses <- read.csv(paste0("./Input/safety/northdakota_",year,"_juvenilejustice.csv"))
+offenses <- read_excel(paste0("./Input/safety/northdakota_",year,"_juvenilejustice.xlsx"))
 
 
 ######################
 #CALCULATE COUNTY DATA
 offense_county <- offenses %>%
   
-  mutate(AGE=AGE/365) %>%
+  #mutate(AGE=AGE/365) %>%
+  mutate(AGE=as.numeric(paste(AGE))) %>%
   
   #include those ages 10-17
   subset(AGE>=10 & AGE<=17) %>%
   
   #unduplicate at the county level
-  group_by(MNI,COUNTY) %>%
-  summarise(distinct_indicator=n_distinct(MNI),.groups='keep') %>%
+  group_by(INDIVIDUAL_ID,COUNTY) %>%
+  summarise(distinct_indicator=n_distinct(INDIVIDUAL_ID),.groups='keep') %>%
   
   #aggregate at the county level 
   group_by(COUNTY) %>%
