@@ -34,8 +34,8 @@ library(naniar)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2022'
-year_short <- '22'
+year <- '2023'
+year_short <- '23'
 
 statefile <- 'montana'
 statename <- 'Montana'
@@ -56,7 +56,7 @@ regionids$county <- as.character(regionids$county)
 
 #fostercaredata_0to5 <- read_excel(path=paste0("./Input/safety/montana_",year_short,"_fostercaredata.xlsx"),sheet='Ages 0-5',skip=3) 
 
-fostercaredata <- read_excel(path=paste0("./Input/safety/montana_",year_short,"_fostercaredata.xlsx"),sheet='2022 Unduplicated Kids in Care') 
+fostercaredata <- read_excel(path=paste0("./Input/safety/montana_",year_short,"_fostercaredata.xlsx"),sheet='2023 Unduplicated Kids in Care') 
 ```
 
 
@@ -445,8 +445,8 @@ excel0to17_sql <- paste0("SELECT locationid, location, timeframe, dataformat, da
 
 excel0to17_county <- dbGetQuery(con,excel0to17_sql) %>%
   pivot_wider(names_from='timeframe',values_from='data') %>%
-  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022')) %>%
-  select(c(`location`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022','2023')) %>%
+  select(c(`location`,`2023_Number`,`2023_Rate`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
            `2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,
            `2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
   subset(location != 'Montana') %>%
@@ -454,8 +454,8 @@ excel0to17_county <- dbGetQuery(con,excel0to17_sql) %>%
 
 excel0to17_state <- dbGetQuery(con,excel0to17_sql) %>%
   pivot_wider(names_from='timeframe',values_from='data') %>%
-  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022')) %>%
-  select(c(`location`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022','2023')) %>%
+  select(c(`location`,`2023_Number`,`2023_Rate`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
            `2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,
            `2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
   subset(location == 'Montana') %>%
@@ -471,8 +471,8 @@ excel0to5_sql <- paste0("SELECT locationid, location, timeframe, dataformat, dat
 
 excel0to5_county <- dbGetQuery(con,excel0to5_sql) %>%
   pivot_wider(names_from='timeframe',values_from='data') %>%
-  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022')) %>%
-  select(c(`location`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022','2023')) %>%
+  select(c(`location`,`2023_Number`,`2023_Rate`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
            `2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,
            `2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
   subset(location != 'Montana') %>%
@@ -480,8 +480,8 @@ excel0to5_county <- dbGetQuery(con,excel0to5_sql) %>%
 
 excel0to5_state <- dbGetQuery(con,excel0to5_sql) %>%
   pivot_wider(names_from='timeframe',values_from='data') %>%
-  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022')) %>%
-  select(c(`location`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022','2023')) %>%
+  select(c(`location`,`2023_Number`,`2023_Rate`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
            `2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,
            `2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
   subset(location == 'Montana') %>%
@@ -502,7 +502,7 @@ write.csv(excel0to5,'./Output/safety/MT Foster Care Excel/mt_fostercare_tocopy_0
 ## STEP 1: create the data file manually
 ```{r}
 #edit the data only
-data <- 592
+data <- 586.5
 
 #----
 location <- 'Montana'
