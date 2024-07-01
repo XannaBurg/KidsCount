@@ -58,7 +58,7 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 statename <- "South Dakota"
-year <- "2022"
+year <- "2023"
 
 
 
@@ -143,7 +143,8 @@ pop_county <- read.csv(paste0("../Input/demographics/CC-EST",year,"-ALLDATA.csv"
   mutate(timeframe=case_when(
     YEAR=='2' ~ '2020',
     YEAR=='3' ~ '2021',
-    YEAR=='4' ~ '2022')) %>%
+    YEAR=='4' ~ '2022',
+    YEAR=='5' ~ '2023')) %>%
   
   subset(!is.na(timeframe)) %>%
   
