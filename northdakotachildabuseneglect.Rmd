@@ -38,7 +38,7 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2022'
+year <- '2023'
 statename <- 'North Dakota'
 
 
@@ -195,13 +195,13 @@ temp_checkregions <- assessment %>%
   left_join(regionids,by=c('location'='county')) %>%
   
   #******ADD IN THE REGION HERE
-  subset(region=='Planning Region 4') %>%
+  subset(region=='Planning Region 5') %>%
   arrange(data)
 View(temp_checkregions)
 
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
-#assessment$data[assessment$location=='Pembina'] <- NA
+#assessment$data[assessment$location=='Sargent'] <- NA
 
   
 ```
@@ -700,13 +700,13 @@ temp_checkregions <- victims %>%
   left_join(regionids,by=c('location'='county')) %>%
   
   #******ADD IN THE REGION HERE
-  subset(region=='Planning Region 1') %>%
+  subset(region=='Planning Region 4') %>%
   arrange(data)
 View(temp_checkregions)
 
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
-#victims$data[victims$location=='Pembina'] <- NA
+#victims$data[victims$location=='Nelson'] <- NA
 #victims$data[victims$location=='McKenzie'] <- NA
   
 ```
