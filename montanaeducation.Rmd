@@ -599,15 +599,25 @@ write.csv(upload_datacenter_specialed,file=paste0("./Output/education/",statefil
 **ELIGIBLE RECIPIENTS OF FREE OR REDUCED PRICE LUNCH**
 ```{r}
 #read in the data
-frl <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='Data')
+frl <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata2.xlsx"),sheet='FRPL by County')
+
+
+##In 2024, enrollment and FRL data is in two different datasets, so pull from database for denominator
+enrollment_sql <- paste0("SELECT location, data FROM montana WHERE (locationtype='County' OR locationtype='State') AND (varname='publicschoolk12enrollment') AND (timeframe='2023/24');")
+
+k12enrollment <- dbGetQuery(con,enrollment_sql) %>%
+  rename(k12enrollment=data)
+
+
 
 ###################
 #CREATE COUNTY DATA
 county_lunch <- frl %>%
-  mutate(k12enrollment=`Enrollment K-8`+`Enrollment 9-12`) %>%
-  rename(frl='Enrollment FR',
+  left_join(k12enrollment,by=c('CountyName'='location')) %>%
+  rename(frl='FRPL Enrollment',
          location=`CountyName`) %>% 
    mutate(frl=as.numeric(frl)) %>%
+   mutate(k12enrollment=as.numeric(k12enrollment)) %>%
    mutate(Number=frl) %>%
   #calculate percent using K-12 enrollment
   mutate(Percent=frl/k12enrollment) %>%
@@ -623,13 +633,14 @@ county_lunch <- frl %>%
 ##################
 #CREATE STATE DATA
 state_lunch <- frl %>%
-  mutate(k12enrollment=`Enrollment K-8`+`Enrollment 9-12`) %>%
-  mutate(`Enrollment FR`=as.numeric(`Enrollment FR`)) %>%
+ left_join(k12enrollment,by=c('CountyName'='location')) %>%
+  mutate(`FRPL Enrollment`=as.numeric(`FRPL Enrollment`)) %>%
+  mutate(k12enrollment=as.numeric(k12enrollment)) %>%
   mutate(location='Montana') %>%
   #calculate percent using K-12 enrollment
   group_by(location) %>%
-  summarise(Number=sum(`Enrollment FR`, na.rm=TRUE),
-            Percent=sum(`Enrollment FR`,na.rm=TRUE)/sum(k12enrollment)) %>%
+  summarise(Number=sum(`FRPL Enrollment`, na.rm=TRUE),
+            Percent=sum(`FRPL Enrollment`,na.rm=TRUE)/sum(k12enrollment)) %>%
   select(c(Number,Percent)) %>%
   #add in database variables
   mutate(location='Montana') %>%
