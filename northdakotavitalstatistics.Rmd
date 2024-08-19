@@ -40,7 +40,7 @@ library(sas7bdat)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2022'
+year <- '2023'
 
 fiveyear <- '2018-2022' 
 statefile <- 'northdakota'
@@ -257,13 +257,13 @@ temp_checkregions <- birthdata_all %>%
   left_join(regionids,by=c('location'='county')) %>%
   
   #******ADD IN THE REGION HERE
-  subset(region=='Planning Region 7') %>%
+  subset(region=='Planning Region 8') %>%
   arrange(data)
 View(temp_checkregions)
 
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
-#birthdata_all$data[birthdata_all$location=='Oliver'] <- NA
+#birthdata_all$data[birthdata_all$location=='Billings'] <- NA
 
 
 
@@ -525,13 +525,13 @@ temp_checkregions <- birthdata_all %>%
   left_join(regionids,by=c('location'='county')) %>%
   
   #******ADD IN THE REGION HERE
-  subset(region=='Planning Region 1') %>%
+  subset(region=='Planning Region 4') %>%
   arrange(data)
 View(temp_checkregions)
 
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
-#birthdata_all$data[birthdata_all$location=='McKenzie'] <- NA
+#birthdata_all$data[birthdata_all$location=='Pembina'] <- NA
 
 
 
@@ -833,7 +833,7 @@ View(temp_checkregions)
 
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
-#birthdata_all$data[birthdata_all$location=='Billings'] <- NA
+#birthdata_all$data[birthdata_all$location=='Adams'] <- NA
 
 
 
@@ -1131,14 +1131,14 @@ temp_checkregions <- birthdata_all %>%
   left_join(regionids,by=c('location'='county')) %>%
   
   #******ADD IN THE REGION HERE
-  subset(region=='Planning Region 1') %>%
+  subset(region=='Planning Region 4') %>%
   arrange(data)
 View(temp_checkregions)
 
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
 #birthdata_all$data[birthdata_all$location=='McKenzie'] <- NA
-#birthdata_all$data[birthdata_all$location=='Walsh'] <- NA
+#birthdata_all$data[birthdata_all$location=='Pembina'] <- NA
 #birthdata_all$data[birthdata_all$location=='Sargent'] <- NA
 
 
@@ -1543,7 +1543,7 @@ fips$state_code=as.numeric(paste(fips$state_code))
 
 # UPDATE SAS FILE FOR NEW YEAR 
 #fullpopdata <- read.sas7bdat(paste0("./Input/demographics/pcen_v2020_y1020.sas7bdat"))
-fullpopdata <- read.csv("/Users/xannaburg/Documents/KidsCountData/Input/demographics/DATADELIVERY_ Vintage 2022 Population Estimates20230630085928/v2022_co_res_char11_nd.csv")
+fullpopdata <- read.csv("/Users/xannaburg/Documents/KidsCountData/Input/demographics/DATADELIVERY_ Vintage 2023 Population Estimates20240701081844/v2023_co_res_char11_nd.csv")
 
 #subset population file for specifications
 popdata_county <- fullpopdata %>%
@@ -1565,7 +1565,7 @@ popdata_county <- fullpopdata %>%
   subset(RACE11==0) %>%
   subset(HISP==0) %>%
   #subset for recent date
-  subset(DATE==4) %>%
+  subset(DATE==6) %>%
   
   #select needed variables
   #select(c(county,age,RACESEX,paste0("POP",year))) %>%
@@ -1611,7 +1611,7 @@ popdata_tribal <- fullpopdata %>%
   subset(RACE11==3) %>%
   subset(HISP==0) %>%
   #subset for recent date
-  subset(DATE==4) %>%
+  subset(DATE==6) %>%
   
   #format location names for counties
   #left_join(fips,by=c('ST_FIPS'='state_code','CO_FIPS'='county_code')) %>%
@@ -2021,7 +2021,7 @@ temp_checkregions <- teenbirthdata_all %>%
   left_join(regionids,by=c('location'='county')) %>%
   
   #******ADD IN THE REGION HERE
-  subset(region=='Planning Region 1') %>%
+  subset(region=='Planning Region 8') %>%
   arrange(data)
 View(temp_checkregions)
 
