@@ -1533,8 +1533,7 @@ write.csv(upload_data_births,file=paste0("./Output/health/",statefile,"_",year,"
 
 **TEEN BIRTHS PER 1,000 FEMALES AGES 15 THROUGH 19**
 ## STEP 1: IMPORT & CLEAN DATA
-## In order for code chunk to work, must have SAS file downloaded for current year population by single year of age
-## MUST UPDATE THE FILE PATH FOR THE SAS FILE
+## In order for code chunk to work, must update the file path for the new population vintage estimates AND update the date code matching the most recent year ******* 
 ```{r}
 fips <- fips_codes
 fips$county_code = str_remove(fips$county_code, "^0+")
