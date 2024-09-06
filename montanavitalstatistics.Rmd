@@ -35,7 +35,7 @@ library(naniar)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2022'
+year <- '2023'
 
 year_minus3 <- as.character(as.numeric(year)-2)
 year_minus5 <- as.character(as.numeric(year)-4)
@@ -185,7 +185,7 @@ if (temp_rows==0 | temp_rows>1) {
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
 #**Choose the county with the next lowest count of births; if there is a tie, suppress both
-#births_all$data[births_all$location=='Billings'] <- NA
+#births_all$data[births_all$location=='Petroleum'] <- NA
 
 
 # 4. Visually inspect output data
@@ -1003,7 +1003,7 @@ if (temp_rows==0) {
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
 #**Suppress the three year percentage if there is exactly one NA during the three years
-#births_all$data[births_all$location=='Granite'] <- NA
+#births_all$data[births_all$location=='Phillips'] <- NA
 
 ```
 
@@ -1190,7 +1190,7 @@ if (temp_rows==0) {
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
 #**Suppress the three year percentage if there is exactly one NA during the three years
-#births_all$data[births_all$location=='Billings'] <- NA
+#births_all$data[births_all$location=='Phillips'] <- NA
 ```
 
 ## STEP 3: ADD TO DATABASE
