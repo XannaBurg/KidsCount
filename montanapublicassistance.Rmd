@@ -43,10 +43,10 @@ library(stringr)
 ```{r}
 
 ####UPDATE to reflect the current year data working with
-year <- '2023'
+year <- '2024'
 statename <- 'Montana'
 #input the number that matches Missoula CITY for Medicaid children
-missoulavalue <- '7123'
+missoulavalue <- '5618'
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -70,7 +70,7 @@ regionids$county <- as.character(regionids$county)
 #####STEP 1: READ IN DATA FROM DPHHS IN SEPTEMBER WHEN RECEIVE#####
 ```{r}
 #read in the data that was shared by DPHHS
-medicaid <- read_excel(path=paste0("./Input/economics/montana_",year,"_tanfsnapmedicaid.xlsx"),sheet=paste0("Medicaid & HMK June ",year),skip=4) %>%
+medicaid <- read_excel(path=paste0("./Input/economics/montana_",year,"_tanfsnapmedicaid.xlsx"),sheet=paste0("Medicaid & CHIP ",year),skip=4) %>%
   rename(medicaidchildren='Medicaid\r\nChildren',
          chip='HMK Only',
          medicaidandchip='HMK &\r\nMedicaid') %>%
