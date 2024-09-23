@@ -32,7 +32,7 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2023'
+year <- '2024'
 statename <- 'South Dakota'
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -61,13 +61,14 @@ importdata <- read_excel(path=paste0("./Input/safety/southdakota_",year,"_juveni
 
 #subset to only include totals
 drug_data <- importdata %>%
-  rename(data=`Clients Served`,
-         location=`CountyOfResidence`) %>%
+  rename(data=`FY24 Clients Served`,
+         location=`County Of Residence`) %>%
   select(c(data,location)) %>%
   
   #fix county names
   subset(location!='OUT-OF-STATE') %>%
-  mutate(location=replace(location,location=='Total','SOUTH DAKOTA')) %>%
+  subset(location!='Duplicated Count') %>%
+  mutate(location=replace(location,location=='Unduplicated Total','SOUTH DAKOTA')) %>%
   mutate(location=tolower(location)) %>%
   mutate(location=str_to_title(location)) %>%
   mutate(location=replace(location,location=='Mccook','McCook')) %>%
