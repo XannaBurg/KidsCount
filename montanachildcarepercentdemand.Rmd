@@ -38,7 +38,7 @@ fips <- fips_codes
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 #this matches the current state fiscal year data for child care data
-year <- "2023" 
+year <- "2024" 
 
 
 ## - DO NOT EDIT - ##
@@ -434,6 +434,8 @@ if (temp_rows==0) {
 } else if (temp_rows>=1) {
   print(temp_percheck)
 }
+
+#percentdata_populationworking$data[percentdata_populationworking$location=='Prairie'] <- 1
 
 # 3. Visually inspect output data
 View(percentdata_populationworking)
