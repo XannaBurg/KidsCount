@@ -59,7 +59,7 @@ fips <- fips_codes
 ```{r}
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
-statename <- "North Dakota"
+statename <- "South Dakota"
 year <- "2023"
 
 
@@ -940,10 +940,18 @@ saipe_district_5to17 <- getCensus(name="timeseries/poverty/saipe/schdist",
           mutate(location=replace(location, 
                           statename=='South Dakota' & location=='Corsica-Stickney 21-3', 
                           'Corsica-Stickney School District 21-3')) %>%
+          mutate(location=replace(location, 
+                          statename=='South Dakota' & location=='Oldham-Ramona-Rutland 39-6', 
+                          'Oldham-Ramona-Rutland School District 39-6')) %>%
+  mutate(location=replace(location, 
+                          statename=='South Dakota' & location=='Viborg Hurley School District 60-6', 
+                          'Viborg Hurley 60-6')) %>%
+  
+  
+
   
   left_join(locationids,by=c('location'='Location')) %>%
-  rename(locationid=LocationId) %>%
-  subset(!is.na(locationid))
+  rename(locationid=LocationId) 
 
 
 
