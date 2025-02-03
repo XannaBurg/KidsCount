@@ -30,7 +30,8 @@ library(naniar)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2023'
+year <- '2024'
+
 
 statefile <- 'montana'
 statename <- 'Montana'
@@ -47,7 +48,7 @@ regionids$county <- as.character(regionids$county)
 
 ## IMPORT THE DATA FILES THAT WILL BE USED
 ```{r}
-homevisitingdata <- read_excel(path=paste0("./Input/health/montana_",year,"_HMF Families Served by County.xlsx"),skip=2) 
+homevisitingdata <- read_excel(path=paste0("./Input/health/montana_",year,"_HMF Families Served by County.xlsx"),skip=1) 
 ```
 
 
@@ -55,26 +56,28 @@ homevisitingdata <- read_excel(path=paste0("./Input/health/montana_",year,"_HMF 
 ```{r}
 homevisitingdata2 <- homevisitingdata %>% 
   
-  rename(location=COUNTY,
-         families_2017=`FAMILIES SERVED...2`,
-         children_2017=`CHILDREN SERVED...3`,
-         families_2018=`FAMILIES SERVED...4`,
-         children_2018=`CHILDREN SERVED...5`,
-         families_2019=`FAMILIES SERVED...6`,
-         children_2019=`CHILDREN SERVED...7`,
-         families_2020=`FAMILIES SERVED...8`,
-         children_2020=`CHILDREN SERVED...9`,
-         families_2021=`FAMILIES SERVED...10`,
-         children_2021=`CHILDREN SERVED...11`,
-         families_2022=`FAMILIES SERVED...12`,
-         children_2022=`CHILDREN SERVED...13`,
-         families_2023=`FAMILIES SERVED...14`,
-         children_2023=`CHILDREN SERVED...15`) %>%
+  rename(location=...1,
+         families_2017=`2016-2017 Program Year`,
+         children_2017=`...3`,
+         families_2018=`2017-2018 Program Year`,
+         children_2018=`...5`,
+         families_2019=`2018-2019 Program Year`,
+         children_2019=`...7`,
+         families_2020=`2019-2020 Program Year`,
+         children_2020=`...9`,
+         families_2021=`2020-2021 Program Year`,
+         children_2021=`...11`,
+         families_2022=`2021-2022 Program Year`,
+         children_2022=`...13`,
+         families_2023=`2022-2023 Program Year`,
+         children_2023=`...15`,
+         families_2024=`2023-2024 Program Year`,
+         children_2024=`...17`) %>%
   
   #remove footnotes
   subset(location!='Notes:') %>%
-  subset(!is.na(location)) %>%
-  
+  subset(location!='COUNTY') %>%
+
   #select only most recent year
   select(c(location,paste0("families_",year),paste0("children_",year))) %>%
   
@@ -89,6 +92,7 @@ homevisitingdata2 <- homevisitingdata %>%
   left_join(locationids,by=c('location'='Location')) %>%
   rename(locationid=LocationId) %>%
   
+
   #pivot longer
   pivot_longer(cols=c(paste0("families_",year),paste0("children_",year)),names_to='category',values_to='data') %>%
   
@@ -98,7 +102,11 @@ homevisitingdata2 <- homevisitingdata %>%
     category=='families_' ~ 'Families',
     category=='children_' ~ 'Children')) %>%
   
-  mutate(data=as.numeric(paste(data)))
+  #delineate NA and S
+  mutate(data=case_when(
+    data=='*' ~ 'S',
+    is.na(data) ~'NA',
+    TRUE ~ data))
   
 
 
@@ -116,17 +124,7 @@ if (sum(is.na(homevisitingdata2$locationid))>=1) {
 }
 
 
-#2. Check that no values are less than 5
-temp_suppresscheck <- homevisitingdata2 %>% subset(data<5)
-temp_rows <- as.numeric(nrow(temp_suppresscheck))
-if (temp_rows==0) {
-  'data suppression followed at individual location level'
-} else if (temp_rows>=1) {
-  View(temp_suppresscheck)
-}
-
-
-# 3. Visually inspect output data
+# 2. Visually inspect output data
 View(homevisitingdata2)
 ```
 
