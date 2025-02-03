@@ -127,6 +127,8 @@ enrollment_district <- df_enrollment %>%
                          'Hitchcock-Tulare School District 56-6',location)) %>%
    mutate(location=ifelse(location=='Oldham-Ramona-Rutland School District 39-6',
                          'Oldham-Ramona School District 39-5',location)) %>%
+  mutate(location=ifelse(location=='Colome School District 59-3',
+                         'Colome Consolidated School District 59-3',location)) %>%
   
   
   left_join(locationids,by=c('location'='Location')) %>%
@@ -256,7 +258,7 @@ dbWriteTable(con,'southdakota',enrollment,append=TRUE,row.names=FALSE)
 
 **NON-PUBLIC SCHOOL ENROLLMENT GRADES PRE-K THROUGH 12**
 ```{r}
-state_data <- 15775
+state_data <- 16228
 #######
 
 #CALCULATE THE STATEWIDE DATA
@@ -401,11 +403,11 @@ df_digest <- read_excel(path=paste0("./Input/education/southdakota_",year,"_educ
 #in 20/21 home school varname is 'Fall ADM Count of Home School Students'
 #variable.names(df_digest)
 
-columnname <- 'Fall Count of Open Enrolled Students'
+columnname <- 'ACT Composite Score'
 input_dataformat <- 'Number'
-variablename <- 'homeschoolk12enrollment'
+variablename <- 'averageactcompositescore'
 #pull state data from the school profile on the statistical digest
-state_data <- 9135
+state_data <- 21.1
 #######
 
 
@@ -460,8 +462,7 @@ digestdata_district <- df_digest %>%
                          'Oglala Lakota County School District 65-1',location)) %>%
   left_join(locationids,by=c('location'='Location')) %>%
   rename(locationid=LocationId) %>%
-  subset(!is.na(locationid)) #%>%
-  #mutate(data=as.numeric(paste(data)))
+  mutate(data=as.numeric(paste(data))) #%>%
   #mutate(data=(as.numeric(str_remove(data,"%")))/100) #for frl
 
 #COMBINE STATE AND DISTRICT DATA
