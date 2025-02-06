@@ -40,8 +40,8 @@ library(readxl)
 
 ```{r}
 #UPDATE to reflect the current year data working with
-year <- '2023'
-fiscalyear <- 'FY23'
+year <- '2024'
+fiscalyear <- 'FY24'
 state <- 'northdakota'
 
 
@@ -52,14 +52,11 @@ year_minus1 <- as.character(as.numeric(year)-1)
 ```{r}
 #read in the data in Excel format with multiple sheets
 
-xl_data <- paste0("./Input/economics/northdakota_",fiscalyear,"_economicassistance.xlsx")
-excel_sheets(path = xl_data)
-
-df_tanf <- read_excel(path=xl_data, sheet='TANF 0-19', skip=7)
-df_snap <- read_excel(path=xl_data, sheet='SNAP 0-18',skip=6)
-df_ccap <- read_excel(path=xl_data, sheet='Child Care 0-13',skip=6)
-df_medicaid <- read_excel(path=xl_data, sheet='Medicaid 0-20',skip=7)
-df_healthysteps <- read_excel(path=xl_data, sheet='Optional Childrens Group 0-19',skip=7)
+df_tanf <- read_excel(paste0("./Input/economics/northdakota_",fiscalyear,"_economicassistance_tanf.xlsx"))
+df_snap <- read_excel(paste0("./Input/economics/northdakota_",fiscalyear,"_economicassistance_snap.xlsx"))
+df_ccap <- read_excel(paste0("./Input/economics/northdakota_",fiscalyear,"_economicassistance_ccap.xlsx"))
+df_medicaid <- read_excel(paste0("./Input/economics/northdakota_",fiscalyear,"_economicassistance_medicaid.xlsx"))
+df_healthysteps <- read_excel(paste0("./Input/economics/northdakota_",fiscalyear,"_economicassistance_chip.xlsx"))
 
 #input location ID file for ND
 locationids <- read.csv("./Input/ND KC Location IDs.csv")
@@ -67,6 +64,9 @@ locationids <- read.csv("./Input/ND KC Location IDs.csv")
 #input region ID file for ND
 regionids <- read.csv("./Input/ND KC Region List.csv")
 regionids$county <- as.character(regionids$county)
+
+#input county list file for ND
+countylist <- read.csv("./Input/ND County List.csv")
 
 ```
 
@@ -77,17 +77,22 @@ regionids$county <- as.character(regionids$county)
 #FOR SNAP
 #clean the county data
 df_snap2 <- df_snap %>%
-  rename(location=`...2`) %>%
+  rename(location=County,
+         data=`Unduplicated Count of SNAP Recipients age 0-18`) %>%
+  #remove extra rows or counties not a ND county
   subset(!is.na(location)) %>%
-  rename(zerotosix='0-6 YEARS') %>%
-  rename(seventoeighteen='7-18 YEARS') %>%
+  subset(location != 'County Not Available / Out of State County') %>%
+  #remove the word "County"
+  mutate(location=gsub(' County','',location)) %>%
+  #merge in county list, as some counties with 0 are not in the dataset
+  full_join(countylist, by=c('location'='Location')) %>%
+  mutate(data=replace(data,is.na(data),0)) %>%
+  #add in Kids Count variables
   mutate(locationtype='County') %>%
   mutate(state='North Dakota') %>%
-  mutate(data=(zerotosix+seventoeighteen)) %>%
   mutate(dataformat='Number') %>%
-  mutate(timeframe=all_of(year)) %>%
-  mutate(varname='snapages0to18') %>%
-  select(-c(zerotosix,seventoeighteen,`...1`,`...3`))
+  mutate(timeframe=year) %>%
+  mutate(varname='snapages0to18') 
 
 #create state summary
 df_snap_state <- df_snap2 %>%
@@ -111,13 +116,8 @@ snapages0to18 <- df_snap2 %>%
   bind_rows(df_snap_state) %>%
   bind_rows(df_snap_regions) %>%
   left_join(locationids,by=c('location'='Location')) %>%
-  rename(locationid=LocationId) #%>%
-  
-  #remove counties that are part of service unit and data matches service location
- # mutate(data=replace(data,location=='Mercer',NA)) %>%
-  #mutate(data=replace(data,location=='McLean',NA)) %>%
-  #mutate(data=replace(data,location=='Oliver',NA)) %>%
-  #mutate(data=replace(data,location=='Sheridan',NA)) 
+  rename(locationid=LocationId) 
+
 
 ####################
 ####################
@@ -230,19 +230,23 @@ write.csv(upload_data_snap,file=paste0("./Output/economics/",state,"_",year,"_sn
 #FOR TANF
 #clean the county data
 df_tanf2 <- df_tanf %>%
-  rename(location=`...2`) %>%
+  rename(location=County,
+         data=`Unduplicated Count of TANF Recipients age 0-19`) %>%
+  #remove extra rows or counties not a ND county
   subset(!is.na(location)) %>%
-  rename(zerotofive='0-5 YEARS') %>%
-  rename(sixtofifteen='6-15 YEARS') %>%
-  rename(sixteentoseventeen='16-17 YEARS') %>%
-  rename(eighteentonineteen='18-19 YEARS') %>%
+  subset(location != 'County Not Available / Out of State County') %>%
+  #remove the word "County"
+  mutate(location=gsub(' County','',location)) %>%
+  #merge in county list, as some counties with 0 are not in the dataset
+  full_join(countylist, by=c('location'='Location')) %>%
+  mutate(data=replace(data,is.na(data),0)) %>%
+  #add in Kids Count variables %>%
   mutate(locationtype='County') %>%
   mutate(state='North Dakota') %>%
-  mutate(data=(zerotofive+sixtofifteen+sixteentoseventeen+eighteentonineteen)) %>%
   mutate(dataformat='Number') %>%
-  mutate(timeframe=all_of(year)) %>%
-  mutate(varname='tanfages0to19') %>%
-  select(-c(zerotofive,sixtofifteen,sixteentoseventeen,eighteentonineteen,`...1`,`...3`))
+  mutate(timeframe=year) %>%
+  mutate(varname='tanfages0to19') 
+ 
 
 #create state summary
 df_tanf_state <- df_tanf2 %>%
@@ -267,13 +271,7 @@ tanfages0to19 <- df_tanf2 %>%
   bind_rows(df_tanf_state) %>%
   bind_rows(df_tanf_regions) %>%
   left_join(locationids,by=c('location'='Location')) %>%
-  rename(locationid=LocationId) #%>%
-  
-  #remove counties that are part of service unit and data matches service location
-  #mutate(data=replace(data,location=='Mercer',NA)) %>%
-  #mutate(data=replace(data,location=='McLean',NA)) %>%
-  #mutate(data=replace(data,location=='Oliver',NA)) %>%
-  #mutate(data=replace(data,location=='Sheridan',NA)) 
+  rename(locationid=LocationId) 
   
   
 ####################
@@ -377,33 +375,30 @@ write.csv(upload_data_tanf,file=paste0("./Output/economics/",state,"_",year,"_ta
 ```
 
 
-
-
-
-
-
-
 ## -- CCAP -- ##
 
 ```{r}
 #FOR CCAP
 #clean the county data
 df_ccap2 <- df_ccap %>%
-  rename(location=`...2`) %>%
+  rename(location=County) %>%
+  mutate(data=`Unduplicated count of CCAP recipients of age 0-5`+`Unduplicated count of CCAP recipients of age 6+`) %>%
+  select(-c(`Unduplicated count of CCAP recipients of age 0-5`,`Unduplicated count of CCAP recipients of age 6+`)) %>%
+  #remove extra rows or counties not a ND county
   subset(!is.na(location)) %>%
-  rename(undertwo='Under 2') %>%
-  rename(twoonly='2 Only') %>%
-  rename(threeonly='3 Only') %>%
-  rename(fourtofive='4-5') %>%
-  rename(sixtothirteen='6-13') %>%
-  rename(over13=`Over 13`) %>%
+  subset(location != 'County Not Available / Out of State County') %>%
+  #remove the word "County"
+  mutate(location=gsub(' County','',location)) %>%
+  #merge in county list, as some counties with 0 are not in the dataset
+  full_join(countylist, by=c('location'='Location')) %>%
+  mutate(data=replace(data,is.na(data),0)) %>%
+  #add in Kids Count variables %>%
   mutate(locationtype='County') %>%
   mutate(state='North Dakota') %>%
-  mutate(data=(undertwo+twoonly+threeonly+fourtofive+sixtothirteen+over13)) %>%
   mutate(dataformat='Number') %>%
-  mutate(timeframe=all_of(year)) %>%
-  mutate(varname='ccapages0to13') %>%
-  select(-c(undertwo,twoonly,threeonly,fourtofive,sixtothirteen,over13,`...1`,`...3`))
+  mutate(timeframe=year) %>%
+  mutate(varname='ccapages0to13') 
+  
 
 #create state summary
 df_ccap_state <- df_ccap2 %>%
@@ -428,13 +423,7 @@ ccapages0to13 <- df_ccap2 %>%
   bind_rows(df_ccap_state) %>%
   bind_rows(df_ccap_regions) %>%
   left_join(locationids,by=c('location'='Location')) %>%
-  rename(locationid=LocationId) #%>%
-  
-  #remove counties that are part of service unit and data matches service location
-  #mutate(data=replace(data,location=='Mercer',NA)) %>%
-  #mutate(data=replace(data,location=='McLean',NA)) %>%
-  #mutate(data=replace(data,location=='Oliver',NA)) %>%
-  #mutate(data=replace(data,location=='Sheridan',NA)) 
+  rename(locationid=LocationId) 
   
  
 ####################
@@ -543,18 +532,22 @@ write.csv(upload_data_ccap,file=paste0("./Output/economics/",state,"_",year,"_cc
 #FOR MEDICAID
 #clean the county data
 df_medicaid2 <- df_medicaid %>%
-  rename(location=`...2`) %>%
+  rename(location=County,
+         data=`Unduplicated Medicaid recipients age 0-20`) %>%
+  #remove extra rows or counties not a ND county
   subset(!is.na(location)) %>%
-  rename(zerotofive='0-5') %>%
-  rename(sixtoeighteen='6-18') %>%
-  rename(nineteentotwenty='19-20') %>%
+  subset(location != 'County Not Available / Out of State County') %>%
+  #remove the word "County"
+  mutate(location=gsub(' County','',location)) %>%
+  #merge in county list, as some counties with 0 are not in the dataset
+  full_join(countylist, by=c('location'='Location')) %>%
+  mutate(data=replace(data,is.na(data),0)) %>%
+  #add in Kids Count variables %>%
   mutate(locationtype='County') %>%
   mutate(state='North Dakota') %>%
-  mutate(data=(zerotofive+sixtoeighteen+nineteentotwenty)) %>%
-  mutate(dataformat='Number') %>%
-  mutate(timeframe=all_of(year)) %>%
-  mutate(varname='medicaidages0to20') %>%
-  select(-c(zerotofive,sixtoeighteen,nineteentotwenty,`...1`,`TOTAL RECIPIENTS`))
+   mutate(dataformat='Number') %>%
+  mutate(timeframe=year) %>%
+  mutate(varname='medicaidages0to20') 
 
 
 #create state summary
@@ -580,14 +573,7 @@ medicaidages0to20 <- df_medicaid2 %>%
   bind_rows(df_medicaid_state) %>%
   bind_rows(df_medicaid_regions) %>%
   left_join(locationids,by=c('location'='Location')) %>%
-  rename(locationid=LocationId) #%>%
-  
-  #remove counties that are part of service unit and data matches service location
-  #mutate(data=replace(data,location=='Mercer',NA)) %>%
-  #mutate(data=replace(data,location=='McLean',NA)) %>%
-  #mutate(data=replace(data,location=='Oliver',NA)) %>%
-  #mutate(data=replace(data,location=='Sheridan',NA)) 
-  
+  rename(locationid=LocationId) 
  
 ####################
 ####################
@@ -701,17 +687,23 @@ write.csv(upload_data_medicaid,file=paste0("./Output/economics/",state,"_",year,
 #FOR HEALTHY STEPS
 #clean the county data
 df_healthysteps2 <- df_healthysteps %>%
-  rename(location=`...2`) %>%
+ rename(location=County,
+         data=`Unduplicated Health Steps/CHIP (optional children’s group) recipients age 0-18`) %>%
+  #remove extra rows or counties not a ND county
   subset(!is.na(location)) %>%
-  rename(zerotofive='0-5') %>%
-  rename(sixtonineteen='6-19**') %>%
+  subset(location != 'County Not Available / Out of State County') %>%
+  #remove the word "County"
+  mutate(location=gsub(' County','',location)) %>%
+  #merge in county list, as some counties with 0 are not in the dataset
+  full_join(countylist, by=c('location'='Location')) %>%
+  mutate(data=replace(data,is.na(data),0)) %>%
+  #add in Kids Count variables %>%
   mutate(locationtype='County') %>%
   mutate(state='North Dakota') %>%
-  mutate(data=(zerotofive+sixtonineteen)) %>%
-  mutate(dataformat='Number') %>%
-  mutate(timeframe=all_of(year)) %>%
-  mutate(varname='healthystepsages0to18') %>%
-  select(-c(zerotofive,sixtonineteen,`...1`,`...3`))
+    mutate(dataformat='Number') %>%
+  mutate(timeframe=year) %>%
+  mutate(varname='healthystepsages0to18') 
+
 
 
 #create state summary
@@ -737,13 +729,7 @@ healthystepsages0to18 <- df_healthysteps2 %>%
   bind_rows(df_healthysteps_state) %>%
   bind_rows(df_healthysteps_regions) %>%
   left_join(locationids,by=c('location'='Location')) %>%
-  rename(locationid=LocationId) #%>%
-  
-  #remove counties that are part of service unit and data matches service location
-  #mutate(data=replace(data,location=='Mercer',NA)) %>%
-  #mutate(data=replace(data,location=='McLean',NA)) %>%
-  #mutate(data=replace(data,location=='Oliver',NA)) %>%
-  #mutate(data=replace(data,location=='Sheridan',NA)) 
+  rename(locationid=LocationId) 
   
  
 ####################
