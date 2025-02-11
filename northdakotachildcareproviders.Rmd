@@ -291,29 +291,29 @@ statesums_quality <- countysums_quality %>%
 ####CREATE STATE PLANNING REGIONS SUMMARY COUNT OF CHILD CARE
 #create blank shell in order to capture when 0 occurs
 location <- c('Planning Region 1','Planning Region 1','Planning Region 1',
-              'Planning Region 1','Planning Region 1',
+              'Planning Region 1',
               'Planning Region 2','Planning Region 2','Planning Region 2',
-              'Planning Region 2','Planning Region 2',
+              'Planning Region 2',
               'Planning Region 3','Planning Region 3','Planning Region 3',
-              'Planning Region 3','Planning Region 3',
+              'Planning Region 3',
               'Planning Region 4','Planning Region 4','Planning Region 4',
-              'Planning Region 4','Planning Region 4',
+              'Planning Region 4',
               'Planning Region 5','Planning Region 5','Planning Region 5',
-              'Planning Region 5','Planning Region 5',
+              'Planning Region 5',
               'Planning Region 6','Planning Region 6','Planning Region 6',
-              'Planning Region 6','Planning Region 6',
+              'Planning Region 6',
               'Planning Region 7','Planning Region 7','Planning Region 7',
-              'Planning Region 7','Planning Region 7',
+              'Planning Region 7',
               'Planning Region 8','Planning Region 8','Planning Region 8',
-              'Planning Region 8','Planning Region 8')
-category <- c('Step 1','Step 2','Step 3','Step 4','Total participating in QRIS',
-              'Step 1','Step 2','Step 3','Step 4','Total participating in QRIS',
-              'Step 1','Step 2','Step 3','Step 4','Total participating in QRIS',
-              'Step 1','Step 2','Step 3','Step 4','Total participating in QRIS',
-              'Step 1','Step 2','Step 3','Step 4','Total participating in QRIS',
-              'Step 1','Step 2','Step 3','Step 4','Total participating in QRIS',
-              'Step 1','Step 2','Step 3','Step 4','Total participating in QRIS',
-              'Step 1','Step 2','Step 3','Step 4','Total participating in QRIS')
+              'Planning Region 8')
+category <- c('Step 1','Step 2','Step 3','Step 4',
+              'Step 1','Step 2','Step 3','Step 4',
+              'Step 1','Step 2','Step 3','Step 4',
+              'Step 1','Step 2','Step 3','Step 4',
+              'Step 1','Step 2','Step 3','Step 4',
+              'Step 1','Step 2','Step 3','Step 4',
+              'Step 1','Step 2','Step 3','Step 4',
+              'Step 1','Step 2','Step 3','Step 4')
 regionshell <- data.frame(location,category)
 
 regionsums_quality <- countysums_quality %>%
