@@ -28,7 +28,7 @@ library(stringr)
 
 ```{r}
 #UPDATE to reflect the current year data working with
-year <- '2024'
+year <- '2025'
 state <- 'northdakota'
 
 year_shortened <- substr(year,3,4)
@@ -53,7 +53,6 @@ quality_data <- read_excel(path=paste0("./Input/education/northdakota_",year,"_c
 #create a dataset that has all combinations of county and category for final provider type categories
 #this is to account for the fact that some combinations will be 0
 providertype_kc_category <- c('Licensed','Licensed School Age','Self-declaration Providers')
-#providertype_kc_category <- c('Licensed','Licensed School Age','Self-declaration Providers','Registered Tribal','Approved Relative')
 providertype_kc_categorylist <- as.data.frame(providertype_kc_category)
 county_provider_categorylist <- crossing(countymatch,providertype_kc_categorylist) %>%
   select(-c(ndcounty_number))
@@ -82,17 +81,7 @@ countyids <- read_excel("./Documentation/Indicator Documentation/North Dakota Da
 child_data_2 <- child_data %>%
   
   #clean up the data
-  #match counties using city and zip
-  
-  #need to fix capitalization of city
-  mutate(city_fixed=str_to_title(City)) %>%
-  mutate(zip_fixed=as.numeric(Zip)) %>%
-  
-  mutate(city_fixed=replace(city_fixed,city_fixed=='Lamoure',"LaMoure")) %>%
-  mutate(city_fixed=replace(city_fixed,city_fixed=='Mcville',"McVille")) %>%
-  mutate(city_fixed=replace(city_fixed,city_fixed=='Mcclusky',"McClusky")) %>%
-  
-  left_join(countyids,by=c('city_fixed'='City', 'zip_fixed'='Zipcode')) %>%
+  #use county reported in updated file (some years had to use city or another location variable)
   rename(county=County) %>%
   
   #create new variable matching to KC categories
@@ -100,33 +89,12 @@ child_data_2 <- child_data %>%
     `License Type`=='Center License' | `License Type`=='Family License' | 
       `License Type`=='Group License-Facility' | `License Type`=='Group License-Home' | 
       `License Type`=='Multiple License' | 
-      `License Type`=='Preschool License' | `License Type`=='Provisional Group License' ~ 'Licensed',
+      `License Type`=='Preschool License' ~ 'Licensed',
     `License Type`=='School Age License' ~ 'Licensed School Age',
     `License Type`=='Self Declared Certificate' ~ 'Self-declaration Providers')) %>%
   
   
   mutate(capacity=as.numeric(paste(`Capacity`))) 
-  
-  #merge in county from license number
-  #mutate(ndcounty_number1=substr(`File Number`,1,2))
-
-#child_data_fix <- child_data_2 %>% subset(ndcounty_number1=='0-' | ndcounty_number1=='1-' | ndcounty_number1=='2-' | ndcounty_number1=='3-' | ndcounty_number1=='4-' | ndcounty_number1=='5-') %>%
- # mutate(`File Number 2`=str_sub(`File Number`,3)) %>%
-#  mutate(`File Number 2`=replace(`File Number 2`,`File Number`=='0-0-01898-F','36')) %>%
- # mutate(`File Number 2`=replace(`File Number 2`,`File Number`=='1-5-00442-H','05')) %>%
-  
-  #mutate(ndcounty_number2=substr(`File Number 2`,1,2)) %>%
-  #select(c(`File Number`,ndcounty_number2))
-
-
-#child_data_3 <- child_data_2 %>%
- # left_join(child_data_fix,by=c('File Number'='File Number')) %>%
-#  mutate(ndcounty_number=case_when(
- #   is.na(ndcounty_number2) ~ ndcounty_number1,
-  #  !is.na(ndcounty_number2) ~ ndcounty_number2)) %>%
-  
- # mutate(ndcounty_number=as.numeric(paste(ndcounty_number))) %>%
-  #left_join(countymatch, by=c('ndcounty_number'='ndcounty_number'))
 
 ```
 
@@ -290,7 +258,7 @@ countysums_quality <- quality_data %>%
 
   rename(category=`Quality Rating`,
          location=County,
-         capacity=`Licensed Capacity`) %>%
+         capacity=`Capacity`) %>%
   mutate(capacity=as.numeric(paste(capacity))) %>%
   group_by(location,category) %>%
   summarise(providers = n(),
