@@ -34,8 +34,8 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '23'
-fullyear <- '2023' 
+year <- '24'
+fullyear <- '2024' 
 
 
 #input location ID file
@@ -193,7 +193,7 @@ write.csv(youth_upload,file=paste0("./Output/safety/montana_",fullyear,"_childre
 #import the data
 offensedata <- read_excel(path=paste0("./Input/safety/montana_",fullyear,"_juvenileoffenses.xlsx"),sheet=fullyear,skip=1)
 
-############
+###########
 #COUNTY DATA
 offenses_county <- offensedata %>%
   subset(County!='NULL'& !is.na(County)) %>%
