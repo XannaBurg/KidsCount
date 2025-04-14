@@ -45,11 +45,11 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '23_24'
-fullyear <- '2023/24' 
-year_prior <- '2022/23' #for dropout data
-year_dropout <- '22_23'
-calyearformat <- '2024'
+year <- '24_25'
+fullyear <- '2024/25' 
+year_prior <- '2023/24' #for dropout data
+year_dropout <- '23_24'
+calyearformat <- '2025'
 statefile <- 'southdakota'
 statename <- 'South Dakota'
 
@@ -517,10 +517,10 @@ write.csv(upload_data_digest,file=paste0("./Output/education/southdakota_",year,
 
 #special education state data
 xl_data <- paste0("./Input/education/southdakota_",year,"_specialeducationstate.xlsx")
-df_specialed_impairment <- read_excel(path=xl_data, range="A4:Z23")
-df_specialed_grade <- read_excel(path=xl_data, range="A26:Z42")
-df_specialed_age <- read_excel(path=xl_data, range="A67:Z87")
-df_specialed_race <- read_excel(path=xl_data, range="A49:Z57")
+df_specialed_impairment <- read_excel(path=xl_data, range="A4:AA23")
+df_specialed_grade <- read_excel(path=xl_data, range="A25:AA41")
+df_specialed_age <- read_excel(path=xl_data, range="A58:AA78")
+df_specialed_race <- read_excel(path=xl_data, range="A48:AA56")
 
 #special education district data
 xl_data_specialed_district <- paste0("./Input/education/southdakota_",year,"_specialeducationdistrict.xlsx")
@@ -532,11 +532,10 @@ df_specialed_district <- read_excel(path=xl_data_specialed_district,skip=3)
 ```{r}
 specialed_count <- df_specialed_district %>%
   subset(!is.na(`District Number`)) %>%
-  select(c('District Name','2023 TOTAL Child Count (ages 3-21)')) %>%
+  select(c('District Name','2024 TOTAL Child Count (ages 3-21)')) %>%
   rename(location='District Name',
-         data='2023 TOTAL Child Count (ages 3-21)') %>%
-  subset(!is.na(location) & location != 'TOTAL' & 
-           location != 'contact Susan Woodmansey,') %>%
+         data='2024 TOTAL Child Count (ages 3-21)') %>%
+  subset(!is.na(location) & location != 'TOTAL') %>%
   mutate(locationtype='School District') %>%
   mutate(state='South Dakota') %>%
   mutate(timeframe=fullyear) %>%
@@ -570,6 +569,8 @@ specialed_count <- df_specialed_district %>%
         'Wagner School District 11-4',location)) %>%
   mutate(location=ifelse(location=='Webster Area School District 18-5',
         'Webster School District 18-5',location)) %>%
+  mutate(location=ifelse(location=='Colome School District 59-3',
+        'Colome Consolidated School District 59-3',location)) %>%
   left_join(locationids,by=c('location'='Location')) %>%
   rename(locationid=LocationId)
 
@@ -578,8 +579,7 @@ specialed_percent <- df_specialed_district %>%
   select(c('District Name','Child Count as % of Fall PK-12 Enrollment')) %>%
   rename(location='District Name',
          data='Child Count as % of Fall PK-12 Enrollment') %>%
-  subset(!is.na(location) & location != 'TOTAL' & 
-           location != 'contact Susan Woodmansey,') %>%
+  subset(!is.na(location) & location != 'TOTAL') %>%
   mutate(locationtype='School District') %>%
   mutate(state='South Dakota') %>%
   mutate(timeframe=fullyear) %>%
@@ -612,12 +612,14 @@ specialed_percent <- df_specialed_district %>%
         'Wagner School District 11-4',location)) %>%
   mutate(location=ifelse(location=='Webster Area School District 18-5',
         'Webster School District 18-5',location)) %>%
+  mutate(location=ifelse(location=='Colome School District 59-3',
+        'Colome Consolidated School District 59-3',location)) %>%
   left_join(locationids,by=c('location'='Location')) %>%
   rename(locationid=LocationId)
 
 
 specialed_count_state <- df_specialed_district %>%
-  rename(data='2023 TOTAL Child Count (ages 3-21)',
+  rename(data='2024 TOTAL Child Count (ages 3-21)',
          location='District Number') %>%
   subset(location=='TOTAL') %>%
   select(c(data))  %>%
@@ -704,10 +706,10 @@ tribalschools$school_specialednumber <- as.character(tribalschools$school_specia
 
 specialed_count <- df_specialed_district %>%
   subset(!is.na(`District Number`)) %>%
-  select(c('District Name','2023 TOTAL Child Count (ages 3-21)','District Number')) %>%
+  select(c('District Name','2024 TOTAL Child Count (ages 3-21)','District Number')) %>%
   rename(fulllocation_name='District Name',
          districtid='District Number',
-         data='2023 TOTAL Child Count (ages 3-21)') %>%
+         data='2024 TOTAL Child Count (ages 3-21)') %>%
   
   #match to tribal area using crosswalk
   inner_join(tribalschools,by=c('districtid'='school_specialednumber')) %>%
@@ -767,7 +769,7 @@ dbWriteTable(con,'southdakota',upload_specialeducation_district,append=TRUE,row.
 
 **CHILDREN ENROLLED IN SPECIAL EDUCATION IN PUBLIC SCHOOLS BY TYPE OF IMPAIRMENT**
 ```{r}
-fullyear_file <- '2023'
+fullyear_file <- '2024'
 year_variable <- paste0("December ",fullyear_file)
 
 
