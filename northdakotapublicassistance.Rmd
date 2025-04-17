@@ -533,7 +533,7 @@ write.csv(upload_data_ccap,file=paste0("./Output/economics/",state,"_",year,"_cc
 #clean the county data
 df_medicaid2 <- df_medicaid %>%
   rename(location=County,
-         data=`Unduplicated Medicaid recipients age 0-20`) %>%
+         data=`MED_EX_CHIP`) %>%
   #remove extra rows or counties not a ND county
   subset(!is.na(location)) %>%
   subset(location != 'County Not Available / Out of State County') %>%
