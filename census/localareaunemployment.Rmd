@@ -80,85 +80,7 @@ if (statename=='Montana') {
 
 ```
 
-
-## STEP 1: IMPORT THE MOST RECENT DATA FROM A TEXT FILE ON THE BLS WEBSITE
-~This code no longer works because R cannot verify not a bot to access the website.~
-```{r}
-#all options for data files found here: https://download.bls.gov/pub/time.series/la/
-
-#function written by Kimberly Coffey: http://www.kimberlycoffey.com/blog/2015/12/19/import-from-bureau-of-labor-statistics
-import.from.bls <- function(web.address) {
-
-    # Import data
-    temp <- tempfile()
-    download.file(web.address, temp)
-    data <- read.table(temp,
-                           header=FALSE,
-                           sep="\t",
-                           skip=1,
-                           stringsAsFactors=FALSE,
-                           strip.white=TRUE,
-                           quote = NULL)
-
-    # Add column headers
-    topline <- readLines(web.address)
-    topline <- topline[1] # Select column headers
-    topline <- as.list(strsplit(x = topline, split = "\t")[[1]]) # Split the string into a list
-    colnames(data) <- topline
-    
-    unlink(temp)
-    
-    # Drop extra, unused column
-    data <- data[,1:(ncol(data) - 1)]
-    
-    # This command plucks the text that appears after the pattern below,
-    # and uses it to name the file.
-    filename <- gsub(pattern = "http://download.bls.gov/pub/time.series/la/la.","", x = web.address, ignore.case=T)
-    
-    # save the file to the global environment
-    assign(filename, data, envir = .GlobalEnv) 
-
-}
-
-#modification to include all columns for joining tables
-import.from.bls2 <- function(web.address) {
-
-    # Import data
-    temp <- tempfile()
-    download.file(web.address, temp)
-    data <- read.table(temp,
-                           header=FALSE,
-                           sep="\t",
-                           skip=1,
-                           stringsAsFactors=FALSE,
-                           strip.white=TRUE,
-                           quote = NULL)
-
-    # Add column headers
-    topline <- readLines(web.address)
-    topline <- topline[1] # Select column headers
-    topline <- as.list(strsplit(x = topline, split = "\t")[[1]]) # Split the string into a list
-    colnames(data) <- topline
-    
-    unlink(temp)
-    
-    # This command plucks the text that appears after the pattern below,
-    # and uses it to name the file.
-    filename <- gsub(pattern = "http://download.bls.gov/pub/time.series/la/la.","", x = web.address, ignore.case=T)
-    
-    # save the file to the global environment
-    assign(filename, data, envir = .GlobalEnv) 
-
-}
-
-blsdata <- import.from.bls(paste0("https://download.bls.gov/pub/time.series/la/la.data.",bls_filename))
-
-bls_periods <- import.from.bls2("https://download.bls.gov/pub/time.series/la/la.period")
-
-bls_measures <- import.from.bls2("https://download.bls.gov/pub/time.series/la/la.measure")
-```
-
-## STEP 1B: IMPORT DATA THAT HAS BEEN DOWNLOADED FROM WEBSITE
+## STEP 1: IMPORT DATA THAT HAS BEEN DOWNLOADED FROM WEBSITE
 ```{r}
 #https://download.bls.gov/pub/time.series/la
 #Go to the website, click on each state, and once the data is pulled up, right click and save as to download a .txt file. Let it be named the default file name, which will overwrite the file each year
@@ -212,7 +134,7 @@ blsdata_formatted <- blsdata %>%
 
 ```{r}
 # ***** UPDATE THE YEAR TO THE CURRENT YEAR ***** 
-year <- '2023'
+year <- '2024'
 
 
 year_numeric <- as.numeric(paste(year))
