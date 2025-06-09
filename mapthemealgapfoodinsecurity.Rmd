@@ -33,8 +33,8 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '22'
-fullyear <- '2022' 
+year <- '23'
+fullyear <- '2023' 
 
 
 #input location ID file
@@ -50,7 +50,7 @@ SD_locationids$Location <- as.character(paste(SD_locationids$Location))
 ```{r}
 #read in the data in Excel format with multiple sheets
 
-xl_data <- paste0("./Input/economics/MMG2024_2019-2022_Data_ToShare.xlsx")
+xl_data <- paste0("./Input/economics/MMG2025_2019-2023_Data_ToShare.xlsx")
 excel_sheets(path = xl_data)
 
 df_food <- read_excel(path=xl_data, sheet=paste0('County')) %>%
