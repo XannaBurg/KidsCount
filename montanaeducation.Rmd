@@ -44,10 +44,10 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '24'
+year <- '25'
 
-fullyear <- '2023/24' 
-threeyear <- '2022-2024'
+fullyear <- '2024/25' 
+threeyear <- '2023-2025'
 statefile <- 'montana'
 statename <- 'Montana'
 
@@ -68,13 +68,13 @@ countylist <- read.csv("./Input/MT County List.csv")
 **PUBLIC SCHOOL ENROLLMENT GRADES K THROUGH 12 BY COUNTY**
 ```{r}
 #read in the data
-df_enrollment <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='Enrollment')
+df_enrollment <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='County')
 
 ###################
 #CREATE COUNTY DATA
 county_enrollment <- df_enrollment %>%
-  rename(location=`countyname`) %>%
-         mutate(data=`K-12 Enrollment`) %>%
+  rename(location=`CountyName`) %>%
+         mutate(data=`School Enrollment K-12`) %>%
   select(c(location,data)) %>%
   group_by(location) %>%
   summarise(data=sum(data)) %>%
@@ -156,8 +156,8 @@ write.csv(upload_data_enrollment,file=paste0("./Output/education/",statefile,"_"
 **TOTAL SCHOOL ENROLLMENT GRADES K THROUGH 12 BY TYPE (PUBLIC, PRIVATE, AND HOME SCHOOL)**
 ```{r}
 #read in the data
-df_homeschool <- read_excel(path=paste0("./Input/education/montana_",year,"_nonpublic2.xlsx"),range="K3:N60")
-df_privateschool <- read_excel(path=paste0("./Input/education/montana_",year,"_nonpublic2.xlsx"), range="P4:S30")
+df_homeschool <- read_excel(path=paste0("./Input/education/montana_",year,"_nonpublic.xlsx"),sheet="Total HomeSchool By CO 2025", range="B3:F60")
+df_privateschool <- read_excel(path=paste0("./Input/education/montana_",year,"_nonpublic.xlsx"),sheet="Total Private School By CO 2025", range="B2:F24")
 
 #################
 #################
@@ -455,44 +455,38 @@ write.csv(upload_data_enrollment,file=paste0("./Output/education/",statefile,"_"
 
 ```{r}
 #read in the special education child count data
-specialed <- read_excel(path=paste0("./Input/education/montana_",year,"_specialeducation.xls"),skip=3)
+specialed <- read_excel(path=paste0("./Input/education/montana_",year,"_specialeducation.xlsx"),sheet="County")
 
-county_key <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='Enrollment') %>%
-  select(c(co,countyname)) %>%
+county_key <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='County') %>%
+  select(c(CO,CountyName)) %>%
   unique()
 
 #read in the enrollment dataset to calculate pre-K through 12 enrollment
-enrollment1 <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='Enrollment') %>%
-  mutate(`K-12 Enrollment`=as.numeric(paste(`K-12 Enrollment`))) %>%
-  mutate(`Pre K Enrollment`=as.numeric(paste(`Pre K Enrollment`))) %>%
-  group_by(countyname) %>%
-  summarise(enrollment_prek_12=sum(`K-12 Enrollment`,na.rm=TRUE)+sum(`Pre K Enrollment`,na.rm=TRUE))
-#enrollment2 <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='State')
+enrollment1 <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='County') %>%
+  mutate(`School Enrollment K-12`=as.numeric(paste(`School Enrollment K-12`))) %>%
+  mutate(`School Enrollment PK`=as.numeric(paste(`School Enrollment PK`))) %>%
+  group_by(CountyName) %>%
+  summarise(enrollment_prek_12=sum(`School Enrollment K-12`,na.rm=TRUE)+sum(`School Enrollment PK`,na.rm=TRUE))
+
 
 ##########################
 #CREATE THE COUNTY DATASET
 county_specialed <- specialed %>%
-  mutate(CO=as.numeric(paste(CO))) %>%
-  left_join(county_key,by=c('CO'='co')) %>%
-  
-    #remove state totals
-  subset(!is.na(countyname)) %>%
-  subset(`countyname` != '') %>%
-  
+ 
   #rename special ed count variable
-  rename(specialedcount=`Total`) %>%
+  rename(specialedcount=`Special Education December Count`) %>%
   
   #join enrollment data
-  mutate(`countyname`=replace(`countyname`,`countyname`=='Lewis and Clark','Lewis & Clark')) %>%
-  left_join(enrollment1,by=c('countyname'='countyname')) %>%
+  mutate(`CountyName`=replace(`CountyName`,`CountyName`=='Lewis and Clark','Lewis & Clark')) %>%
+  left_join(enrollment1,by=c('CountyName'='CountyName')) %>%
   
   #calculate new columns and percent
   rename(enrollmentprek12='enrollment_prek_12') %>%
   mutate(percentspecialed=specialedcount/enrollmentprek12) %>%
   
   #rename to database
-  select(c(`countyname`,specialedcount,percentspecialed)) %>%
-  rename(location=`countyname`,
+  select(c(`CountyName`,specialedcount,percentspecialed)) %>%
+  rename(location=`CountyName`,
          Percent=percentspecialed,
          Number=specialedcount) %>%
   mutate(state=statename) %>%
@@ -511,7 +505,7 @@ county_specialed <- specialed %>%
 state_specialed <- county_specialed %>%
   subset(dataformat=='Number') %>%
   #join enrollment data
-  left_join(enrollment1,by=c('location'='countyname')) %>%
+  left_join(enrollment1,by=c('location'='CountyName')) %>%
   #calculate new columns and percent
   rename(enrollmentprek12='enrollment_prek_12') %>%
   
@@ -599,11 +593,11 @@ write.csv(upload_datacenter_specialed,file=paste0("./Output/education/",statefil
 **ELIGIBLE RECIPIENTS OF FREE OR REDUCED PRICE LUNCH**
 ```{r}
 #read in the data
-frl <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata2.xlsx"),sheet='FRPL by County')
+frl <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata.xlsx"),sheet='County')
 
 
 ##In 2024, enrollment and FRL data is in two different datasets, so pull from database for denominator
-enrollment_sql <- paste0("SELECT location, data FROM montana WHERE (locationtype='County' OR locationtype='State') AND (varname='publicschoolk12enrollment') AND (timeframe='2023/24');")
+enrollment_sql <- paste0("SELECT location, data FROM montana WHERE (locationtype='County' OR locationtype='State') AND (varname='publicschoolk12enrollment') AND (timeframe='2024/25');")
 
 k12enrollment <- dbGetQuery(con,enrollment_sql) %>%
   rename(k12enrollment=data)
@@ -614,7 +608,7 @@ k12enrollment <- dbGetQuery(con,enrollment_sql) %>%
 #CREATE COUNTY DATA
 county_lunch <- frl %>%
   left_join(k12enrollment,by=c('CountyName'='location')) %>%
-  rename(frl='FRPL Enrollment',
+  rename(frl='School Enrollment FR',
          location=`CountyName`) %>% 
    mutate(frl=as.numeric(frl)) %>%
    mutate(k12enrollment=as.numeric(k12enrollment)) %>%
@@ -634,13 +628,13 @@ county_lunch <- frl %>%
 #CREATE STATE DATA
 state_lunch <- frl %>%
  left_join(k12enrollment,by=c('CountyName'='location')) %>%
-  mutate(`FRPL Enrollment`=as.numeric(`FRPL Enrollment`)) %>%
+  mutate(`School Enrollment FR`=as.numeric(`School Enrollment FR`)) %>%
   mutate(k12enrollment=as.numeric(k12enrollment)) %>%
   mutate(location='Montana') %>%
   #calculate percent using K-12 enrollment
   group_by(location) %>%
-  summarise(Number=sum(`FRPL Enrollment`, na.rm=TRUE),
-            Percent=sum(`FRPL Enrollment`,na.rm=TRUE)/sum(k12enrollment)) %>%
+  summarise(Number=sum(`School Enrollment FR`, na.rm=TRUE),
+            Percent=sum(`School Enrollment FR`,na.rm=TRUE)/sum(k12enrollment)) %>%
   select(c(Number,Percent)) %>%
   #add in database variables
   mutate(location='Montana') %>%
