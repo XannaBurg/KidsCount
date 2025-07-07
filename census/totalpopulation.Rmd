@@ -43,7 +43,9 @@ library(stringr)
 #view(pop_geos)
 
 #county and state names that match fips codes (from tidycensus package)
-fips <- fips_codes
+fips <- fips_codes %>%
+  mutate(county_code=as.numeric(paste(county_code))) %>%
+  mutate(state_code=as.numeric(paste(state_code)))
 #fips$county_code = str_remove(fips$county_code, "^0+")
 
 #import tribal fips code (from file on local drive)
@@ -55,8 +57,8 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 ```{r}
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
-statename <- "Montana"
-year <- "2019"
+statename <- "South Dakota"
+year <- "2024"
 
 
 
@@ -98,43 +100,32 @@ statecode <- as.numeric(unique(fips$state_code[fips$state_name==statename]))
 
 ## STEP 1: IMPORT DATA AND CLEAN 
 ```{r}
-#pep/charagegroups is: Population Estimates Program
-#see lookup table for categorical vars: 
-#https://www.census.gov/data/developers/data-sets/popest-popproj/popest/popest-vars.Vintage_2018.html
-
 ############
 #COUNTY DATA
-pop_county <- getCensus(name="pep/charagegroups",
-          vintage=year,
-          key=Sys.getenv("CENSUS_API_KEY"),
-          vars=c("POP","DATE_CODE","DATE_DESC","AGEGROUP"),
-          region="county:*",
-          regionin=paste0("state:",statecode)) %>%
+pop_county <- read.csv(paste0("../Input/demographics/cc-est",year,"-alldata.csv")) %>%
+
+  
+  subset(STATE==statecode) %>%
   
   #include all ages
-  subset(AGEGROUP=='0') %>%
+  subset(AGEGRP=='0') %>%
   
   #clean the data that's been imported
   
   #assign population counts to numeric data
-  mutate(POP=as.numeric(POP)) %>%
+  mutate(POP=as.numeric(TOT_POP)) %>%
   
   #add in county name from fips codes, remove word 'county', add in state name
-  left_join(fips,by=c('county'='county_code','state'='state_code')) %>% 
-  mutate(county=gsub("\\s*\\w*$", "", county.y)) %>%
+  left_join(fips,by=c('COUNTY'='county_code','STATE'='state_code')) %>% 
+  mutate(county=gsub("\\s*\\w*$", "", county)) %>%
   
-  #create the timeframe using the Date codes
+ #create the timeframe using the Date codes- 2021 file
   mutate(timeframe=case_when(
-    DATE_CODE=='1' ~ '2010',
-    DATE_CODE=='4' ~ '2011',
-    DATE_CODE=='5' ~ '2012',
-    DATE_CODE=='6' ~ '2013',
-    DATE_CODE=='7' ~ '2014',
-    DATE_CODE=='8' ~ '2015',
-    DATE_CODE=='9' ~ '2016',
-    DATE_CODE=='10' ~ '2017',
-    DATE_CODE=='11' ~ '2018',
-    DATE_CODE=='12' ~ '2019')) %>%
+    YEAR=='2' ~ '2020',
+    YEAR=='3' ~ '2021',
+    YEAR=='4' ~ '2022',
+    YEAR=='5' ~ '2023',
+    YEAR=='6' ~ '2024')) %>%
   
   subset(!is.na(timeframe)) %>%
   
@@ -147,113 +138,39 @@ pop_county <- getCensus(name="pep/charagegroups",
   mutate(locationtype='County') %>%
   mutate(vintageyear=year) %>%
   mutate(dataformat='Number') %>%
-  mutate(varname='totalpopulation')
+  mutate(varname='totalpopulation') %>%
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  mutate(location=replace(location, 
+                          statename=='South Dakota' & location=='Shannon', 
+                          'Oglala Lakota')) 
 
 ###########
 #STATE DATA
-pop_state <- getCensus(name="pep/charagegroups",
-          vintage=year,
-          key=Sys.getenv("CENSUS_API_KEY"),
-          vars=c("POP","DATE_CODE","DATE_DESC","AGEGROUP"),
-          region=paste0("state:",statecode)) %>%
-  
-  #include all ages
-  subset(AGEGROUP=='0') %>%
-
-  #clean the data that's been imported
-  
-  #assign population counts to numeric data
-  mutate(POP=as.numeric(POP)) %>%
-  
-  #create the timeframe using the Date codes
-  mutate(timeframe=case_when(
-    DATE_CODE=='1' ~ '2010',
-    DATE_CODE=='4' ~ '2011',
-    DATE_CODE=='5' ~ '2012',
-    DATE_CODE=='6' ~ '2013',
-    DATE_CODE=='7' ~ '2014',
-    DATE_CODE=='8' ~ '2015',
-    DATE_CODE=='9' ~ '2016',
-    DATE_CODE=='10' ~ '2017',
-    DATE_CODE=='11' ~ '2018',
-    DATE_CODE=='12' ~ '2019')) %>%
-  
-  subset(!is.na(timeframe)) %>%
-  
-  #select Kids Count vars
-  select(c(timeframe,POP)) %>%
-  rename(data=POP) %>%
-  
+pop_state <- pop_county %>%
   mutate(location=statename) %>%
-  mutate(state=statename) %>%
-  mutate(locationtype='State') %>%
-  mutate(vintageyear=year) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='totalpopulation')
+  group_by(location,timeframe,state,vintageyear,dataformat,varname) %>%
+  summarise(data=sum(data)) %>%
+  ungroup %>%
+  mutate(locationtype='State')
+
 
 ############
 #REGION DATA
-pop_region <- getCensus(name="pep/charagegroups",
-          vintage=year,
-          key=Sys.getenv("CENSUS_API_KEY"),
-          vars=c("POP","DATE_CODE","DATE_DESC","AGEGROUP"),
-          region="county:*",
-          regionin=paste0("state:",statecode)) %>%
-  
-  #include all ages
-  subset(AGEGROUP=='0') %>%
-
-  #clean the data that's been imported
-  
-  #assign population counts to numeric data
-  mutate(POP=as.numeric(POP)) %>%
-  
-  #add in county name from fips codes, remove word 'county', add in state name
-  left_join(fips,by=c('county'='county_code','state'='state_code')) %>% 
-  mutate(county=gsub("\\s*\\w*$", "", county.y)) %>%
-  
-  
-  #create state planning region column
-  mutate(county=replace(county, 
-                          statename=='Montana' & county=='Lewis and Clark', 
-                          'Lewis & Clark')) %>%
-  mutate(county=replace(county, 
-                          statename=='South Dakota' & county=='Shannon', 
-                          'Oglala Lakota')) %>%
-  
-  left_join(regionids,by=c('county'='county'))  %>%
-  group_by(region,DATE_CODE) %>%
-  summarise(data=sum(POP)) %>%
-  
-  #remove unmatched regions (not all counties map to a region in South Dakota)
-  filter(region!='') %>%
-  
-  
-  #create the timeframe using the Date codes
-  mutate(timeframe=case_when(
-    DATE_CODE=='1' ~ '2010',
-    DATE_CODE=='4' ~ '2011',
-    DATE_CODE=='5' ~ '2012',
-    DATE_CODE=='6' ~ '2013',
-    DATE_CODE=='7' ~ '2014',
-    DATE_CODE=='8' ~ '2015',
-    DATE_CODE=='9' ~ '2016',
-    DATE_CODE=='10' ~ '2017',
-    DATE_CODE=='11' ~ '2018',
-    DATE_CODE=='12' ~ '2019')) %>%
-  
-  subset(!is.na(timeframe)) %>%
-  
-  #select Kids Count vars
-  select(c(region,timeframe,data)) %>%
+pop_region <- pop_county %>%
+  left_join(regionids,by=c('location'='county')) %>% 
+  select(-c(location,locationtype)) %>%
   rename(location=region) %>%
-  
-  mutate(state=statename) %>%
+  group_by(location,timeframe,state,vintageyear,dataformat,varname) %>%
+  summarise(data=sum(data)) %>%
+  ungroup %>%
   mutate(locationtype='Planning Region') %>%
-  mutate(vintageyear=year) %>%
-  mutate(dataformat='Number') %>%
-  mutate(varname='totalpopulation')
-
+  #remove unmatched regions (not all counties map to a region in South Dakota)
+  filter(location!='') 
+  
+  
+  
 ###########################################
 #UNION COUNTY, STATE, STATE PLANNING REGION
 pop <- pop_county %>%
@@ -315,7 +232,12 @@ pop_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM
 #remove the year from the sql WHERE clause if running all available years
 
 #edit this to include estimates available prior to current vintage year
-pop_sql_prioryears <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE (vintageyear='2000' OR vintageyear='1990') AND varname='totalpopulation';")
+
+#for intercensal estimates for 2000-2009
+pop_sql_prioryears <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE vintageyear='2000' AND varname='totalpopulation' AND locationtype <> 'Planning Region';")
+
+#for intercensal estimates for 2010-2019
+pop_sql_prioryears2 <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE vintageyear='2020' AND varname='totalpopulation' AND locationtype <> 'Planning Region';")
 
 upload_data_pop1 <- dbGetQuery(con,pop_sql) %>%
   rename(LocationId=locationid,
@@ -331,9 +253,18 @@ upload_data_pop2 <- dbGetQuery(con,pop_sql_prioryears) %>%
          DataFormat=dataformat,
          Data=data)
 
+upload_data_pop3 <- dbGetQuery(con,pop_sql_prioryears2) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data) %>%
+  subset(TimeFrame != '2020')
+
 #combine current year and prior years to replace all data on data center
 upload_data_pop <- upload_data_pop1 %>%
-  bind_rows(upload_data_pop2) 
+  bind_rows(upload_data_pop2) %>%
+  bind_rows(upload_data_pop3)
 
 
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
@@ -348,7 +279,11 @@ pop_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM
 #remove the year from the sql WHERE clause if running all available years
 
 #edit this to include estimates available prior to current vintage year
-pop_sql_prioryears <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE (vintageyear='2000' OR vintageyear='1990' OR vintageyear='2020') AND varname='totalpopulation';")
+#for intercensal estimates for 2000-2009
+pop_sql_prioryears <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE vintageyear='2000' AND varname='totalpopulation';")
+
+#for intercensal estimates for 2010-2019
+pop_sql_prioryears2 <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE vintageyear='2020' AND varname='totalpopulation';")
 
 upload_data_pop1 <- dbGetQuery(con,pop_sql) %>%
   rename(LocationId=locationid,
@@ -358,6 +293,13 @@ upload_data_pop1 <- dbGetQuery(con,pop_sql) %>%
          Data=data)
 
 upload_data_pop2 <- dbGetQuery(con,pop_sql_prioryears) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+upload_data_pop3 <- dbGetQuery(con,pop_sql_prioryears2) %>%
   rename(LocationId=locationid,
          Location=location,
          TimeFrame=timeframe,
@@ -379,6 +321,7 @@ upload_data_acs <- dbGetQuery(con,acs_sql) %>%
 #combine current year and prior years to replace all data on data center
 upload_data_pop <- upload_data_pop1 %>%
   bind_rows(upload_data_pop2) %>%
+  bind_rows(upload_data_pop3) %>%
   bind_rows(upload_data_acs)
 
 

@@ -36,8 +36,8 @@ library(zoo)
 
 ## STEP 1: IMPORT DATA FROM SQL DATABASE AND CLEAN
 ```{r}
-year <- '2023'
-statename <- 'North Dakota'
+year <- '2024'
+statename <- 'South Dakota'
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)

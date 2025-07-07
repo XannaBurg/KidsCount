@@ -7,22 +7,20 @@ output: html_document
 
 ## Indicator: Child population by race
 
-## Child population by race could also be calculated from the base datasets imported from Census API, however are not calculated for Montana, North Dakota, and South Dakota since cell counts are too low for most groups
 
 **Created by:** Xanna Burg
 **Date:** April 2020
 **Updated by:**
 
-**Data Source:** U.S. Census Bureau, Annual Population Estimates. Specific table: pep/charagegroups 
+**Data Source:** U.S. Census Bureau, Annual County Resident Population Estimates by Age, Sex, Race, and Hispanic Origin
 **Purpose:** Connect to census data table, clean data, add to master database, output csv to upload to Data Center in correct format. Update Montana, North Dakota, and South Dakota KIDS COUNT Data Center indicator with most recent year of vintage data.
-**Description:** this program calculates **two indicators: Child population by race and Child population by age group and race**
-* Geographies: state total, county, state planning regions (where applicable, which are groups of counties)
-* Number - count of population
-* Note - this data uses un-bridged race categories
+**Description:** 
 
 
 **Data format:** final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (numeric: year), Data (numeric: number or percentage), DataFormat (character: "number" or "percent"), LocationId (numeric: assigned for KIDS COUNT system), Race (character), Age group (character)
 
+
+**Data file downloaded from:** https://www.census.gov/data/datasets/time-series/demo/popest/2020s-counties-detail.html 
 
 
 ```{r,message=FALSE}
@@ -34,20 +32,11 @@ library(stringr)
 ```
 
 ```{r}
-#metadata for available variables
-#pop_vars <- listCensusMetadata(name="pep/charagegroups",
-                              #vintage=year,
-                               #type="variables")
-#view(pop_vars)
-
-#metadata for available geographies
-#pop_geos <- listCensusMetadata(name="pep/charagegroups",
-                                #vintage=year,
-                               #type="geography")
-#view(pop_geos)
 
 #county and state names that match fips codes (from tidycensus package)
-fips <- fips_codes
+fips <- fips_codes %>%
+  mutate(state_code=as.numeric(paste(state_code))) %>%
+  mutate(county_code=as.numeric(paste(county_code)))
 
 #import tribal fips code (from file on local drive)
 fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
@@ -58,8 +47,8 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 ```{r}
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
-statename <- "Montana"
-year <- "2019"
+statename <- "South Dakota"
+year <- "2024"
 
 
 
@@ -100,309 +89,173 @@ statecode <- as.numeric(unique(fips$state_code[fips$state_name==statename]))
 
 ## IMPORT AND CLEAN THE DATA
 ```{r}
-#pep/charagegroups is: Population Estimates Program
-#see lookup table for categorical vars: 
-#https://www.census.gov/data/developers/data-sets/popest-popproj/popest/popest-vars.Vintage_2018.html
-
-#######################
-#create datasets that can be used for both total under age 20 and by age group
-
-#COUNTY DATA
-pop_county <- getCensus(name="pep/charagegroups",
-          vintage=year,
-          key=Sys.getenv("CENSUS_API_KEY"),
-          vars=c("POP","DATE_CODE","DATE_DESC","AGEGROUP"),
-          region="county:*",
-          regionin=paste0("state:",statecode),
-          RACE=0,
-          RACE=1,
-          RACE=2,
-          RACE=3,
-          RACE=4,
-          RACE=5,
-          RACE=6,
-          HISP=0) %>%
+pop_county <- read.csv(paste0("../Input/demographics/cc-est",year,"-alldata.csv")) %>%
+  subset(STATE==statecode) %>%
   
   #subset for correct age groups
-  subset(AGEGROUP=='1' | AGEGROUP=='2' | AGEGROUP=='3' | AGEGROUP=='4') %>%
+  subset(AGEGRP=='1' | AGEGRP=='2' | AGEGRP=='3' | AGEGRP=='4') %>%
   
   #create the timeframe using the Date codes
   mutate(timeframe=case_when(
-    DATE_CODE=='3' ~ '2010',
-    DATE_CODE=='4' ~ '2011',
-    DATE_CODE=='5' ~ '2012',
-    DATE_CODE=='6' ~ '2013',
-    DATE_CODE=='7' ~ '2014',
-    DATE_CODE=='8' ~ '2015',
-    DATE_CODE=='9' ~ '2016',
-    DATE_CODE=='10' ~ '2017',
-    DATE_CODE=='11' ~ '2018',
-    DATE_CODE=='12' ~ '2019')) %>%
+    YEAR=='2' ~ '2020',
+    YEAR=='3' ~ '2021',
+    YEAR=='4' ~ '2022',
+    YEAR=='5' ~ '2023',
+    YEAR=='6' ~ '2024')) %>%
   subset(!is.na(timeframe)) %>%
   
   #assign population counts to numeric data
-  mutate(POP=as.numeric(POP)) %>%
+  mutate(WA_MALE=as.numeric(WA_MALE),
+         WA_FEMALE=as.numeric(WA_FEMALE),
+         BA_MALE=as.numeric(BA_MALE),
+         BA_FEMALE=as.numeric(BA_FEMALE),
+         IA_MALE=as.numeric(IA_MALE),
+         IA_FEMALE=as.numeric(IA_FEMALE),
+         AA_MALE=as.numeric(AA_MALE),
+         AA_FEMALE=as.numeric(AA_FEMALE),
+         NA_MALE=as.numeric(NA_MALE),
+         NA_FEMALE=as.numeric(NA_FEMALE),
+         TOM_MALE=as.numeric(TOM_MALE),
+         TOM_FEMALE=as.numeric(TOM_FEMALE)) %>%
   
   #add in county name from fips codes, remove word 'county', add in state name
-  left_join(fips,by=c('county'='county_code','state'='state_code')) %>% 
-  mutate(county=gsub("\\s*\\w*$", "", county.y)) %>%
+  left_join(fips,by=c('COUNTY'='county_code','STATE'='state_code')) %>% 
+  mutate(county=gsub("\\s*\\w*$", "", county)) %>%
+    
+    mutate(`White`=WA_MALE+WA_FEMALE,
+           `Black or African American`=BA_MALE+BA_FEMALE,
+           `American Indian and Alaska Native`=IA_MALE+IA_FEMALE,
+           `Asian`=AA_MALE+AA_FEMALE,
+           `Native Hawaiian and Other Pacific Islander`=NA_MALE+NA_FEMALE,
+           `Two or more races`=TOM_MALE+TOM_FEMALE) %>%
   
-  #rename race categories
-  mutate(race=case_when(
-    RACE=='0' ~ 'All races',
-    RACE=='1' ~ 'White',
-    RACE=='2' ~ 'Black or African American',
-    RACE=='3' ~ 'American Indian and Alaska Native',
-    RACE=='4' ~ 'Asian',
-    RACE=='5' ~ 'Native Hawaiian and Other Pacific Islander',
-    RACE=='6' ~ 'Two or more races')) %>%
+  select(c(timeframe,county,AGEGRP,`White`,`Black or African American`,`American Indian and Alaska Native`,`Asian`,`Native Hawaiian and Other Pacific Islander`,`Two or more races`)) %>%
   
+  group_by(timeframe,county) %>%
+  summarise(`White`=sum(`White`),
+            `Black or African American`=sum(`Black or African American`),
+            `American Indian and Alaska Native`=sum(`American Indian and Alaska Native`),
+            `Asian`=sum(`Asian`),
+            `Native Hawaiian and Other Pacific Islander`=sum(`Native Hawaiian and Other Pacific Islander`),
+            `Two or more races`=sum(`Two or more races`)) %>%
+  ungroup %>%
+  pivot_longer(cols=c(`White`,`Black or African American`,`American Indian and Alaska Native`,`Asian`,`Native Hawaiian and Other Pacific Islander`,`Two or more races`),names_to='race',values_to='data') %>%
   
-  select(c(county,POP,AGEGROUP,timeframe,state_name,race)) 
-
-
+  rename(location=county) %>%
+  mutate(locationtype='County',
+         state=statename,
+         dataformat='Number',
+         vintageyear=year,
+         varname='childpopulationbyrace') %>%
+  
+  mutate(location=replace(location, 
+                          state=='Montana' & location=='Lewis and Clark', 
+                          'Lewis & Clark')) %>%
+  mutate(location=replace(location, 
+                          state=='South Dakota' & location=='Shannon', 
+                          'Oglala Lakota')) 
+    
+    
 
 
 #STATE DATA
-pop_state <- getCensus(name="pep/charagegroups",
-          vintage=year,
-          key=Sys.getenv("CENSUS_API_KEY"),
-          vars=c("POP","DATE_CODE","DATE_DESC","AGEGROUP"),
-          region=paste0("state:",statecode),
-          RACE=0,
-          RACE=1,
-          RACE=2,
-          RACE=3,
-          RACE=4,
-          RACE=5,
-          RACE=6,
-          HISP=0) %>%
-  
-  subset(AGEGROUP=='1' | AGEGROUP=='2' | AGEGROUP=='3' | AGEGROUP=='4') %>%
-  
-  #create the timeframe using the Date codes
-  mutate(timeframe=case_when(
-    DATE_CODE=='3' ~ '2010',
-    DATE_CODE=='4' ~ '2011',
-    DATE_CODE=='5' ~ '2012',
-    DATE_CODE=='6' ~ '2013',
-    DATE_CODE=='7' ~ '2014',
-    DATE_CODE=='8' ~ '2015',
-    DATE_CODE=='9' ~ '2016',
-    DATE_CODE=='10' ~ '2017',
-    DATE_CODE=='11' ~ '2018',
-    DATE_CODE=='12' ~ '2019')) %>%
-  subset(!is.na(timeframe)) %>%
-  
-  #assign population counts to numeric data
-  mutate(POP=as.numeric(POP)) %>%
-  
-  
-  #rename race categories
-  mutate(race=case_when(
-    RACE=='0' ~ 'All races',
-    RACE=='1' ~ 'White',
-    RACE=='2' ~ 'Black or African American',
-    RACE=='3' ~ 'American Indian and Alaska Native',
-    RACE=='4' ~ 'Asian',
-    RACE=='5' ~ 'Native Hawaiian and Other Pacific Islander',
-    RACE=='6' ~ 'Two or more races')) %>%
-  
+pop_state <- pop_county %>%
   mutate(location=statename) %>%
-  
-  select(c(location,POP,AGEGROUP,timeframe,race))
-  
-  
-  
+  group_by(timeframe,location,race,state,dataformat,vintageyear,varname) %>%
+  summarise(data=sum(data)) %>%
+  ungroup %>%
+  mutate(locationtype='State')
+
+
   
 #REGION DATA
 pop_region <- pop_county %>%
-  mutate(county=replace(county, 
-                          statename=='Montana' & county=='Lewis and Clark', 
-                          'Lewis & Clark')) %>%
-  mutate(county=replace(county, 
-                          statename=='South Dakota' & county=='Shannon', 
-                          'Oglala Lakota')) %>%
-  left_join(regionids, by=c('county'='county')) %>%
-  group_by(region,AGEGROUP,race,timeframe) %>%
-  summarise(POP=sum(POP)) %>%
+  left_join(regionids, by=c('location'='county')) %>%
+  group_by(timeframe,region,race,state,dataformat,vintageyear,varname) %>%
+  summarise(data=sum(data)) %>%
   ungroup %>%
-  subset(region != '')
+  mutate(locationtype='Planning Region') %>%
+  rename(location=region) %>%
+  subset(location != '')
+  
+
+#combine all
+pop <- pop_county %>%
+  bind_rows(pop_state) %>%
+  bind_rows(pop_region)
 ```
 
-
-
-**Child population by race**
-**For ages 0 to 19**
-
+**Percentages **
 ```{r}
-############
-#COUNTY data
-
-pop_race_county_number <- pop_county %>%
+totalpop_county <- read.csv(paste0("../Input/demographics/cc-est",year,"-alldata.csv")) %>%
+  subset(STATE==statecode) %>%
   
-  #calculate sums over all age groups
-  group_by(county,timeframe,race) %>%
-  summarise(data=sum(POP)) %>%
+  #subset for correct age groups
+  subset(AGEGRP=='1' | AGEGRP=='2' | AGEGRP=='3' | AGEGRP=='4') %>%
+  
+  #create the timeframe using the Date codes
+  mutate(timeframe=case_when(
+    YEAR=='2' ~ '2020',
+    YEAR=='3' ~ '2021',
+    YEAR=='4' ~ '2022',
+    YEAR=='5' ~ '2023',
+    YEAR=='6' ~ '2024')) %>%
+  subset(!is.na(timeframe)) %>%
+  
+  #assign population counts to numeric data
+  mutate(TOT_POP=as.numeric(paste(TOT_POP))) %>%
+  
+  #add in county name from fips codes, remove word 'county', add in state name
+  left_join(fips,by=c('COUNTY'='county_code','STATE'='state_code')) %>% 
+  mutate(county=gsub("\\s*\\w*$", "", county)) %>%
+    
+  group_by(timeframe,county) %>%
+  summarise(totalpop=sum(TOT_POP)) %>%
   ungroup %>%
-  
-  #remove all races to be used later for percentages
-  subset(race != 'All races') %>%
-  
+
   rename(location=county) %>%
-  mutate(locationtype='County') %>%
-  mutate(state=statename) %>%
-  mutate(dataformat='Number') %>%
-  mutate(vintageyear=year) %>%
-  mutate(varname='childpopulationbyrace')
-
-
-#calculate percentages
-pop_race_county_percentage <- pop_county %>%
   
-  #calculate sums over all age groups
-  group_by(county,timeframe,race) %>%
-  summarise(totalpop=sum(POP)) %>%
-  ungroup %>%
-  
-  #remove all races to be used later for percentages
-  subset(race == 'All races') %>%
-  
-  select(-c(race)) %>%
-  
-  right_join(pop_race_county_number,by=c('county'='location','timeframe'='timeframe')) %>%
-  
-  mutate(percent=data/totalpop) %>%
-  select(-c(data,totalpop)) %>%
-  rename(data=percent) %>%
-  
-  rename(location=county) %>%
-  mutate(locationtype='County') %>%
-  mutate(state=statename) %>%
-  mutate(dataformat='Percent') %>%
-  mutate(vintageyear=year) %>%
-  mutate(varname='childpopulationbyrace')
-
-
-
-###########
-#STATE data
-
-pop_race_state_number <- pop_state %>%
-  
-  #calculate sums over all age groups
-  group_by(location,timeframe,race) %>%
-  summarise(data=sum(POP)) %>%
-  ungroup %>%
-  
-  #remove all races to be used later for percentages
-  subset(race != 'All races') %>%
-
-  mutate(locationtype='State') %>%
-  mutate(state=statename) %>%
-  mutate(dataformat='Number') %>%
-  mutate(vintageyear=year) %>%
-  mutate(varname='childpopulationbyrace')
-
-
-#calculate percentages
-pop_race_state_percentage <- pop_state %>%
-  
-  #calculate sums over all age groups
-  group_by(location,timeframe,race) %>%
-  summarise(totalpop=sum(POP)) %>%
-  ungroup %>%
-  
-  #remove all races to be used later for percentages
-  subset(race == 'All races') %>%
-  
-  select(-c(race)) %>%
-  
-  right_join(pop_race_state_number,by=c('location'='location','timeframe'='timeframe')) %>%
-  
-  mutate(percent=data/totalpop) %>%
-  select(-c(data,totalpop)) %>%
-  rename(data=percent) %>%
-
-  mutate(locationtype='State') %>%
-  mutate(state=statename) %>%
-  mutate(dataformat='Percent') %>%
-  mutate(vintageyear=year) %>%
-  mutate(varname='childpopulationbyrace')
-
-
-
-############
-#REGION data
-
-pop_race_region_number <- pop_region %>%
-  
-  #calculate sums over all age groups
-  group_by(region,timeframe,race) %>%
-  summarise(data=sum(POP)) %>%
-  ungroup %>%
-  
-  #remove all races to be used later for percentages
-  subset(race != 'All races') %>%
-  
-  rename(location=region) %>%
-
-  mutate(locationtype='Planning Region') %>%
-  mutate(state=statename) %>%
-  mutate(dataformat='Number') %>%
-  mutate(vintageyear=year) %>%
-  mutate(varname='childpopulationbyrace')
-
-
-#calculate percentages
-pop_race_region_percentage <- pop_region %>%
-  
-  #calculate sums over all age groups
-  group_by(region,timeframe,race) %>%
-  summarise(totalpop=sum(POP)) %>%
-  ungroup %>%
-  
-  #remove all races to be used later for percentages
-  subset(race == 'All races') %>%
-  
-  select(-c(race)) %>%
-  
-  right_join(pop_race_region_number,by=c('region'='location','timeframe'='timeframe')) %>%
-  
-  mutate(percent=data/totalpop) %>%
-  select(-c(data,totalpop)) %>%
-  rename(data=percent) %>%
-  
-  rename(location=region) %>%
-
-  mutate(locationtype='Planning Region') %>%
-  mutate(state=statename) %>%
-  mutate(dataformat='Percent') %>%
-  mutate(vintageyear=year) %>%
-  mutate(varname='childpopulationbyrace')
-
-```
-
-
-```{r}
-#UNION COUNTY, STATE, STATE PLANNING REGION
-pop <- pop_race_county_number %>%
-  bind_rows(pop_race_county_percentage) %>%
-  bind_rows(pop_race_state_number) %>%
-  bind_rows(pop_race_state_percentage) %>%
-  bind_rows(pop_race_region_number) %>%
-  bind_rows(pop_race_region_percentage) %>%
-
-  #merge in location ids
-  mutate(location=replace(location, 
-                          statename=='Montana' & location=='Lewis and Clark', 
+    mutate(location=replace(location, 
+                          location=='Lewis and Clark', 
                           'Lewis & Clark')) %>%
   mutate(location=replace(location, 
-                          statename=='South Dakota' & location=='Shannon', 
-                          'Oglala Lakota')) %>%
+                          location=='Shannon', 
+                          'Oglala Lakota')) 
+
+
+totalpop_state <- totalpop_county %>%
+  mutate(location=statename) %>%
+  group_by(location,timeframe) %>%
+  summarise(totalpop=sum(totalpop)) %>%
+  ungroup 
+
+totalpop_region <- totalpop_county %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  group_by(region,timeframe) %>%
+  summarise(totalpop=sum(totalpop)) %>%
+  ungroup %>%
+  rename(location=region)
+
+totalpop <- totalpop_county %>%
+  bind_rows(totalpop_state) %>%
+  bind_rows(totalpop_region)
+
+
+pop_percentages <- pop %>%
+  left_join(totalpop,by=c('timeframe'='timeframe','location'='location')) %>%
+  mutate(data_percent=data/totalpop) %>%
+  select(-c(data,totalpop)) %>%
+  rename(data=data_percent) %>%
+  mutate(dataformat='Percent')
+
+
+
+pop_final <- pop %>%
+  bind_rows(pop_percentages) %>%
   left_join(locationids,by=c('location'='Location')) %>%
-  rename(locationid=LocationId) 
-  
+  rename(locationid=LocationId)
+
+
 
 ####################
 ####################
@@ -410,25 +263,24 @@ pop <- pop_race_county_number %>%
 ### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
 
 # 1. Print name of location that has a mismatched location ID
-if (sum(is.na(pop$locationid))>=1) {
-  print(pop$location[is.na(pop$locationid)])
-} else if (sum(is.na(pop$locationid))==0) {
+if (sum(is.na(pop_final$locationid))>=1) {
+  print(pop_final$location[is.na(pop_final$locationid)])
+} else if (sum(is.na(pop_final$locationid))==0) {
   'all locations match'
 }
 
 
 # 2. Visually inspect output data
-View(pop)
+View(pop_final)
 
 ```
-
 
 ## ADD TO DATABASE (MONTANA & SOUTH DAKOTA WITHOUT REGION DATA)
 ```{r}
 #CHECK DATASET NAMED pop TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
 #this code adds kids count data to MBPC postgres database
 #run postgres code (separate file) first
-pop2 <- pop %>% subset(locationtype != 'Planning Region')
+pop2 <- pop_final %>% subset(locationtype != 'Planning Region')
 dbWriteTable(con,database_state,pop2,append=TRUE,row.names=FALSE)
 ```
 
@@ -437,7 +289,7 @@ dbWriteTable(con,database_state,pop2,append=TRUE,row.names=FALSE)
 #CHECK DATASET NAMED pop TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
 #this code adds kids count data to MBPC postgres database
 #run postgres code (separate file) first
-dbWriteTable(con,database_state,pop,append=TRUE,row.names=FALSE)
+dbWriteTable(con,database_state,pop_final,append=TRUE,row.names=FALSE)
 ```
 
 ## OUTPUT DATA FILE FOR UPLOAD TO DATA CENTER
@@ -448,7 +300,8 @@ pop_sql <- paste0("SELECT locationid, location, timeframe, dataformat, race, dat
 
 
 #edit this to include estimates available prior to current vintage year
-pop_sql_prioryears <- paste0("SELECT locationid, location, timeframe, dataformat, race, data FROM ", database_state," WHERE (vintageyear='2000' OR vintageyear='1990') AND varname='childpopulationbyrace';")
+pop_sql_prioryears <- paste0("SELECT locationid, location, timeframe, dataformat, race, data FROM ", database_state," WHERE (vintageyear='2000' OR vintageyear='1990' OR vintageyear='2020') AND varname='childpopulationbyrace';")
+
 
 upload_data_pop1 <- dbGetQuery(con,pop_sql) %>%
   rename(LocationId=locationid,
@@ -464,7 +317,8 @@ upload_data_pop2 <- dbGetQuery(con,pop_sql_prioryears) %>%
          TimeFrame=timeframe,
          DataFormat=dataformat,
          Data=data,
-         Race=race)
+         Race=race) %>%
+  subset(TimeFrame!='2020')
 
 #combine current year and prior years to replace all data on data center
 upload_data_pop <- upload_data_pop1 %>%
@@ -474,5 +328,7 @@ upload_data_pop <- upload_data_pop1 %>%
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
 write.csv(upload_data_pop,file=paste0("../Output/demographics/",database_state,"_",year,"_childpopulationbyrace.csv"),row.names=FALSE)
 ```
+
+
 
 

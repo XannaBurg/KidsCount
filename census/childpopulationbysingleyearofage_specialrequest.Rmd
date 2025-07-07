@@ -35,7 +35,7 @@ library(sas7bdat)
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 statename <- "South Dakota"
-year <- "2023"
+year <- "2024"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -84,13 +84,15 @@ statecode <- as.numeric(unique(fips$state_code[fips$state_name==statename]))
 ## STEP 2: IMPORT AND CLEAN DATA FROM CSV FILE
 ```{r}
 #Montana
-#fulldata <- read.csv(paste0("../Input/demographics/DATADELIVERY_ Vintage 2023 Population Estimates20240701081844/v2023_co_res_char11_mt.csv"))
+#fulldata <- read.csv(paste0("../Input/demographics/DATADELIVERY_ Vintage 2024 Population Estimates20250707010332/v2024_co_res_char11_mt.csv"))
+
 
 #North Dakota
-#fulldata <- read.csv(paste0("../Input/demographics/DATADELIVERY_ Vintage 2023 Population Estimates20240701081844/v2023_co_res_char11_nd.csv"))
+#fulldata <- read.csv(paste0("../Input/demographics/DATADELIVERY_ Vintage 2024 Population Estimates20250707010332/v2024_co_res_char11_nd.csv"))
 
 #South Dakota
-#fulldata <- read.csv(paste0("../Input/demographics/DATADELIVERY_ Vintage 2023 Population Estimates20240701081844/v2023_co_res_char11_sd.csv"))
+#fulldata <- read.csv(paste0("../Input/demographics/DATADELIVERY_ Vintage 2024 Population Estimates20250707010332/v2024_co_res_char11_sd.csv"))
+
 
 ############
 #COUNTY DATA
@@ -115,7 +117,8 @@ populationdata_county <- fulldata %>%
     DATE==3 ~ '2020',
     DATE==4 ~ '2021',
     DATE==5 ~ '2022',
-    DATE==6 ~ '2023')) %>% 
+    DATE==6 ~ '2023',
+    DATE==7 ~ '2024')) %>% 
   select(-c(DATE,SUMLEV,STATE,COUNTY,GEONAME,SEX,RACE11,HISP,state_name)) %>%
   rename(location=county,
          age_group=AGE,
