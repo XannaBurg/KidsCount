@@ -33,7 +33,7 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2023'
+year <- '2024'
 statename <- 'North Dakota'
 
 
@@ -57,9 +57,6 @@ countyids$ndcounty_name <- as.character(countyids$ndcounty_name)
 #####STEP 1: READ IN DATA FROM ND COURTS ADMINISTRATION WHEN RECEIVE IN SPRING#####
 ```{r}
 #import the data
-#xl_path <- paste0("./Input/safety/northdakota_",year,"_juvenilejustice.xlsx")
-#offenses <- read_excel(path=xl_path, guess_max = 1048576)
-
 offenses <- read_excel(paste0("./Input/safety/northdakota_",year,"_juvenilejustice.xlsx"))
 
 
@@ -67,23 +64,22 @@ offenses <- read_excel(paste0("./Input/safety/northdakota_",year,"_juvenilejusti
 #CALCULATE COUNTY DATA
 offense_county <- offenses %>%
   
-  #mutate(AGE=AGE/365) %>%
-  mutate(AGE=as.numeric(paste(AGE))) %>%
+  mutate(AGE=as.numeric(paste(`Age at Time of Offense`))) %>%
   
   #include those ages 10-17
   subset(AGE>=10 & AGE<=17) %>%
   
   #unduplicate at the county level
-  group_by(INDIVIDUAL_ID,COUNTY) %>%
-  summarise(distinct_indicator=n_distinct(INDIVIDUAL_ID),.groups='keep') %>%
+  group_by(MNI,County) %>%
+  summarise(distinct_indicator=n_distinct(MNI),.groups='keep') %>%
   
   #aggregate at the county level 
-  group_by(COUNTY) %>%
+  group_by(County) %>%
   summarise(data=sum(distinct_indicator),.groups='keep') %>%
   ungroup %>%
   
   #lower case all caps county
-  mutate(location=tolower(COUNTY)) %>% 
+  mutate(location=tolower(County)) %>% 
   mutate(location=tools::toTitleCase(location)) %>%
   
   #merge in list of all counties since some counties have zero and are missing
