@@ -34,8 +34,8 @@ library(naniar)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2023'
-year_short <- '23'
+year <- '2024'
+year_short <- '24'
 
 statefile <- 'montana'
 statename <- 'Montana'
@@ -52,11 +52,7 @@ regionids$county <- as.character(regionids$county)
 
 ## IMPORT THE DATA FILES THAT WILL BE USED
 ```{r}
-#fostercaredata_0to17 <- read_excel(path=paste0("./Input/safety/montana_",year_short,"_fostercaredata.xlsx"),sheet='Ages 0-17',skip=3) 
-
-#fostercaredata_0to5 <- read_excel(path=paste0("./Input/safety/montana_",year_short,"_fostercaredata.xlsx"),sheet='Ages 0-5',skip=3) 
-
-fostercaredata <- read_excel(path=paste0("./Input/safety/montana_",year_short,"_fostercaredata.xlsx"),sheet='2023 Unduplicated Kids in Care') 
+fostercaredata <- read_excel(path=paste0("./Input/safety/montana_",year_short,"_fostercaredata.xlsx"),sheet='2024 Unduplicated Kids in Care',skip=1) 
 ```
 
 
@@ -67,10 +63,6 @@ fostercaredata <- read_excel(path=paste0("./Input/safety/montana_",year_short,"_
 fostercaredata_0to17 <- fostercaredata %>% 
   
   rename(location=`...1`) %>%
-  #select(c(location,all_of(paste0("CY ",year)))) %>%
-  #rename(data=all_of(paste0("CY ",year))) %>%
-  
-  #new format in 2021
   rename(data=`Unduplicated kids in care 0-17`) %>%
   select(location,data) %>%
   subset(!is.na(location)) %>%
@@ -254,13 +246,6 @@ write.csv(upload_data,file=paste0("./Output/safety/",statefile,"_",year,"_childr
 fostercaredata_0to5 <- fostercaredata %>% 
   
   rename(location=`...1`) %>%
-  #select(c(location,all_of(paste0("CY ",year)))) %>%
-  #rename(data=all_of(paste0("CY ",year))) %>%
-  
-  #select(c(location,all_of(paste0("CY ",year)))) %>%
-  #rename(data=all_of(paste0("CY ",year))) %>%
-  
-  #new format in 2021
   rename(data=`Unduplicated kids in care 0-5`) %>%
   select(location,data) %>%
   subset(!is.na(location)) %>%
@@ -445,8 +430,8 @@ excel0to17_sql <- paste0("SELECT locationid, location, timeframe, dataformat, da
 
 excel0to17_county <- dbGetQuery(con,excel0to17_sql) %>%
   pivot_wider(names_from='timeframe',values_from='data') %>%
-  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022','2023')) %>%
-  select(c(`location`,`2023_Number`,`2023_Rate`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022','2023','2024')) %>%
+  select(c(`location`,`2024_Number`,`2024_Rate`,`2023_Number`,`2023_Rate`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
            `2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,
            `2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
   subset(location != 'Montana') %>%
@@ -454,8 +439,8 @@ excel0to17_county <- dbGetQuery(con,excel0to17_sql) %>%
 
 excel0to17_state <- dbGetQuery(con,excel0to17_sql) %>%
   pivot_wider(names_from='timeframe',values_from='data') %>%
-  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022','2023')) %>%
-  select(c(`location`,`2023_Number`,`2023_Rate`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022','2023','2024')) %>%
+  select(c(`location`,`2024_Number`,`2024_Rate`,`2023_Number`,`2023_Rate`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
            `2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,
            `2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
   subset(location == 'Montana') %>%
@@ -471,8 +456,8 @@ excel0to5_sql <- paste0("SELECT locationid, location, timeframe, dataformat, dat
 
 excel0to5_county <- dbGetQuery(con,excel0to5_sql) %>%
   pivot_wider(names_from='timeframe',values_from='data') %>%
-  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022','2023')) %>%
-  select(c(`location`,`2023_Number`,`2023_Rate`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022','2023','2024')) %>%
+  select(c(`location`,`2024_Number`,`2024_Rate`,`2023_Number`,`2023_Rate`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
            `2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,
            `2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
   subset(location != 'Montana') %>%
@@ -480,8 +465,8 @@ excel0to5_county <- dbGetQuery(con,excel0to5_sql) %>%
 
 excel0to5_state <- dbGetQuery(con,excel0to5_sql) %>%
   pivot_wider(names_from='timeframe',values_from='data') %>%
-  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022','2023')) %>%
-  select(c(`location`,`2023_Number`,`2023_Rate`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022','2023','2024')) %>%
+  select(c(`location`,`2024_Number`,`2024_Rate`,`2023_Number`,`2023_Rate`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
            `2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,
            `2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
   subset(location == 'Montana') %>%
@@ -502,7 +487,7 @@ write.csv(excel0to5,'./Output/safety/MT Foster Care Excel/mt_fostercare_tocopy_0
 ## STEP 1: create the data file manually
 ```{r}
 #edit the data only
-data <- 586.5
+data <- 538.9
 
 #----
 location <- 'Montana'
@@ -542,4 +527,60 @@ upload_data <- dbGetQuery(con,upload_sql) %>%
 #SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
 write.csv(upload_data,file=paste0("./Output/safety/",statefile,"_",year,"_averagedaysachildisinstatecarebeforeexiting.csv"),row.names=FALSE)
 ```
+
+
+
+## -- Cases of substantiated child abuse -- ##
+## STEP 1: create the data file manually
+```{r}
+#edit the data only
+Number_sub <- 1556 #substantiated
+Number_unsub <- 4918 #unsubstantiated
+Percent <- Number_sub/(Number_sub+Number_unsub)
+
+#----
+location <- 'Montana'
+locationtype <- 'State'
+locationid <- '28'
+state <- 'Montana'
+timeframe <- all_of(year)
+varname <- 'casesofsubstantiatedchildabuse'
+
+
+childabuse_number <- data.frame(location,locationtype,locationid,state,timeframe,dataformat,varname,Number_sub) %>%
+  mutate(dataformat="Number") %>%
+  rename(data=Number_sub)
+childabuse_percent <- data.frame(location,locationtype,locationid,state,timeframe,dataformat,varname,Percent) %>%
+  mutate(dataformat="Percent") %>%
+  rename(data=Percent) %>%
+  bind_rows(childabuse_number)
+
+
+```
+
+## STEP 2: Add to KC database
+```{r}
+#CHECK DATASET NAMED fostercareexit TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'montana',childabuse_percent,append=TRUE,row.names=FALSE)
+
+```
+
+## STEP 3: OUTPUT FILE FOR KC
+```{r}
+#write query from database to get needed format for KC data center
+
+upload_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM montana WHERE timeframe='",year,"' AND varname='casesofsubstantiatedchildabuse';")
+
+upload_data <- dbGetQuery(con,upload_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data,file=paste0("./Output/safety/",statefile,"_",year,"_casesofsubstantiatedchildabuse.csv"),row.names=FALSE)
+```
+
 
