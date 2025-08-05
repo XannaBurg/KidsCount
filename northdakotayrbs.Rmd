@@ -1,0 +1,341 @@
+---
+title: "North Dakota Import YRBS Indicators"
+output: html_document
+date: "2025-08-05"
+---
+
+## Indicator 1: High school students feeling sad or hopeless
+## Indicator 2: High school students feeling sad or hopeless by sexual identity
+## Indicator 3: High school students attempting suicide
+## Indicator 4: High school students attempting suicide by sexual identity
+## Indicator 5: High school students feeling sad or hopeless by race and ethnicity
+## Indicator 6: High school students attempting suicide by race and ethnicity
+
+**Created by:** Xanna Burg
+**Date:** August 2025
+**Updated by:**
+
+**Data Source:** North Dakota DHHS (or CDC public tool)
+**Purpose:** Input the statewide YRBS data
+
+**Data format:** final output csv to upload is in long format
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(tidycensus)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+library(stringr)
+library(sas7bdat)
+```
+
+##Step 1: Add the data to the all years file, using the public CDC tool and/or getting in touch with DHHS. See data documenation for more information.
+
+##Step 2: import the data into the database and create a KC file for upload.
+
+
+```{r}
+####UPDATE to reflect the current year data working with
+year_yrbs <- '2023'
+
+statefile <- 'northdakota'
+statename <- 'North Dakota'
+
+```
+
+
+#sad or hopeless by gender
+```{r}
+#input the file with all years of data
+yrbs_data <- read_excel(path='./Input/health/northdakota_allyears_yrbssadorhopeless.xlsx') %>%
+  
+  #subset for most recent year
+  subset(TimeFrame==year_yrbs) %>%
+  #rename variables to database
+  rename(timeframe=TimeFrame,
+         data=Data,
+         dataformat=DataFormat,
+         location=Location,
+         locationid=LocationId,
+         gender=Gender) %>%
+  mutate(locationtype='State') %>%
+  mutate(state=statename) %>%
+  mutate(varname='yrbs_sadhopelessamonghighschoolstudents')
+
+View(yrbs_data)
+
+```
+
+```{r}
+#CHECK DATASET TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',yrbs_data,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+yrbs_sql <- paste0("SELECT locationid, location, timeframe, dataformat, gender, data FROM northdakota WHERE timeframe='",year_yrbs,"' AND varname='yrbs_sadhopelessamonghighschoolstudents';")
+
+upload_data_yrbs <- dbGetQuery(con,yrbs_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Gender=gender,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_yrbs,file=paste0("./Output/health/northdakota_",year_yrbs,"_yrbs_sadhopelessamonghighschoolstudents.csv"),row.names=FALSE)
+```
+
+
+
+#sad or hopeless by sexual identity
+```{r}
+#input the file with all years of data
+yrbs_data <- read_excel(path='./Input/health/northdakota_allyears_yrbssadorhopelessbysexualidentity.xlsx') %>%
+  
+  #subset for most recent year
+  subset(TimeFrame==year_yrbs) %>%
+  #rename variables to database
+  rename(timeframe=TimeFrame,
+         data=Data,
+         dataformat=DataFormat,
+         location=Location,
+         locationid=LocationId,
+         category=Category) %>%
+  mutate(locationtype='State') %>%
+  mutate(state=statename) %>%
+  mutate(varname='yrbs_sadhopelessamonghighschoolstudents_si')
+
+View(yrbs_data)
+
+```
+
+```{r}
+#CHECK DATASET TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',yrbs_data,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+yrbs_sql <- paste0("SELECT locationid, location, timeframe, dataformat, category, data FROM northdakota WHERE timeframe='",year_yrbs,"' AND varname='yrbs_sadhopelessamonghighschoolstudents_si';")
+
+upload_data_yrbs <- dbGetQuery(con,yrbs_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         category=Category,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_yrbs,file=paste0("./Output/health/northdakota_",year_yrbs,"_yrbs_sadhopelessamonghighschoolstudents_si.csv"),row.names=FALSE)
+```
+
+
+
+#sad or hopeless by race
+```{r}
+#input the file with all years of data
+yrbs_data <- read_excel(path='./Input/health/northdakota_allyears_yrbssadorhopelessbyrace.xlsx') %>%
+  
+  #subset for most recent year
+  subset(TimeFrame==year_yrbs) %>%
+  #rename variables to database
+  rename(timeframe=TimeFrame,
+         data=Data,
+         dataformat=DataFormat,
+         location=Location,
+         locationid=LocationId,
+         race=Race) %>%
+  mutate(locationtype='State') %>%
+  mutate(state=statename) %>%
+  mutate(varname='yrbs_sadhopelessamonghighschoolstudents_race')
+
+View(yrbs_data)
+
+```
+
+```{r}
+#CHECK DATASET TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',yrbs_data,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+yrbs_sql <- paste0("SELECT locationid, location, timeframe, dataformat, race, data FROM northdakota WHERE timeframe='",year_yrbs,"' AND varname='yrbs_sadhopelessamonghighschoolstudents_race';")
+
+upload_data_yrbs <- dbGetQuery(con,yrbs_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         race=Race,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_yrbs,file=paste0("./Output/health/northdakota_",year_yrbs,"_yrbs_sadhopelessamonghighschoolstudents_race.csv"),row.names=FALSE)
+```
+
+
+
+#a##########################
+#attempted suicide by gender
+```{r}
+#input the file with all years of data
+yrbs_data <- read_excel(path='./Input/health/northdakota_allyears_yrbsattemptedsuicide.xlsx.xlsx') %>%
+  
+  #subset for most recent year
+  subset(TimeFrame==year_yrbs) %>%
+  #rename variables to database
+  rename(timeframe=TimeFrame,
+         data=Data,
+         dataformat=DataFormat,
+         location=Location,
+         locationid=LocationId,
+         gender=Gender) %>%
+  mutate(locationtype='State') %>%
+  mutate(state=statename) %>%
+  mutate(varname='yrbs_suicideattemptsamonghighschoolstudents')
+
+View(yrbs_data)
+
+```
+
+```{r}
+#CHECK DATASET TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',yrbs_data,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+yrbs_sql <- paste0("SELECT locationid, location, timeframe, dataformat, gender, data FROM northdakota WHERE timeframe='",year_yrbs,"' AND varname='yrbs_suicideattemptsamonghighschoolstudents';")
+
+upload_data_yrbs <- dbGetQuery(con,yrbs_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Gender=gender,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_yrbs,file=paste0("./Output/health/northdakota_",year_yrbs,"_yrbs_suicideattemptsamonghighschoolstudents.csv"),row.names=FALSE)
+```
+
+
+
+
+#attempted suicide by sexual identity
+```{r}
+#input the file with all years of data
+yrbs_data <- read_excel(path='./Input/health/northdakota_allyears_yrbsattemptedsuicidebysexualidentity.xlsx') %>%
+  
+  #subset for most recent year
+  subset(TimeFrame==year_yrbs) %>%
+  #rename variables to database
+  rename(timeframe=TimeFrame,
+         data=Data,
+         dataformat=DataFormat,
+         location=Location,
+         locationid=LocationId,
+         category=Category) %>%
+  mutate(locationtype='State') %>%
+  mutate(state=statename) %>%
+  mutate(varname='yrbs_suicideattemptsamonghighschoolstudents_si')
+
+View(yrbs_data)
+
+```
+
+```{r}
+#CHECK DATASET TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',yrbs_data,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+yrbs_sql <- paste0("SELECT locationid, location, timeframe, dataformat, category, data FROM northdakota WHERE timeframe='",year_yrbs,"' AND varname='yrbs_suicideattemptsamonghighschoolstudents_si';")
+
+upload_data_yrbs <- dbGetQuery(con,yrbs_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Category=category,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_yrbs,file=paste0("./Output/health/northdakota_",year_yrbs,"_yrbs_suicideattemptsamonghighschoolstudents_si.csv"),row.names=FALSE)
+```
+
+
+
+#attempted suicide by race
+```{r}
+#input the file with all years of data
+yrbs_data <- read_excel(path='./Input/health/northdakota_allyears_yrbsattemptedsuicidebyrace.xlsx.xlsx') %>%
+  
+  #subset for most recent year
+  subset(TimeFrame==year_yrbs) %>%
+  #rename variables to database
+  rename(timeframe=TimeFrame,
+         data=Data,
+         dataformat=DataFormat,
+         location=Location,
+         locationid=LocationId,
+         race=Race) %>%
+  mutate(locationtype='State') %>%
+  mutate(state=statename) %>%
+  mutate(varname='yrbs_suicideattemptsamonghighschoolstudents_race')
+
+View(yrbs_data)
+
+```
+
+```{r}
+#CHECK DATASET TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,'northdakota',yrbs_data,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+yrbs_sql <- paste0("SELECT locationid, location, timeframe, dataformat, race, data FROM northdakota WHERE timeframe='",year_yrbs,"' AND varname='yrbs_suicideattemptsamonghighschoolstudents_race';")
+
+upload_data_yrbs <- dbGetQuery(con,yrbs_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         race=Race,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_yrbs,file=paste0("./Output/health/northdakota_",year_yrbs,"_yrbs_suicideattemptsamonghighschoolstudents_race.csv"),row.names=FALSE)
+```
