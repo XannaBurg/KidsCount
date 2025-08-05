@@ -1,0 +1,88 @@
+---
+title: "Teen Suicide Death Rate - all states"
+output: html_document
+date: "2025-08-05"
+---
+
+## Indicator 1: Teen suicide death rate
+
+**Created by:** Xanna Burg
+**Date:** August 2025
+**Updated by:**
+
+**Data Source:** CDC Wonder
+**Purpose:** Input the statewide teen suicide death rate, as reported by CDC Wonder
+
+**Data format:** final output csv to upload is in long format
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(tidycensus)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+library(stringr)
+library(sas7bdat)
+```
+
+##Step 1: Add the data to the all years file, using the CDC Wonder tool. See data documenation for more information.
+
+##Step 2: import the data into the database and create a KC file for upload.
+```{r}
+####UPDATE to reflect the current year data working with
+year_three <- '2021-2023'
+
+statefile <- 'northdakota'
+statename <- 'North Dakota'
+
+```
+
+```{r}
+#input the file with all years of data
+cdc_data <- read_excel(path=paste0('./Input/health/',statefile,'_allyears_teensuicidedeathrate.xlsx')) %>%
+  
+  #subset for most recent year
+  subset(TimeFrame==year_three) %>%
+  #rename variables to database
+  rename(timeframe=TimeFrame,
+         data=Data,
+         dataformat=DataFormat,
+         location=Location,
+         locationid=LocationId) %>%
+  mutate(locationtype='State') %>%
+  mutate(state=statename) %>%
+  mutate(varname='teensuicidedeathrate')
+
+View(cdc_data)
+
+```
+
+```{r}
+#CHECK DATASET NAMED cdc_data TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#add to database
+dbWriteTable(con,statefile,cdc_data,append=TRUE,row.names=FALSE)
+
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+cdc_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ",statefile," WHERE timeframe='",year_three,"' AND varname='teensuicidedeathrate';")
+
+upload_data_cdc <- dbGetQuery(con,cdc_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_data_cdc,file=paste0("./Output/health/",statefile,"_",year_three,"_teensuicidedeathrate.csv"),row.names=FALSE)
+```
+
+
+
+
+
