@@ -163,7 +163,7 @@ bls_annual <- blsdata_formatted %>%
          state=State,
          timeframe=year,
          data=value) %>%
-  mutate(locationtype=if_else(location=='Montana','State','County')) %>%
+  mutate(locationtype=if_else(location==statename,'State','County')) %>%
   mutate(dataformat='Percent',
          varname='lausunemployment') %>%
   left_join(locationids,by=c('location'='Location')) %>%
@@ -228,108 +228,7 @@ write.csv(upload_data,file=paste0("../Output/economics/",database_state,"_",year
 
 
 
-## ################################################ ##
-## UNEMPLOYMENT RATE (ALL AGES) - JULY-JUNE AVERAGE ##
-## ################################################ ##
 
-```{r}
-# ***** UPDATE THE YEAR TO THE CURRENT YEAR ***** 
-year1 <- '2020'
-
-#DO NOT EDIT
-year2 <- as.character(as.numeric(year1)-1)
-year3 <- as.character(as.numeric(year1)-2)
-```
-
-```{r}
-#this code pulls the most recent two years worth of July-June averages for the KIDS COUNT county profiles
-
-bls_averages <- blsdata_formatted %>%
-  
-  #subset to include only the years of interest
-  subset(year==year1 | year==year2 | year==year3) %>%
-  subset(!is.na(Location)) %>%
-  
-  #group by custom time intervals, July-June
-  mutate(timeframe=case_when(
-    year==year3 & (period_name=='July' | period_name=='August' | 
-                     period_name=='September' | period_name=='October' | 
-                     period_name=='November' | period_name=='December') ~ 
-      paste0(year3,"-",year2),
-    year==year2 & (period_name=='January' | period_name=='February' | 
-                     period_name=='March' | period_name=='April' | 
-                     period_name=='May' | period_name=='June') ~ 
-      paste0(year3,"-",year2),
-    year==year2 & (period_name=='July' | period_name=='August' | 
-                     period_name=='September' | period_name=='October' | 
-                     period_name=='November' | period_name=='December') ~ 
-      paste0(year2,"-",year1),
-    year==year1 & (period_name=='January' | period_name=='February' | 
-                     period_name=='March' | period_name=='April' | 
-                     period_name=='May' | period_name=='June') ~ 
-      paste0(year2,"-",year1))) %>%
-  subset(!is.na(timeframe)) %>%
-  
-  #subset for the numerator and denominator
-  subset(measure_text=='unemployment' | measure_text=='labor force') %>%
-  
-  #aggregate by custom time frame
-  group_by(timeframe,Location,State,measure_text) %>%
-  summarise(summedvalue=sum(`       value`),.groups='keep') %>%
-  ungroup %>%
-  
-  #reformat to calculate rate
-  pivot_wider(names_from=measure_text,values_from=summedvalue) %>%
-  mutate(data=unemployment/`labor force`) %>%
-  select(-c(unemployment,`labor force`)) %>%
-  
-  
-  #format for KC database
-  rename(location=Location,
-         state=State) %>%
-  mutate(locationtype=if_else(location=='Montana','State','County')) %>%
-  mutate(dataformat='Percent',
-         varname='lausunemploymentcustomjulyjune',
-         vintageyear=year1) %>%
-  left_join(locationids,by=c('location'='Location')) %>%
-  rename(locationid=LocationId)
-  
-  
-####################
-####################
-#DATA QUALITY CHECKS
-### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
-
-# 1. Print name of location that has a mismatched location ID
-if (sum(is.na(bls_averages$locationid))>=1) {
-  print(bls_averages$location[is.na(bls_averages$locationid)])
-} else if (sum(is.na(bls_averages$locationid))==0) {
-  'all locations match'
-}
-
-# 2. Output cases where percent data is greater than 1
-temp_percheck <- bls_averages %>%
-  subset(dataformat=='Percent' & data>1)
-temp_rows <- as.numeric(nrow(temp_percheck))
-
-if (temp_rows==0) {
-  'no percents greater than 1'
-} else if (temp_rows>=1) {
-  print(temp_percheck)
-}
-
-# 3. Visually inspect output data
-View(bls_averages)
-```
-
-```{r}
-## COMMIT TO DATABASE 
-
-#CHECK DATASET NAMED bls_averages TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
-#this code adds kids count data to MBPC postgres database
-#run postgres code (separate file) first
-dbWriteTable(con,database_state,bls_averages,append=TRUE,row.names=FALSE)
-```
 
 
 
