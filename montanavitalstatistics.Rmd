@@ -35,7 +35,7 @@ library(naniar)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2023'
+year <- '2024'
 
 year_minus3 <- as.character(as.numeric(year)-2)
 year_minus5 <- as.character(as.numeric(year)-4)
@@ -178,8 +178,8 @@ if (temp_rows==0 | temp_rows>1) {
 
 #if there is only one county, print the counties in ascending order
 #temp_check <- births_all %>%
-#  subset(locationtype=='County') %>%
-#  arrange(data)
+ # subset(locationtype=='County') %>%
+  #arrange(data)
 #View(temp_check)
 
 #******
@@ -505,7 +505,7 @@ if (temp_rows==0) {
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
 #**Suppress the three year percentage if there is exactly one NA during the three years
-#births_all$data[births_all$location=='Big Horn'] <- NA
+#births_all$data[births_all$location=='Silver Bow'] <- NA
 ```
 
 ## STEP 3: ADD TO DATABASE
@@ -691,7 +691,7 @@ if (temp_rows==0) {
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
 #**Suppress the three year percentage if there is exactly one NA during the five years
-#births_all$data[births_all$location=='Lake'] <- NA
+#births_all$data[births_all$location=='Silver Bow'] <- NA
 ```
 
 ## STEP 3: ADD TO DATABASE
