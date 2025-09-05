@@ -44,7 +44,7 @@ library(readxl)
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 statename <- "North Dakota"
-year <- "2023"
+year <- "2024"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -67,17 +67,28 @@ countyids <- read.csv("./Documentation/Indicator Documentation/North Dakota Data
 ## AVERAGE ACT COMPOSITE SCORES ##
 ## ############################ ##
 ```{r}
-act_composite <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/7-ACT.xlsx"))
+act_composite <- read_excel('/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/ACT_new_approach.xlsx')
 
 ############
 #COUNTY DATA
 act_composite_county <- act_composite %>%
+  #remove NA, which means that a composite score was not calculated
+  subset(!is.na(ACTScaleScores_Composite)) %>%
+  #clean up the county names and codes
   mutate(County=as.numeric(paste(County))) %>%
   full_join(countyids,by=c('County'='ndcounty_number')) %>%
   select(-c(County)) %>%
-  rename(location=ndcounty_name,
-         data=`ACT Composite Avg`) %>%
-  subset(location!='Grand Total') %>%
+  rename(location=ndcounty_name) %>%
+  
+  #calculate average by county
+  group_by(location) %>%
+  summarise(count=n(),
+    data=mean(ACTScaleScores_Composite)) %>%
+  
+  #suppress if fewer than 25 took the ACT
+  mutate(data=if_else(count<25,NA,data)) %>%
+  select(-c(count)) %>%
+  
   mutate(locationtype='County') %>%
   mutate(state='North Dakota') %>%
   mutate(timeframe=year) %>%
@@ -149,354 +160,6 @@ write.csv(upload_data,file=paste0("./Output/education/",database_state,"_",year,
 
 ```
 
-
-
-
-## ########################################################## ##
-## HIGH SCHOOL GRADUATES MEETING ACT COLLEGE BENCHMARK SCORES ##
-## ########################################################## ##
-
-## STEP 1: IMPORT THE DATA AND CREATE NUMERATORS AND DENOMINATORS
-```{r}
-#import the ACT data where each row is a student
-act_allstudents <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/7-ACT.xlsx"),sheet='22-23 Meeting ACT Benchmarks') %>%
-  subset(SchoolYear==year) 
-
-#create English values
-english <- act_allstudents %>%
-  mutate(english_metbenchmark=case_when(
-    English=='17 or below' ~ 0,
-    English=='18 to 36' ~ 1)) %>%
-  mutate(denominator_indicator=1) %>%
-  group_by(County) %>%
-  summarise(english_numerator=sum(english_metbenchmark),
-            english_denominator=sum(denominator_indicator))
-
-#create reading values
-reading <- act_allstudents %>%
-  mutate(reading_metbenchmark=case_when(
-    Reading=='21 or below' ~ 0,
-    Reading=='22 to 36' ~ 1)) %>%
-  mutate(denominator_indicator=1) %>%
-  group_by(County) %>%
-  summarise(reading_numerator=sum(reading_metbenchmark),
-            reading_denominator=sum(denominator_indicator))
-
-#create science values
-science <- act_allstudents %>%
-  mutate(science_metbenchmark=case_when(
-    Science=='22 or below' ~ 0,
-    Science=='23 to 36' ~ 1)) %>%
-  mutate(denominator_indicator=1) %>%
-  group_by(County) %>%
-  summarise(science_numerator=sum(science_metbenchmark),
-            science_denominator=sum(denominator_indicator))
-
-#create math values
-math <- act_allstudents %>%
-  mutate(math_metbenchmark=case_when(
-    Math=='21 or below' ~ 0,
-    Math=='22 to 36' ~ 1)) %>%
-  mutate(denominator_indicator=1) %>%
-  group_by(County) %>%
-  summarise(math_numerator=sum(math_metbenchmark),
-            math_denominator=sum(denominator_indicator))
-
-#create all subjects values
-allsubjects <- act_allstudents %>%
-  mutate(allsubjects_metbenchmark=if_else(English=='18 to 36' & Reading=='22 to 36' & 
-                                            Science=='23 to 36' & Math=='22 to 36',
-                                          1,0)) %>%
-  mutate(denominator_indicator=1) %>%
-  group_by(County) %>%
-  summarise(allsubjects_numerator=sum(allsubjects_metbenchmark),
-            allsubjects_denominator=sum(denominator_indicator))
-
-
-
-#combine clean up the data
-actbenchmarks <- english %>%
-  left_join(math,by=c('County'='County')) %>%
-  left_join(reading,by=c('County'='County')) %>%
-  left_join(science,by=c('County'='County')) %>%
-  left_join(allsubjects,by=c('County'='County')) %>%
-  
-  #merge in county name
-  mutate(County=as.numeric(paste(County))) %>%
-  full_join(countyids,by=c('County'='ndcounty_number')) %>%
-  rename(location=ndcounty_name)
-
-```
-
-## STEP 2: CALCULATE PERCENTS AND DENOMINATORS FOR STATE, COUNTY, AND REGION
-```{r}
-############
-#COUNTY DATA
-act_benchmarks_county <- actbenchmarks %>%
-  
-  #calculate percents
-  mutate(english_percent=english_numerator/english_denominator) %>%
-  mutate(math_percent=math_numerator/math_denominator) %>%
-  mutate(reading_percent=reading_numerator/reading_denominator) %>%
-  mutate(science_percent=science_numerator/science_denominator) %>%
-  mutate(allsubjects_percent=allsubjects_numerator/allsubjects_denominator) %>%
-  
-  mutate(location=as.character(location)) %>%
-  mutate(locationtype='County')
-
-###########
-#STATE DATA
-act_benchmarks_state <- actbenchmarks %>%
-  mutate(location='North Dakota') %>%
-  
-  #sum for state
-  group_by(location) %>%
-  summarise(english_denominator_state=sum(english_denominator,na.rm=TRUE),
-            math_denominator_state=sum(math_denominator,na.rm=TRUE),
-            reading_denominator_state=sum(reading_denominator,na.rm=TRUE),
-            science_denominator_state=sum(science_denominator,na.rm=TRUE),
-            allsubjects_denominator_state=sum(allsubjects_denominator,
-                                              na.rm=TRUE),
-            english_percent=sum(english_numerator,na.rm=TRUE)/
-              sum(english_denominator,na.rm=TRUE),
-            math_percent=sum(math_numerator,na.rm=TRUE)/
-              sum(math_denominator,na.rm=TRUE),
-            reading_percent=sum(reading_numerator,na.rm=TRUE)/
-              sum(reading_denominator,na.rm=TRUE),
-            science_percent=sum(science_numerator,na.rm=TRUE)/
-              sum(science_denominator,na.rm=TRUE),
-            allsubjects_percent=sum(allsubjects_numerator,na.rm=TRUE)/
-              sum(allsubjects_denominator,na.rm=TRUE)) %>%
-  ungroup %>%
-  rename(english_denominator=english_denominator_state,
-         math_denominator=math_denominator_state,
-         reading_denominator=reading_denominator_state,
-         science_denominator=science_denominator_state,
-         allsubjects_denominator=allsubjects_denominator_state) %>%
-  mutate(locationtype='State')
-  
-
-###########################
-#STATE PLANNING REGION DATA
-act_benchmarks_region <- actbenchmarks %>%
-  mutate(location=as.character(location)) %>%
-  left_join(regionids,by=c('location'='county')) %>%
-  
-  #sum for state
-  group_by(region) %>%
-  summarise(english_denominator_region=sum(english_denominator,na.rm=TRUE),
-            math_denominator_region=sum(math_denominator,na.rm=TRUE),
-            reading_denominator_region=sum(reading_denominator,na.rm=TRUE),
-            science_denominator_region=sum(science_denominator,na.rm=TRUE),
-            allsubjects_denominator_region=sum(allsubjects_denominator,
-                                              na.rm=TRUE),
-            english_percent=sum(english_numerator,na.rm=TRUE)/
-              sum(english_denominator,na.rm=TRUE),
-            math_percent=sum(math_numerator,na.rm=TRUE)/
-              sum(math_denominator,na.rm=TRUE),
-            reading_percent=sum(reading_numerator,na.rm=TRUE)/
-              sum(reading_denominator,na.rm=TRUE),
-            science_percent=sum(science_numerator,na.rm=TRUE)/
-              sum(science_denominator,na.rm=TRUE),
-            allsubjects_percent=sum(allsubjects_numerator,na.rm=TRUE)/
-              sum(allsubjects_denominator,na.rm=TRUE)) %>%
-  ungroup %>%
-  rename(english_denominator=english_denominator_region,
-         math_denominator=math_denominator_region,
-         reading_denominator=reading_denominator_region,
-         science_denominator=science_denominator_region,
-         allsubjects_denominator=allsubjects_denominator_region) %>%
-  rename(location=region) %>%
-  mutate(locationtype='Planning Region')
-```
-
-## STEP 3: CREATE LONG DATASET WITH CATEGORY FOR SUBJECT
-```{r}
-#english
-english_cleaned <- act_benchmarks_county %>%
-  bind_rows(act_benchmarks_state) %>%
-  bind_rows(act_benchmarks_region) %>%
-  select(location,locationtype,english_percent,english_denominator) %>%
-  mutate(category="College English") %>%
-  rename(percent=english_percent,
-         denominator=english_denominator)
-
-#math
-math_cleaned <- act_benchmarks_county %>%
-  bind_rows(act_benchmarks_state) %>%
-  bind_rows(act_benchmarks_region) %>%
-  select(location,locationtype,math_percent,math_denominator) %>%
-  mutate(category="College Math") %>%
-   rename(percent=math_percent,
-         denominator=math_denominator)
-
-#reading
-reading_cleaned <- act_benchmarks_county %>%
-  bind_rows(act_benchmarks_state) %>%
-  bind_rows(act_benchmarks_region) %>%
-  select(location,locationtype,reading_percent,reading_denominator) %>%
-  mutate(category="College Reading") %>%
-   rename(percent=reading_percent,
-         denominator=reading_denominator)
-
-#science
-science_cleaned <- act_benchmarks_county %>%
-  bind_rows(act_benchmarks_state) %>%
-  bind_rows(act_benchmarks_region) %>%
-  select(location,locationtype,science_percent,science_denominator) %>%
-  mutate(category="College Science") %>%
-   rename(percent=science_percent,
-         denominator=science_denominator)
-
-#all subjects
-allsubjects_cleaned <- act_benchmarks_county %>%
-  bind_rows(act_benchmarks_state) %>%
-  bind_rows(act_benchmarks_region) %>%
-  select(location,locationtype,allsubjects_percent,allsubjects_denominator) %>%
-  mutate(category="All Four Subject Areas") %>%
-   rename(percent=allsubjects_percent,
-         denominator=allsubjects_denominator)
-
-#combine all categories
-actbenchmarks_combined <- english_cleaned %>%
-  bind_rows(math_cleaned) %>%
-  bind_rows(reading_cleaned) %>%
-  bind_rows(science_cleaned) %>%
-  bind_rows(allsubjects_cleaned) %>%
-  
-  #create indicators to suppress data
-
-  #supress if denominator is less than 10
-  mutate(suppress_denominator=if_else(denominator<10 | is.na(denominator),1,0)) %>%
- 
-  #round to whole number percentages before suppressing
-  mutate(percent=percent*100) %>%
-  mutate(percent=round(percent)) %>%
-  mutate(percent=percent/100) %>%
-  
-  #suppress percentages of 0-1 if more than 300 in denominator
-  mutate(suppress_0to1_300=if_else(denominator>300 & percent<=.01,1,0)) %>%
-  #suppress percentages of 99-100 if more than 300 in denominator
-  mutate(suppress_99to100_300=if_else(denominator>300 & percent>=.99,1,0)) %>%
-
-  
-  #suppress percentages of 0-2 if between 101 to 300 in denominator
-  mutate(suppress_0to2_101=if_else((denominator>100 & denominator<=300) & 
-                                     percent<=0.02,1,0)) %>%
-  #suppress percentages of 98-100 if between 101 to 300 in denominator
-  mutate(suppress_98to100_101=if_else((denominator>100 & denominator<=300) & 
-                                     percent>=0.98,1,0)) %>%
-  
-  #suppress percentages of 0-5 if between 41 to 100 in denominator
-  mutate(suppress_0to5_41=if_else((denominator>40 & denominator<=100) & 
-                                     percent<=0.05,1,0)) %>%
-  #suppress percentages of 95-100 if between 41 to 100 in denominator
-  mutate(suppress_95to100_41=if_else((denominator>40 & denominator<=100) & 
-                                     percent>=0.95,1,0)) %>%
-  
-  #suppress percentages of 0-10 if between 21 to 40 in denominator
-  mutate(suppress_0to10_21=if_else((denominator>20 & denominator<=40) & 
-                                     percent<=0.10,1,0)) %>%
-  #suppress percentages of 90-100 if between 21 to 40 in denominator
-  mutate(suppress_90to100_21=if_else((denominator>20 & denominator<=40) & 
-                                     percent>=0.90,1,0)) %>%
-  
-  #suppress percentages of 0-20 if between 10 to 20 in denominator
-  mutate(suppress_0to20_10=if_else((denominator>=10 & denominator<=20) & 
-                                     percent<=0.20,1,0)) %>%
-  #suppress percentages of 80-100 if between 10 to 20 in denominator
-  mutate(suppress_80to100_10=if_else((denominator>=10 & denominator<=20) & 
-                                     percent>=0.80,1,0)) %>%
-  
-  #create updated percent based on suppression rules
-  mutate(percent=as.character(paste(percent))) %>%
-  mutate(data=case_when(
-    suppress_denominator==1 ~ 'NA',
-    suppress_0to1_300==1 ~ "<= 1%",
-    suppress_99to100_300==1 ~ ">= 99%",
-    suppress_0to2_101==1 ~ "<= 2%",
-    suppress_98to100_101==1 ~ ">= 98%",
-    suppress_0to5_41==1 ~ "<= 5%",
-    suppress_95to100_41==1 ~ ">= 95%",
-    suppress_0to10_21==1 ~ "<= 10%",
-    suppress_90to100_21==1 ~ ">= 90%",
-    suppress_0to20_10==1 ~ "<= 20%",
-    suppress_80to100_10==1 ~ ">= 80%",
-    suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
-      suppress_0to2_101==0 & suppress_98to100_101==0 & 
-      suppress_0to5_41==0 & suppress_95to100_41==0 & 
-      suppress_0to10_21==0 & suppress_90to100_21==0 & 
-      suppress_0to20_10==0 & suppress_80to100_10==0 ~ percent)) %>%
-  
-  
-  #add in KC variables
-  select(c(location,locationtype,category,data)) %>%
-  mutate(state='North Dakota') %>%
-  mutate(timeframe=year) %>%
-  mutate(dataformat='Percent') %>%
-  mutate(varname='highschoolgraduatesmeetingACTcollegebenchmarkscores') %>%
-  
-  left_join(locationids,by=c('location'='Location')) %>%
-  rename(locationid=LocationId) %>%
-  arrange(location)
-
-
-
-####################
-####################
-#DATA QUALITY CHECKS
-### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
-
-# 1. Print name of location that has a mismatched location ID
-if (sum(is.na(actbenchmarks_combined$locationid))>=1) {
-  print(actbenchmarks_combined$location[is.na(actbenchmarks_combined$locationid)])
-} else if (sum(is.na(actbenchmarks_combined$locationid))==0) {
-  'all locations match'
-}
-
-# 2. Output cases where percent data is greater than 1
-temp_percheck <- actbenchmarks_combined %>%
-  subset(dataformat=='Percent' & data>1 & is.na(data))
-temp_rows <- as.numeric(nrow(temp_percheck))
-
-if (temp_rows==0) {
-  'no percents greater than 1'
-} else if (temp_rows>=1) {
-  print(temp_percheck)
-}
-
-# 3. Visually inspect output data
-View(actbenchmarks_combined)
-
-```
-
-## STEP 4: COMMIT TO DATABASE 
-```{r}
-#CHECK DATASET NAMED actbenchmarks_combined TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
-#this code adds kids count data to MBPC postgres database
-#run postgres code (separate file) first
-dbWriteTable(con,database_state,actbenchmarks_combined,append=TRUE,row.names=FALSE)
-```
-
-## STEP 5: OUTPUT DATASET FOR UPLOADING TO KC DATA CENTER
-```{r}
-#########################
-##OUTPUT DATA CENTER FILE
-
-datacenter_sql <- paste0("SELECT locationid, location, timeframe, category, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='highschoolgraduatesmeetingACTcollegebenchmarkscores';")
-
-upload_data <- dbGetQuery(con,datacenter_sql) %>%
-  rename(LocationId=locationid,
-         Location=location,
-         TimeFrame=timeframe,
-         DataFormat=dataformat,
-         Data=data,
-         Category=category)
-
-#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
-write.csv(upload_data,file=paste0("./Output/education/",database_state,"_",year,"_highschoolgraduatesmeetingACTcollegebenchmarkscores.csv"),row.names=FALSE)
-
-```
 
 
 

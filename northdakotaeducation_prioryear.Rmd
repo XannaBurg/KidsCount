@@ -43,10 +43,10 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '22-23'
-fullyear <- '2022/23' 
+year <- '23-24'
+fullyear <- '2023/24' 
 #fiscal year is the spring of reference school year
-fiscalyear <- '2023'
+fiscalyear <- '2024'
 
 
 statefile <- 'northdakota'
@@ -73,22 +73,23 @@ tribalschools$id_dash <- as.character(paste((tribalschools$id_dash)))
 
 
 ## STUDENTS WHO ARE HOMELESS ##
-
+#note, we are no longer publishing region data, so starting with 2023-24 data, I removed it from the code. 
 STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #reformat year for fixing column names
 year_periods <- paste0(substr(year,1,2),"-",substr(year,4,5))
 
 #import data
-homeless_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/3-Homelessness.xlsx")) %>%
+homeless_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/3-Homelessness.xlsx")) %>%
   #rename columns removing year
   rename(denominator=all_of(paste0("20",year_periods," Denominator")),
          numerator=all_of(paste0("20",year_periods," Homeless"))) %>%
   mutate(denominator=as.numeric(paste(denominator))) %>%
   mutate(numerator=as.numeric(paste(numerator))) %>%
   #remove first rows with information FYI only
-  mutate(CountyCode=as.numeric(paste(CountyCode))) %>%
-  subset(!is.na(CountyCode))
+  mutate(CountyCode=as.numeric(paste(County))) %>%
+  subset(!is.na(CountyCode)) %>%
+  subset(!is.na(denominator))
 
 
 ############
@@ -129,27 +130,6 @@ homeless_state <- homeless_county %>%
   #add in locationtype
   mutate(locationtype='State')
 
-############
-#REGION DATA
-#start with cleaned county data
-homeless_region <- homeless_county %>%
-  
-  #add in regions
-  mutate(location=as.character(paste(location))) %>%
-  left_join(regionids,by=c('location'='county')) %>%
-  group_by(region) %>%
-  summarise(homeless_number_region=sum(homeless_number),
-      totalenroll_region=sum(totalenroll),
-      homeless_percent=sum(homeless_number)/sum(totalenroll)) %>%
-  ungroup %>%
-  rename(homeless_number=homeless_number_region,
-         totalenroll=totalenroll_region) %>%
-
-  
-  #add in locationtype
-  rename(location=region) %>%
-  mutate(location=as.character(paste(location))) %>%
-  mutate(locationtype='Planning Region')
 
 
 #################
@@ -186,7 +166,6 @@ homeless_tribal <- homeless_data %>%
 #combine all geographies
 homeless_all <- homeless_county %>%
   bind_rows(homeless_state) %>%
-  bind_rows(homeless_region) %>%
   bind_rows(homeless_tribal) %>%
   
   mutate(state='North Dakota') %>%
@@ -198,8 +177,8 @@ homeless_all <- homeless_county %>%
   
   #create indicators to suppress data
 
-  #supress if denominator is less than 10
-  mutate(suppress_denominator=if_else(totalenroll<10 | is.na(totalenroll),1,0)) %>%
+  #supress if denominator is less than 25
+  mutate(suppress_denominator=if_else(totalenroll<25 | is.na(totalenroll),1,0)) %>%
  
   #suppress percentages of 0-1 if more than 300 in denominator
   mutate(suppress_0to1_300=if_else(totalenroll>300 & homeless_percent<=.01,1,0)) %>%
@@ -221,19 +200,13 @@ homeless_all <- homeless_county %>%
   mutate(suppress_95to100_41=if_else((totalenroll>40 & totalenroll<=100) & 
                                      homeless_percent>=0.95,1,0)) %>%
   
-  #suppress percentages of 0-10 if between 21 to 40 in denominator
-  mutate(suppress_0to10_21=if_else((totalenroll>20 & totalenroll<=40) & 
+  #suppress percentages of 0-10 if between 25 to 40 in denominator
+  mutate(suppress_0to10_21=if_else((totalenroll>=25 & totalenroll<=40) & 
                                      homeless_percent<=0.10,1,0)) %>%
-  #suppress percentages of 90-100 if between 21 to 40 in denominator
-  mutate(suppress_90to100_21=if_else((totalenroll>20 & totalenroll<=40) & 
+  #suppress percentages of 90-100 if between 25 to 40 in denominator
+  mutate(suppress_90to100_21=if_else((totalenroll>=25 & totalenroll<=40) & 
                                      homeless_percent>=0.90,1,0)) %>%
   
-  #suppress percentages of 0-20 if between 10 to 20 in denominator
-  mutate(suppress_0to20_10=if_else((totalenroll>=10 & totalenroll<=20) & 
-                                     homeless_percent<=0.20,1,0)) %>%
-  #suppress percentages of 80-100 if between 10 to 20 in denominator
-  mutate(suppress_80to100_10=if_else((totalenroll>=10 & totalenroll<=20) & 
-                                     homeless_percent>=0.80,1,0)) %>%
   
   #create updated percent and number based on suppression rules
   mutate(homeless_percent=as.character(paste(homeless_percent))) %>%
@@ -247,25 +220,20 @@ homeless_all <- homeless_county %>%
     suppress_95to100_41==1 ~ ">= 95%",
     suppress_0to10_21==1 ~ "<= 10%",
     suppress_90to100_21==1 ~ ">= 90%",
-    suppress_0to20_10==1 ~ "<= 20%",
-    suppress_80to100_10==1 ~ ">= 80%",
     suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
       suppress_0to2_101==0 & suppress_98to100_101==0 & 
       suppress_0to5_41==0 & suppress_95to100_41==0 & 
-      suppress_0to10_21==0 & suppress_90to100_21==0 & 
-      suppress_0to20_10==0 & suppress_80to100_10==0 ~ homeless_percent)) %>%
+      suppress_0to10_21==0 & suppress_90to100_21==0 ~ homeless_percent)) %>%
   
   mutate(homeless_number=as.character(paste(homeless_number))) %>%
   mutate(homeless_number_suppressed=case_when(
     suppress_denominator==1 | suppress_0to1_300==1 | suppress_99to100_300==1 | 
     suppress_0to2_101==1 |  suppress_98to100_101==1 |  suppress_0to5_41==1 | 
-    suppress_95to100_41==1 | suppress_0to10_21==1 | suppress_90to100_21==1 | 
-    suppress_0to20_10==1 |   suppress_80to100_10==1 ~ 'NA',
+    suppress_95to100_41==1 | suppress_0to10_21==1 | suppress_90to100_21==1 ~ 'NA',
     suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
       suppress_0to2_101==0 & suppress_98to100_101==0 & 
       suppress_0to5_41==0 & suppress_95to100_41==0 & 
-      suppress_0to10_21==0 & suppress_90to100_21==0 & 
-      suppress_0to20_10==0 & suppress_80to100_10==0 ~ homeless_number)) %>%
+      suppress_0to10_21==0 & suppress_90to100_21==0  ~ homeless_number)) %>%
   
   select(c(location,locationtype,locationid,state,timeframe,varname,homeless_number_suppressed,homeless_percent_suppressed)) %>%
   
@@ -370,7 +338,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_stude
 STEP 1: IMPORT THE FINANCIALS DATA
 ```{r}
 #import data
-financials <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/FinancialData_",year,".csv"))
+financials <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/FinancialData_",year,".csv"))
 
 
 ############
@@ -471,8 +439,8 @@ adm_all <- adm_county %>%
   
   #create indicators to suppress data
 
-  #supress if denominator is less than 10
-  mutate(suppress_denominator=if_else(data<10 | is.na(data),1,0)) %>%
+  #supress if denominator is less than 25
+  mutate(suppress_denominator=if_else(data<25 | is.na(data),1,0)) %>%
  
   
   mutate(data=as.character(paste(data))) %>%
@@ -540,7 +508,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_avgda
 STEP 1: IMPORT THE FINANCIALS DATA
 ```{r}
 #import data
-financials <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/FinancialData_",year,".csv"))
+financials <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/FinancialData_",year,".csv"))
 
 ############
 #COUNTY DATA
@@ -790,7 +758,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_avgex
 STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #import data
-grad_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/4-Grade_Rates.xlsx")) %>%
+grad_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/4-Grad_Rates.xlsx")) %>%
   rename(ontime_Count='On-Time Grads',
          Total_Students='Cohort') %>%
   subset(Race=='All') %>%
@@ -899,8 +867,8 @@ grad_all <- grad_county %>%
   
   #create indicators to suppress data
 
-  #supress if denominator is less than 10
-  mutate(suppress_denominator=if_else(totalenroll<10 | is.na(totalenroll),1,0)) %>%
+  #supress if denominator is less than 25
+  mutate(suppress_denominator=if_else(totalenroll<25 | is.na(totalenroll),1,0)) %>%
  
   #suppress percentages of 0-1 if more than 300 in denominator
   mutate(suppress_0to1_300=if_else(totalenroll>300 & grad_percent<=.01,1,0)) %>%
@@ -922,19 +890,13 @@ grad_all <- grad_county %>%
   mutate(suppress_95to100_41=if_else((totalenroll>40 & totalenroll<=100) & 
                                      grad_percent>=0.95,1,0)) %>%
   
-  #suppress percentages of 0-10 if between 21 to 40 in denominator
-  mutate(suppress_0to10_21=if_else((totalenroll>20 & totalenroll<=40) & 
+  #suppress percentages of 0-10 if between 25 to 40 in denominator
+  mutate(suppress_0to10_21=if_else((totalenroll>=25 & totalenroll<=40) & 
                                      grad_percent<=0.10,1,0)) %>%
-  #suppress percentages of 90-100 if between 21 to 40 in denominator
-  mutate(suppress_90to100_21=if_else((totalenroll>20 & totalenroll<=40) & 
+  #suppress percentages of 90-100 if between 25 to 40 in denominator
+  mutate(suppress_90to100_21=if_else((totalenroll>=25 & totalenroll<=40) & 
                                      grad_percent>=0.90,1,0)) %>%
   
-  #suppress percentages of 0-20 if between 10 to 20 in denominator
-  mutate(suppress_0to20_10=if_else((totalenroll>=10 & totalenroll<=20) & 
-                                     grad_percent<=0.20,1,0)) %>%
-  #suppress percentages of 80-100 if between 10 to 20 in denominator
-  mutate(suppress_80to100_10=if_else((totalenroll>=10 & totalenroll<=20) & 
-                                     grad_percent>=0.80,1,0)) %>%
   
   #create updated percent and number based on suppression rules
   mutate(grad_percent=as.character(paste(grad_percent))) %>%
@@ -948,25 +910,20 @@ grad_all <- grad_county %>%
     suppress_95to100_41==1 ~ ">= 95%",
     suppress_0to10_21==1 ~ "<= 10%",
     suppress_90to100_21==1 ~ ">= 90%",
-    suppress_0to20_10==1 ~ "<= 20%",
-    suppress_80to100_10==1 ~ ">= 80%",
     suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
       suppress_0to2_101==0 & suppress_98to100_101==0 & 
       suppress_0to5_41==0 & suppress_95to100_41==0 & 
-      suppress_0to10_21==0 & suppress_90to100_21==0 & 
-      suppress_0to20_10==0 & suppress_80to100_10==0 ~ grad_percent)) %>%
+      suppress_0to10_21==0 & suppress_90to100_21==0 ~ grad_percent)) %>%
   
   mutate(grad_number=as.character(paste(grad_number))) %>%
   mutate(grad_number_suppressed=case_when(
     suppress_denominator==1 | suppress_0to1_300==1 | suppress_99to100_300==1 | 
     suppress_0to2_101==1 |  suppress_98to100_101==1 |  suppress_0to5_41==1 | 
-    suppress_95to100_41==1 | suppress_0to10_21==1 | suppress_90to100_21==1 | 
-    suppress_0to20_10==1 |   suppress_80to100_10==1 ~ 'NA',
+    suppress_95to100_41==1 | suppress_0to10_21==1 | suppress_90to100_21==1 ~ 'NA',
     suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
       suppress_0to2_101==0 & suppress_98to100_101==0 & 
       suppress_0to5_41==0 & suppress_95to100_41==0 & 
-      suppress_0to10_21==0 & suppress_90to100_21==0 & 
-      suppress_0to20_10==0 & suppress_80to100_10==0 ~ grad_number)) %>%
+      suppress_0to10_21==0 & suppress_90to100_21==0  ~ grad_number)) %>%
   
   select(c(location,locationtype,locationid,state,timeframe,varname,grad_percent_suppressed)) %>%
   
@@ -1073,7 +1030,7 @@ STEP 3: OUTPUT DATASET FOR UPLOADING TO KC DATA CENTER
 #########################
 ##OUTPUT DATA CENTER FILE
 
-datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",fullyear,"' AND varname='graduationrate4cohort';")
+datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",fullyear,"' AND (locationtype='State' OR locationtype='County' OR locationtype='Tribal Area') AND varname='graduationrate4cohort';")
 
 upload_data <- dbGetQuery(con,datacenter_sql) %>%
   rename(LocationId=locationid,
@@ -1092,7 +1049,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_gradu
 ## FOUR-YEAR HIGH SCHOOL COHORT GRADUATION RATE BY RACE ##
 STEP 1: Import and Clean Data
 ```{r}
-grad_data2 <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/4-Grade_Rates.xlsx")) %>%
+grad_data2 <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/4-Grad_Rates.xlsx")) %>%
   rename(ontime_Count='On-Time Grads',
          Total_Students='Cohort') %>%
 
@@ -1171,8 +1128,8 @@ gradrace_all <- gradrace_county2 %>%
 
   #create indicators to suppress data
 
-  #supress if denominator is less than 10
-  mutate(suppress_denominator=if_else(summed_denominator<10 | is.na(summed_denominator),1,0)) %>%
+  #supress if denominator is less than 25
+  mutate(suppress_denominator=if_else(summed_denominator<25 | is.na(summed_denominator),1,0)) %>%
  
   #suppress percentages of 0-1 if more than 300 in denominator
   mutate(suppress_0to1_300=if_else(summed_denominator>300 & gradrate_percent<=.01,1,0)) %>%
@@ -1194,20 +1151,14 @@ gradrace_all <- gradrace_county2 %>%
   mutate(suppress_95to100_41=if_else((summed_denominator>40 & summed_denominator<=100) & 
                                      gradrate_percent>=0.95,1,0)) %>%
   
-  #suppress percentages of 0-10 if between 21 to 40 in denominator
-  mutate(suppress_0to10_21=if_else((summed_denominator>20 & summed_denominator<=40) & 
+  #suppress percentages of 0-10 if between 25 to 40 in denominator
+  mutate(suppress_0to10_21=if_else((summed_denominator>=25 & summed_denominator<=40) & 
                                      gradrate_percent<=0.10,1,0)) %>%
-  #suppress percentages of 90-100 if between 21 to 40 in denominator
-  mutate(suppress_90to100_21=if_else((summed_denominator>20 & summed_denominator<=40) & 
+  #suppress percentages of 90-100 if between 25 to 40 in denominator
+  mutate(suppress_90to100_21=if_else((summed_denominator>=25 & summed_denominator<=40) & 
                                      gradrate_percent>=0.90,1,0)) %>%
   
-  #suppress percentages of 0-20 if between 10 to 20 in denominator
-  mutate(suppress_0to20_10=if_else((summed_denominator>=10 & summed_denominator<=20) & 
-                                     gradrate_percent<=0.20,1,0)) %>%
-  #suppress percentages of 80-100 if between 10 to 20 in denominator
-  mutate(suppress_80to100_10=if_else((summed_denominator>=10 & summed_denominator<=20) & 
-                                     gradrate_percent>=0.80,1,0)) %>%
-  
+
   #create updated percent and number based on suppression rules
   mutate(gradrate_percent=as.character(paste(gradrate_percent))) %>%
   mutate(data=case_when(
@@ -1220,13 +1171,10 @@ gradrace_all <- gradrace_county2 %>%
     suppress_95to100_41==1 ~ ">= 95%",
     suppress_0to10_21==1 ~ "<= 10%",
     suppress_90to100_21==1 ~ ">= 90%",
-    suppress_0to20_10==1 ~ "<= 20%",
-    suppress_80to100_10==1 ~ ">= 80%",
     suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
       suppress_0to2_101==0 & suppress_98to100_101==0 & 
       suppress_0to5_41==0 & suppress_95to100_41==0 & 
-      suppress_0to10_21==0 & suppress_90to100_21==0 & 
-      suppress_0to20_10==0 & suppress_80to100_10==0 ~ gradrate_percent)) %>%
+      suppress_0to10_21==0 & suppress_90to100_21==0  ~ gradrate_percent)) %>%
   
     select(c(location,locationtype,locationid,state,timeframe,varname,race,data,dataformat))
 
@@ -1321,7 +1269,7 @@ fiscalyear_minus1 <- as.character(as.numeric(fiscalyear)-1)
 academicyear <- paste0(fiscalyear_minus1,"-",fiscalyear)
 
 #import data
-dropout_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/5-DropOuts7-12.xlsx")) %>%
+dropout_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/5-DropOuts7-12.xlsx")) %>%
   #change county to numeric
   mutate(County=as.numeric(paste(County)))
 
@@ -1430,8 +1378,8 @@ dropout_all <- dropout_county %>%
   
   #create indicators to suppress data
 
-  #supress if denominator is less than 10
-  mutate(suppress_denominator=if_else(totalenroll<10 | is.na(totalenroll),1,0)) %>%
+  #supress if denominator is less than 25
+  mutate(suppress_denominator=if_else(totalenroll<25 | is.na(totalenroll),1,0)) %>%
  
   #suppress percentages of 0-1 if more than 300 in denominator
   mutate(suppress_0to1_300=if_else(totalenroll>300 & dropout_percent<=.01,1,0)) %>%
@@ -1453,19 +1401,13 @@ dropout_all <- dropout_county %>%
   mutate(suppress_95to100_41=if_else((totalenroll>40 & totalenroll<=100) & 
                                      dropout_percent>=0.95,1,0)) %>%
   
-  #suppress percentages of 0-10 if between 21 to 40 in denominator
-  mutate(suppress_0to10_21=if_else((totalenroll>20 & totalenroll<=40) & 
+  #suppress percentages of 0-10 if between 25 to 40 in denominator
+  mutate(suppress_0to10_21=if_else((totalenroll>=25 & totalenroll<=40) & 
                                      dropout_percent<=0.10,1,0)) %>%
-  #suppress percentages of 90-100 if between 21 to 40 in denominator
-  mutate(suppress_90to100_21=if_else((totalenroll>20 & totalenroll<=40) & 
+  #suppress percentages of 90-100 if between 25 to 40 in denominator
+  mutate(suppress_90to100_21=if_else((totalenroll>=25 & totalenroll<=40) & 
                                      dropout_percent>=0.90,1,0)) %>%
   
-  #suppress percentages of 0-20 if between 10 to 20 in denominator
-  mutate(suppress_0to20_10=if_else((totalenroll>=10 & totalenroll<=20) & 
-                                     dropout_percent<=0.20,1,0)) %>%
-  #suppress percentages of 80-100 if between 10 to 20 in denominator
-  mutate(suppress_80to100_10=if_else((totalenroll>=10 & totalenroll<=20) & 
-                                     dropout_percent>=0.80,1,0)) %>%
   
   #create updated percent and number based on suppression rules
   mutate(dropout_percent=as.character(paste(dropout_percent))) %>%
@@ -1479,25 +1421,20 @@ dropout_all <- dropout_county %>%
     suppress_95to100_41==1 ~ ">= 95%",
     suppress_0to10_21==1 ~ "<= 10%",
     suppress_90to100_21==1 ~ ">= 90%",
-    suppress_0to20_10==1 ~ "<= 20%",
-    suppress_80to100_10==1 ~ ">= 80%",
     suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
       suppress_0to2_101==0 & suppress_98to100_101==0 & 
       suppress_0to5_41==0 & suppress_95to100_41==0 & 
-      suppress_0to10_21==0 & suppress_90to100_21==0 & 
-      suppress_0to20_10==0 & suppress_80to100_10==0 ~ dropout_percent)) %>%
+      suppress_0to10_21==0 & suppress_90to100_21==0 ~ dropout_percent)) %>%
   
   mutate(dropout_number=as.character(paste(dropout_number))) %>%
   mutate(dropout_number_suppressed=case_when(
     suppress_denominator==1 | suppress_0to1_300==1 | suppress_99to100_300==1 | 
     suppress_0to2_101==1 |  suppress_98to100_101==1 |  suppress_0to5_41==1 | 
-    suppress_95to100_41==1 | suppress_0to10_21==1 | suppress_90to100_21==1 | 
-    suppress_0to20_10==1 |   suppress_80to100_10==1 ~ 'NA',
+    suppress_95to100_41==1 | suppress_0to10_21==1 | suppress_90to100_21==1 ~ 'NA',
     suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
       suppress_0to2_101==0 & suppress_98to100_101==0 & 
       suppress_0to5_41==0 & suppress_95to100_41==0 & 
-      suppress_0to10_21==0 & suppress_90to100_21==0 & 
-      suppress_0to20_10==0 & suppress_80to100_10==0 ~ dropout_number)) %>%
+      suppress_0to10_21==0 & suppress_90to100_21==0 ~ dropout_number)) %>%
   
   select(c(location,locationtype,locationid,state,timeframe,dropout_percent_suppressed,Subgroup_Desc)) %>%
   
@@ -1601,7 +1538,7 @@ STEP 3: OUTPUT DATASET FOR UPLOADING TO KC DATA CENTER
 #########################
 ##OUTPUT DATA CENTER FILE
 
-datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",fullyear,"' AND varname='grades7to12eventdropoutrate';")
+datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",fullyear,"' AND (locationtype='State' OR locationtype='County' OR locationtype='Tribal Area') AND varname='grades7to12eventdropoutrate';")
 
 upload_data <- dbGetQuery(con,datacenter_sql) %>%
   rename(LocationId=locationid,
@@ -1733,7 +1670,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_grade
 STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #import data
-assessment_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/6-ThirdGradeAssess.xlsx")) %>%
+assessment_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/6-ThirdGradeAssess.xlsx")) %>%
 
   
   #subset for all students
@@ -1799,8 +1736,8 @@ assessment_all <- assessment_county %>%
 
   #create indicators to suppress data
 
-  #supress if denominator is less than 10
-  mutate(suppress_denominator=if_else(summed_denominator<10 | is.na(summed_denominator),1,0)) %>%
+  #supress if denominator is less than 25
+  mutate(suppress_denominator=if_else(summed_denominator<25 | is.na(summed_denominator),1,0)) %>%
  
   #suppress percentages of 0-1 if more than 300 in denominator
   mutate(suppress_0to1_300=if_else(summed_denominator>300 & proficient_percent<=.01,1,0)) %>%
@@ -1822,19 +1759,12 @@ assessment_all <- assessment_county %>%
   mutate(suppress_95to100_41=if_else((summed_denominator>40 & summed_denominator<=100) & 
                                      proficient_percent>=0.95,1,0)) %>%
   
-  #suppress percentages of 0-10 if between 21 to 40 in denominator
-  mutate(suppress_0to10_21=if_else((summed_denominator>20 & summed_denominator<=40) & 
+  #suppress percentages of 0-10 if between 25 to 40 in denominator
+  mutate(suppress_0to10_21=if_else((summed_denominator>=25 & summed_denominator<=40) & 
                                      proficient_percent<=0.10,1,0)) %>%
-  #suppress percentages of 90-100 if between 21 to 40 in denominator
-  mutate(suppress_90to100_21=if_else((summed_denominator>20 & summed_denominator<=40) & 
+  #suppress percentages of 90-100 if between 25 to 40 in denominator
+  mutate(suppress_90to100_21=if_else((summed_denominator>=25 & summed_denominator<=40) & 
                                      proficient_percent>=0.90,1,0)) %>%
-  
-  #suppress percentages of 0-20 if between 10 to 20 in denominator
-  mutate(suppress_0to20_10=if_else((summed_denominator>=10 & summed_denominator<=20) & 
-                                     proficient_percent<=0.20,1,0)) %>%
-  #suppress percentages of 80-100 if between 10 to 20 in denominator
-  mutate(suppress_80to100_10=if_else((summed_denominator>=10 & summed_denominator<=20) & 
-                                     proficient_percent>=0.80,1,0)) %>%
   
   #create updated percent and number based on suppression rules
   mutate(proficient_percent=as.character(paste(proficient_percent))) %>%
@@ -1848,13 +1778,10 @@ assessment_all <- assessment_county %>%
     suppress_95to100_41==1 ~ ">= 95%",
     suppress_0to10_21==1 ~ "<= 10%",
     suppress_90to100_21==1 ~ ">= 90%",
-    suppress_0to20_10==1 ~ "<= 20%",
-    suppress_80to100_10==1 ~ ">= 80%",
     suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
       suppress_0to2_101==0 & suppress_98to100_101==0 & 
       suppress_0to5_41==0 & suppress_95to100_41==0 & 
-      suppress_0to10_21==0 & suppress_90to100_21==0 & 
-      suppress_0to20_10==0 & suppress_80to100_10==0 ~ proficient_percent)) %>%
+      suppress_0to10_21==0 & suppress_90to100_21==0 ~ proficient_percent)) %>%
   
     select(c(location,locationtype,locationid,state,timeframe,varname,data,dataformat))
   
@@ -1969,7 +1896,7 @@ yearfile3 <- year
 
 
 #import data
-assessment_data1 <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",yearfile1,".csv")) %>%
+assessment_data1 <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",yearfile1,".xlsx")) %>%
   
   #subset for all students
   subset(SubGroup_Desc=='All') %>%
@@ -1977,13 +1904,13 @@ assessment_data1 <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND
   mutate(County=as.character(paste(County))) %>%
   mutate(Entity_ID=as.character(paste(Entity_ID))) 
 
-assessment_data2 <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",yearfile2,".xlsx"),guess_max = 1048576) %>%
+assessment_data2 <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/6-ThirdGradeAssess.xlsx")) %>%
   
   #subset for all students
   subset(SubGroup_Desc=='All') %>%
   subset(Subject=='Reading') 
 
-assessment_data3 <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/6-ThirdGradeAssess.xlsx")) %>%
+assessment_data3 <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/6-ThirdGradeAssess.xlsx")) %>%
   
   #subset for all students
   subset(SubGroup_Desc=='All') %>%
@@ -2055,8 +1982,8 @@ assessment_all <- assessment_county %>%
 
   #create indicators to suppress data
 
-  #supress if denominator is less than 10
-  mutate(suppress_denominator=if_else(summed_denominator<10 | is.na(summed_denominator),1,0)) %>%
+  #supress if denominator is less than 25
+  mutate(suppress_denominator=if_else(summed_denominator<25 | is.na(summed_denominator),1,0)) %>%
  
   #suppress percentages of 0-1 if more than 300 in denominator
   mutate(suppress_0to1_300=if_else(summed_denominator>300 & proficient_percent<=.01,1,0)) %>%
@@ -2078,20 +2005,14 @@ assessment_all <- assessment_county %>%
   mutate(suppress_95to100_41=if_else((summed_denominator>40 & summed_denominator<=100) & 
                                      proficient_percent>=0.95,1,0)) %>%
   
-  #suppress percentages of 0-10 if between 21 to 40 in denominator
-  mutate(suppress_0to10_21=if_else((summed_denominator>20 & summed_denominator<=40) & 
+  #suppress percentages of 0-10 if between 25 to 40 in denominator
+  mutate(suppress_0to10_21=if_else((summed_denominator>=25 & summed_denominator<=40) & 
                                      proficient_percent<=0.10,1,0)) %>%
-  #suppress percentages of 90-100 if between 21 to 40 in denominator
-  mutate(suppress_90to100_21=if_else((summed_denominator>20 & summed_denominator<=40) & 
+  #suppress percentages of 90-100 if between 25 to 40 in denominator
+  mutate(suppress_90to100_21=if_else((summed_denominator>=25 & summed_denominator<=40) & 
                                      proficient_percent>=0.90,1,0)) %>%
   
-  #suppress percentages of 0-20 if between 10 to 20 in denominator
-  mutate(suppress_0to20_10=if_else((summed_denominator>=10 & summed_denominator<=20) & 
-                                     proficient_percent<=0.20,1,0)) %>%
-  #suppress percentages of 80-100 if between 10 to 20 in denominator
-  mutate(suppress_80to100_10=if_else((summed_denominator>=10 & summed_denominator<=20) & 
-                                     proficient_percent>=0.80,1,0)) %>%
-  
+ 
   #create updated percent and number based on suppression rules
   mutate(proficient_percent=as.character(paste(proficient_percent))) %>%
   mutate(data=case_when(
@@ -2104,13 +2025,10 @@ assessment_all <- assessment_county %>%
     suppress_95to100_41==1 ~ ">= 95%",
     suppress_0to10_21==1 ~ "<= 10%",
     suppress_90to100_21==1 ~ ">= 90%",
-    suppress_0to20_10==1 ~ "<= 20%",
-    suppress_80to100_10==1 ~ ">= 80%",
     suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
       suppress_0to2_101==0 & suppress_98to100_101==0 & 
       suppress_0to5_41==0 & suppress_95to100_41==0 & 
-      suppress_0to10_21==0 & suppress_90to100_21==0 & 
-      suppress_0to20_10==0 & suppress_80to100_10==0 ~ proficient_percent)) %>%
+      suppress_0to10_21==0 & suppress_90to100_21==0 ~ proficient_percent)) %>%
   
     select(c(location,locationtype,locationid,state,timeframe,varname,data,dataformat))
   
@@ -2184,7 +2102,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_third
 STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #import data
-assessment_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/6-ThirdGradeAssess.xlsx")) %>%
+assessment_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/6-ThirdGradeAssess.xlsx")) %>%
 
   
   #subset for reading
@@ -2266,8 +2184,8 @@ assessment_all <- assessment_county %>%
 
   #create indicators to suppress data
 
-  #supress if denominator is less than 10
-  mutate(suppress_denominator=if_else(summed_denominator<10 | is.na(summed_denominator),1,0)) %>%
+  #supress if denominator is less than 25
+  mutate(suppress_denominator=if_else(summed_denominator<25 | is.na(summed_denominator),1,0)) %>%
  
   #suppress percentages of 0-1 if more than 300 in denominator
   mutate(suppress_0to1_300=if_else(summed_denominator>300 & proficient_percent<=.01,1,0)) %>%
@@ -2289,20 +2207,14 @@ assessment_all <- assessment_county %>%
   mutate(suppress_95to100_41=if_else((summed_denominator>40 & summed_denominator<=100) & 
                                      proficient_percent>=0.95,1,0)) %>%
   
-  #suppress percentages of 0-10 if between 21 to 40 in denominator
-  mutate(suppress_0to10_21=if_else((summed_denominator>20 & summed_denominator<=40) & 
+  #suppress percentages of 0-10 if between 25 to 40 in denominator
+  mutate(suppress_0to10_21=if_else((summed_denominator>=25 & summed_denominator<=40) & 
                                      proficient_percent<=0.10,1,0)) %>%
-  #suppress percentages of 90-100 if between 21 to 40 in denominator
-  mutate(suppress_90to100_21=if_else((summed_denominator>20 & summed_denominator<=40) & 
+  #suppress percentages of 90-100 if between 25 to 40 in denominator
+  mutate(suppress_90to100_21=if_else((summed_denominator>=25 & summed_denominator<=40) & 
                                      proficient_percent>=0.90,1,0)) %>%
   
-  #suppress percentages of 0-20 if between 10 to 20 in denominator
-  mutate(suppress_0to20_10=if_else((summed_denominator>=10 & summed_denominator<=20) & 
-                                     proficient_percent<=0.20,1,0)) %>%
-  #suppress percentages of 80-100 if between 10 to 20 in denominator
-  mutate(suppress_80to100_10=if_else((summed_denominator>=10 & summed_denominator<=20) & 
-                                     proficient_percent>=0.80,1,0)) %>%
-  
+
   #create updated percent and number based on suppression rules
   mutate(proficient_percent=as.character(paste(proficient_percent))) %>%
   mutate(data=case_when(
@@ -2315,13 +2227,10 @@ assessment_all <- assessment_county %>%
     suppress_95to100_41==1 ~ ">= 95%",
     suppress_0to10_21==1 ~ "<= 10%",
     suppress_90to100_21==1 ~ ">= 90%",
-    suppress_0to20_10==1 ~ "<= 20%",
-    suppress_80to100_10==1 ~ ">= 80%",
     suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
       suppress_0to2_101==0 & suppress_98to100_101==0 & 
       suppress_0to5_41==0 & suppress_95to100_41==0 & 
-      suppress_0to10_21==0 & suppress_90to100_21==0 & 
-      suppress_0to20_10==0 & suppress_80to100_10==0 ~ proficient_percent)) %>%
+      suppress_0to10_21==0 & suppress_90to100_21==0 ~ proficient_percent)) %>%
   
     select(c(location,locationtype,locationid,state,timeframe,varname,race,data,dataformat))
   

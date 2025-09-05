@@ -11,9 +11,6 @@ output: html_document
 ## Indicator 4: Children enrolled in special education in public schools, by type of impairment (percent of special education enrollment)
 
 
-*****NEED TO ADD ADDITIONAL STEPS FOR DATA SUPPRESSION DUE TO REGIONS REPORTING*******
-
-
 **Created by:** Xanna Burg
 **Date:** June 2020
 **Updated by:**
@@ -41,10 +38,10 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '23-24'
-fullyear <- '2023/24' 
+year <- '24-25'
+fullyear <- '2024/25' 
 #fiscal year is the spring of reference school year
-fiscalyear <- '2024'
+fiscalyear <- '2025'
 
 
 statefile <- 'northdakota'
@@ -74,7 +71,7 @@ tribalschools$id_dash <- as.character(paste((tribalschools$id_dash)))
 STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #import data
-frl_data <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/1-InclusiveEnrollment.xlsx"),guess_max = 1048576)
+frl_data <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/1-InclusiveEnrollment.xlsx"),guess_max = 1048576)
 
 
 
@@ -210,8 +207,8 @@ frl_all <- frl_county %>%
   
   #create indicators to suppress data
 
-  #supress if denominator is less than 10
-  mutate(suppress_denominator=if_else(totalenroll<10 | is.na(totalenroll),1,0)) %>%
+  #supress if denominator is less than 25
+  mutate(suppress_denominator=if_else(totalenroll<25 | is.na(totalenroll),1,0)) %>%
  
   #suppress percentages of 0-1 if more than 300 in denominator
   mutate(suppress_0to1_300=if_else(totalenroll>300 & frl_percent<=.01,1,0)) %>%
@@ -233,21 +230,14 @@ frl_all <- frl_county %>%
   mutate(suppress_95to100_41=if_else((totalenroll>40 & totalenroll<=100) & 
                                      frl_percent>=0.95,1,0)) %>%
   
-  #suppress percentages of 0-10 if between 21 to 40 in denominator
-  mutate(suppress_0to10_21=if_else((totalenroll>20 & totalenroll<=40) & 
+  #suppress percentages of 0-10 if between 25 to 40 in denominator
+  mutate(suppress_0to10_21=if_else((totalenroll>=25 & totalenroll<=40) & 
                                      frl_percent<=0.10,1,0)) %>%
-  #suppress percentages of 90-100 if between 21 to 40 in denominator
-  mutate(suppress_90to100_21=if_else((totalenroll>20 & totalenroll<=40) & 
+  #suppress percentages of 90-100 if between 25 to 40 in denominator
+  mutate(suppress_90to100_21=if_else((totalenroll>=25 & totalenroll<=40) & 
                                      frl_percent>=0.90,1,0)) %>%
   
-  #suppress percentages of 0-20 if between 10 to 20 in denominator
-  mutate(suppress_0to20_10=if_else((totalenroll>=10 & totalenroll<=20) & 
-                                     frl_percent<=0.20,1,0)) %>%
-  #suppress percentages of 80-100 if between 10 to 20 in denominator
-  mutate(suppress_80to100_10=if_else((totalenroll>=10 & totalenroll<=20) & 
-                                     frl_percent>=0.80,1,0)) %>%
-  
-  #create updated percent and number based on suppression rules
+    #create updated percent and number based on suppression rules
   mutate(frl_percent=as.character(paste(frl_percent))) %>%
   mutate(frl_percent_suppressed=case_when(
     suppress_denominator==1 ~ 'NA',
@@ -259,25 +249,20 @@ frl_all <- frl_county %>%
     suppress_95to100_41==1 ~ ">= 95%",
     suppress_0to10_21==1 ~ "<= 10%",
     suppress_90to100_21==1 ~ ">= 90%",
-    suppress_0to20_10==1 ~ "<= 20%",
-    suppress_80to100_10==1 ~ ">= 80%",
     suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
       suppress_0to2_101==0 & suppress_98to100_101==0 & 
       suppress_0to5_41==0 & suppress_95to100_41==0 & 
-      suppress_0to10_21==0 & suppress_90to100_21==0 & 
-      suppress_0to20_10==0 & suppress_80to100_10==0 ~ frl_percent)) %>%
+      suppress_0to10_21==0 & suppress_90to100_21==0  ~ frl_percent)) %>%
   
   mutate(frl_number=as.character(paste(frl_number))) %>%
   mutate(frl_number_suppressed=case_when(
     suppress_denominator==1 | suppress_0to1_300==1 | suppress_99to100_300==1 | 
     suppress_0to2_101==1 |  suppress_98to100_101==1 |  suppress_0to5_41==1 | 
-    suppress_95to100_41==1 | suppress_0to10_21==1 | suppress_90to100_21==1 | 
-    suppress_0to20_10==1 |   suppress_80to100_10==1 ~ 'NA',
+    suppress_95to100_41==1 | suppress_0to10_21==1 | suppress_90to100_21==1  ~ 'NA',
     suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
       suppress_0to2_101==0 & suppress_98to100_101==0 & 
       suppress_0to5_41==0 & suppress_95to100_41==0 & 
-      suppress_0to10_21==0 & suppress_90to100_21==0 & 
-      suppress_0to20_10==0 & suppress_80to100_10==0 ~ frl_number)) %>%
+      suppress_0to10_21==0 & suppress_90to100_21==0  ~ frl_number)) %>%
   
   select(c(location,locationtype,locationid,state,timeframe,varname,frl_number_suppressed,frl_percent_suppressed)) %>%
   
@@ -324,28 +309,68 @@ temp_testsuppression <- frl_all %>%
 View(temp_testsuppression)
 
 #if there is only one county, print the counties in ascending order
-#temp_check <- frl_all %>%
- # subset(locationtype=='County' & dataformat=='Number') %>%
-#  mutate(data=as.numeric(paste(data))) %>%
- # arrange(data)
-#View(temp_check)
+temp_check <- frl_all %>%
+ subset(locationtype=='County' & dataformat=='Number') %>%
+ mutate(data=as.numeric(paste(data))) %>%
+ arrange(data)
+View(temp_check)
 
-#******
+
+
+#before suppressing the next lowest county, check whether there is also an issue within a region that could be a better fit.
+#check all counties that match the region
+temp_testsuppression2 <- frl_all %>%
+  subset(locationtype=='County') %>%
+  subset(dataformat=='Percent') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  mutate(suppressed_indicator=case_when(
+    data=='NA' ~1,
+    TRUE ~0)) %>%
+  group_by(region) %>%
+  summarise(sumNA=sum(suppressed_indicator)) %>%
+  subset(sumNA==1)
+
+temp_rows2 <- as.numeric(nrow(temp_testsuppression2))
+if (temp_rows2==0) {
+  'no additional data suppression needed'
+} else if (temp_rows2>=1) {
+  View(temp_testsuppression2)
+}
+
+temp_checkregions <- frl_all %>%
+  subset(locationtype=='County') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  
+  #******ADD IN THE REGION HERE
+  subset(region=='Planning Region 8') %>%
+  arrange(data)
+View(temp_checkregions)
+
 #CHANGE TO THE CORRECT COUNTY NAME HERE
 #**Choose the county with the next lowest count of births; if there is a tie, suppress both
 #frl_all$data[frl_all$location=='Billings' & frl_all$dataformat=='Number'] <- 'NA'
+#frl_all$data[frl_all$location=='Billings' & frl_all$dataformat=='Percent'] <- 'NA'
 
 
-#4. Check that there is no suppression or >1 suppression
-########## MANUAL STEP #############
-#need to check that county data cannot be identified using region totals
-temp_testsuppression_region <- frl_all %>%
+#Then check again
+#4. Check that regions will not make counties identifable
+temp_testsuppression3 <- frl_all %>%
   subset(locationtype=='County') %>%
+  subset(dataformat=='Percent') %>%
   left_join(regionids,by=c('location'='county')) %>%
-  subset(data=='NA') %>%
-  select(location,region)
+  mutate(suppressed_indicator=case_when(
+    data=='NA' ~1,
+    TRUE ~0)) %>%
+  group_by(region) %>%
+  summarise(sumNA=sum(suppressed_indicator)) %>%
+  subset(sumNA==1)
 
-View(temp_testsuppression_region)
+temp_rows3 <- as.numeric(nrow(temp_testsuppression3))
+if (temp_rows3==0) {
+  'no additional data suppression needed'
+} else if (temp_rows3>=1) {
+  View(temp_testsuppression3)
+}
 
 
 # 5. Visually inspect output data
@@ -388,7 +413,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_freer
 STEP 1: IMPORT AND CLEAN SPECIAL EDUCATION DATA
 ```{r}
 #import data
-specialed_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/2-SpecialEdSnapshot.xlsx"))
+specialed_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/2-SpecialEdSnapshot.xlsx"))
 
 
 ############
@@ -504,7 +529,7 @@ specialed_all <- specialed_county %>%
 STEP 2: CALCULATE DENOMINATOR FROM ENROLLMENT SNAPSHOT
 ```{r}
 #import data
-enroll_data <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/1-InclusiveEnrollment.xlsx"),guess_max = 1048576)
+enroll_data <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/1-InclusiveEnrollment.xlsx"),guess_max = 1048576)
 
 
 ############
@@ -621,8 +646,8 @@ specialed_enroll <- specialed_all %>%
 
   #create indicators to suppress data
 
-  #supress if denominator is less than 10
-  mutate(suppress_denominator=if_else(totalenroll<10 | is.na(totalenroll),1,0)) %>%
+  #supress if denominator is less than 25
+  mutate(suppress_denominator=if_else(totalenroll<25 | is.na(totalenroll),1,0)) %>%
  
   #suppress percentages of 0-1 if more than 300 in denominator
   mutate(suppress_0to1_300=if_else(totalenroll>300 & specialed_percent<=.01,1,0)) %>%
@@ -644,21 +669,14 @@ specialed_enroll <- specialed_all %>%
   mutate(suppress_95to100_41=if_else((totalenroll>40 & totalenroll<=100) & 
                                      specialed_percent>=0.95,1,0)) %>%
   
-  #suppress percentages of 0-10 if between 21 to 40 in denominator
-  mutate(suppress_0to10_21=if_else((totalenroll>20 & totalenroll<=40) & 
+  #suppress percentages of 0-10 if between 25 to 40 in denominator
+  mutate(suppress_0to10_21=if_else((totalenroll>=25 & totalenroll<=40) & 
                                      specialed_percent<=0.10,1,0)) %>%
-  #suppress percentages of 90-100 if between 21 to 40 in denominator
-  mutate(suppress_90to100_21=if_else((totalenroll>20 & totalenroll<=40) & 
+  #suppress percentages of 90-100 if between 25 to 40 in denominator
+  mutate(suppress_90to100_21=if_else((totalenroll>=25 & totalenroll<=40) & 
                                      specialed_percent>=0.90,1,0)) %>%
   
-  #suppress percentages of 0-20 if between 10 to 20 in denominator
-  mutate(suppress_0to20_10=if_else((totalenroll>=10 & totalenroll<=20) & 
-                                     specialed_percent<=0.20,1,0)) %>%
-  #suppress percentages of 80-100 if between 10 to 20 in denominator
-  mutate(suppress_80to100_10=if_else((totalenroll>=10 & totalenroll<=20) & 
-                                     specialed_percent>=0.80,1,0)) %>%
-  
-  #create updated percent and number based on suppression rules
+    #create updated percent and number based on suppression rules
   mutate(specialed_percent=as.character(paste(specialed_percent))) %>%
   mutate(specialed_percent_suppressed=case_when(
     suppress_denominator==1 ~ 'NA',
@@ -670,25 +688,20 @@ specialed_enroll <- specialed_all %>%
     suppress_95to100_41==1 ~ ">= 95%",
     suppress_0to10_21==1 ~ "<= 10%",
     suppress_90to100_21==1 ~ ">= 90%",
-    suppress_0to20_10==1 ~ "<= 20%",
-    suppress_80to100_10==1 ~ ">= 80%",
     suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
       suppress_0to2_101==0 & suppress_98to100_101==0 & 
       suppress_0to5_41==0 & suppress_95to100_41==0 & 
-      suppress_0to10_21==0 & suppress_90to100_21==0 & 
-      suppress_0to20_10==0 & suppress_80to100_10==0 ~ specialed_percent)) %>%
+      suppress_0to10_21==0 & suppress_90to100_21==0 ~ specialed_percent)) %>%
   
   mutate(specialed_number=as.character(paste(specialed_number))) %>%
   mutate(specialed_number_suppressed=case_when(
     suppress_denominator==1 | suppress_0to1_300==1 | suppress_99to100_300==1 | 
     suppress_0to2_101==1 |  suppress_98to100_101==1 |  suppress_0to5_41==1 | 
-    suppress_95to100_41==1 | suppress_0to10_21==1 | suppress_90to100_21==1 | 
-    suppress_0to20_10==1 |   suppress_80to100_10==1 ~ 'NA',
+    suppress_95to100_41==1 | suppress_0to10_21==1 | suppress_90to100_21==1  ~ 'NA',
     suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
       suppress_0to2_101==0 & suppress_98to100_101==0 & 
       suppress_0to5_41==0 & suppress_95to100_41==0 & 
-      suppress_0to10_21==0 & suppress_90to100_21==0 & 
-      suppress_0to20_10==0 & suppress_80to100_10==0 ~ specialed_number)) %>%
+      suppress_0to10_21==0 & suppress_90to100_21==0  ~ specialed_number)) %>%
   
   select(c(location,locationtype,locationid,state,timeframe,varname,specialed_number_suppressed,specialed_percent_suppressed)) %>%
   
@@ -722,6 +735,7 @@ if (temp_rows==0) {
   print(temp_percheck)
 }
 
+
 #3. Check that there is no suppression or >1 suppression
 ########## MANUAL STEP #############
 #need to check that county data cannot be identified using totals
@@ -734,28 +748,69 @@ temp_testsuppression <- specialed_enroll %>%
 View(temp_testsuppression)
 
 #if there is only one county, print the counties in ascending order
-#temp_check <- specialed_enroll %>%
-  #subset(locationtype=='County' & dataformat=='Number') %>%
-  #mutate(data=as.numeric(paste(data))) %>%
-  #arrange(data)
-#View(temp_check)
-
-#******
-#CHANGE TO THE CORRECT COUNTY NAME HERE
-#**Choose the county with the next lowest count of births; if there is a tie, suppress both
-#frl_all$data[specialed_enroll$location=='Billings' & specialed_enroll$dataformat=='Number'] <- 'NA'
+temp_check <- specialed_enroll %>%
+ subset(locationtype=='County' & dataformat=='Number') %>%
+ mutate(data=as.numeric(paste(data))) %>%
+ arrange(data)
+View(temp_check)
 
 
-#4. Check that there is no suppression or >1 suppression
-########## MANUAL STEP #############
-#need to check that county data cannot be identified using region totals
-temp_testsuppression_region <- specialed_enroll %>%
+
+#before suppressing the next lowest county, check whether there is also an issue within a region that could be a better fit.
+#check all counties that match the region
+temp_testsuppression2 <- specialed_enroll %>%
+  subset(locationtype=='County') %>%
+  subset(dataformat=='Percent') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  mutate(suppressed_indicator=case_when(
+    data=='NA' ~1,
+    TRUE ~0)) %>%
+  group_by(region) %>%
+  summarise(sumNA=sum(suppressed_indicator)) %>%
+  subset(sumNA==1)
+
+temp_rows2 <- as.numeric(nrow(temp_testsuppression2))
+if (temp_rows2==0) {
+  'no additional data suppression needed'
+} else if (temp_rows2>=1) {
+  View(temp_testsuppression2)
+}
+
+temp_checkregions <- specialed_enroll %>%
   subset(locationtype=='County') %>%
   left_join(regionids,by=c('location'='county')) %>%
-  subset(data=='NA') %>%
-  select(location,region)
+  
+  #******ADD IN THE REGION HERE
+  subset(region=='Planning Region 8') %>%
+  arrange(data)
+View(temp_checkregions)
 
-View(temp_testsuppression_region)
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#specialed_enroll$specialed_enroll[specialed_enroll$location=='Billings' & specialed_enroll$dataformat=='Number'] <- 'NA'
+#specialed_enroll$data[specialed_enroll$location=='Billings' & specialed_enroll$dataformat=='Percent'] <- 'NA'
+
+
+#Then check again
+#4. Check that regions will not make counties identifable
+temp_testsuppression3 <- specialed_enroll %>%
+  subset(locationtype=='County') %>%
+  subset(dataformat=='Percent') %>%
+  left_join(regionids,by=c('location'='county')) %>%
+  mutate(suppressed_indicator=case_when(
+    data=='NA' ~1,
+    TRUE ~0)) %>%
+  group_by(region) %>%
+  summarise(sumNA=sum(suppressed_indicator)) %>%
+  subset(sumNA==1)
+
+temp_rows3 <- as.numeric(nrow(temp_testsuppression3))
+if (temp_rows3==0) {
+  'no additional data suppression needed'
+} else if (temp_rows3>=1) {
+  View(temp_testsuppression3)
+}
+
 
 # 5. Visually inspect output data
 View(specialed_enroll)
@@ -860,8 +915,8 @@ specialed_age_enroll <- specialed_age_state %>%
   
   #create indicators to suppress data
 
-  #supress if denominator is less than 10
-  mutate(suppress_denominator=if_else(totalenroll<10 | is.na(totalenroll),1,0)) %>%
+  #supress if denominator is less than 25
+  mutate(suppress_denominator=if_else(totalenroll<25 | is.na(totalenroll),1,0)) %>%
  
   #suppress percentages of 0-1 if more than 300 in denominator
   mutate(suppress_0to1_300=if_else(totalenroll>300 & specialed_percent<=.01,1,0)) %>%
@@ -883,19 +938,12 @@ specialed_age_enroll <- specialed_age_state %>%
   mutate(suppress_95to100_41=if_else((totalenroll>40 & totalenroll<=100) & 
                                      specialed_percent>=0.95,1,0)) %>%
   
-  #suppress percentages of 0-10 if between 21 to 40 in denominator
-  mutate(suppress_0to10_21=if_else((totalenroll>20 & totalenroll<=40) & 
+  #suppress percentages of 0-10 if between 25 to 40 in denominator
+  mutate(suppress_0to10_21=if_else((totalenroll>=25 & totalenroll<=40) & 
                                      specialed_percent<=0.10,1,0)) %>%
-  #suppress percentages of 90-100 if between 21 to 40 in denominator
-  mutate(suppress_90to100_21=if_else((totalenroll>20 & totalenroll<=40) & 
+  #suppress percentages of 90-100 if between 25 to 40 in denominator
+  mutate(suppress_90to100_21=if_else((totalenroll>=25 & totalenroll<=40) & 
                                      specialed_percent>=0.90,1,0)) %>%
-  
-  #suppress percentages of 0-20 if between 10 to 20 in denominator
-  mutate(suppress_0to20_10=if_else((totalenroll>=10 & totalenroll<=20) & 
-                                     specialed_percent<=0.20,1,0)) %>%
-  #suppress percentages of 80-100 if between 10 to 20 in denominator
-  mutate(suppress_80to100_10=if_else((totalenroll>=10 & totalenroll<=20) & 
-                                     specialed_percent>=0.80,1,0)) %>%
   
   #create updated percent and number based on suppression rules
   mutate(specialed_percent=as.character(paste(specialed_percent))) %>%
@@ -909,25 +957,20 @@ specialed_age_enroll <- specialed_age_state %>%
     suppress_95to100_41==1 ~ ">= 95%",
     suppress_0to10_21==1 ~ "<= 10%",
     suppress_90to100_21==1 ~ ">= 90%",
-    suppress_0to20_10==1 ~ "<= 20%",
-    suppress_80to100_10==1 ~ ">= 80%",
     suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
       suppress_0to2_101==0 & suppress_98to100_101==0 & 
       suppress_0to5_41==0 & suppress_95to100_41==0 & 
-      suppress_0to10_21==0 & suppress_90to100_21==0 & 
-      suppress_0to20_10==0 & suppress_80to100_10==0 ~ specialed_percent)) %>%
+      suppress_0to10_21==0 & suppress_90to100_21==0 ~ specialed_percent)) %>%
   
   mutate(specialed_number=as.character(paste(specialed_number))) %>%
   mutate(specialed_number_suppressed=case_when(
     suppress_denominator==1 | suppress_0to1_300==1 | suppress_99to100_300==1 | 
     suppress_0to2_101==1 |  suppress_98to100_101==1 |  suppress_0to5_41==1 | 
-    suppress_95to100_41==1 | suppress_0to10_21==1 | suppress_90to100_21==1 | 
-    suppress_0to20_10==1 |   suppress_80to100_10==1 ~ 'NA',
+    suppress_95to100_41==1 | suppress_0to10_21==1 | suppress_90to100_21==1  ~ 'NA',
     suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
       suppress_0to2_101==0 & suppress_98to100_101==0 & 
       suppress_0to5_41==0 & suppress_95to100_41==0 & 
-      suppress_0to10_21==0 & suppress_90to100_21==0 & 
-      suppress_0to20_10==0 & suppress_80to100_10==0 ~ specialed_number)) %>%
+      suppress_0to10_21==0 & suppress_90to100_21==0  ~ specialed_number)) %>%
   
   select(c(location,locationtype,locationid,state,timeframe,varname,age_group,specialed_number_suppressed,specialed_percent_suppressed)) %>%
   
@@ -1065,8 +1108,8 @@ specialed_type_enroll <- specialed_type_state %>%
   
   #create indicators to suppress data
 
-  #supress if denominator is less than 10
-  mutate(suppress_denominator=if_else(totalenroll<10 | is.na(totalenroll),1,0)) %>%
+  #supress if denominator is less than 25
+  mutate(suppress_denominator=if_else(totalenroll<25 | is.na(totalenroll),1,0)) %>%
  
   #suppress percentages of 0-1 if more than 300 in denominator
   mutate(suppress_0to1_300=if_else(totalenroll>300 & specialed_percent<=.01,1,0)) %>%
@@ -1088,19 +1131,12 @@ specialed_type_enroll <- specialed_type_state %>%
   mutate(suppress_95to100_41=if_else((totalenroll>40 & totalenroll<=100) & 
                                      specialed_percent>=0.95,1,0)) %>%
   
-  #suppress percentages of 0-10 if between 21 to 40 in denominator
-  mutate(suppress_0to10_21=if_else((totalenroll>20 & totalenroll<=40) & 
+  #suppress percentages of 0-10 if between 25 to 40 in denominator
+  mutate(suppress_0to10_21=if_else((totalenroll>=25 & totalenroll<=40) & 
                                      specialed_percent<=0.10,1,0)) %>%
-  #suppress percentages of 90-100 if between 21 to 40 in denominator
-  mutate(suppress_90to100_21=if_else((totalenroll>20 & totalenroll<=40) & 
+  #suppress percentages of 90-100 if between 25 to 40 in denominator
+  mutate(suppress_90to100_21=if_else((totalenroll>=25 & totalenroll<=40) & 
                                      specialed_percent>=0.90,1,0)) %>%
-  
-  #suppress percentages of 0-20 if between 10 to 20 in denominator
-  mutate(suppress_0to20_10=if_else((totalenroll>=10 & totalenroll<=20) & 
-                                     specialed_percent<=0.20,1,0)) %>%
-  #suppress percentages of 80-100 if between 10 to 20 in denominator
-  mutate(suppress_80to100_10=if_else((totalenroll>=10 & totalenroll<=20) & 
-                                     specialed_percent>=0.80,1,0)) %>%
   
   #create updated percent and number based on suppression rules
   mutate(specialed_percent=as.character(paste(specialed_percent))) %>%
@@ -1114,25 +1150,20 @@ specialed_type_enroll <- specialed_type_state %>%
     suppress_95to100_41==1 ~ ">= 95%",
     suppress_0to10_21==1 ~ "<= 10%",
     suppress_90to100_21==1 ~ ">= 90%",
-    suppress_0to20_10==1 ~ "<= 20%",
-    suppress_80to100_10==1 ~ ">= 80%",
     suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
       suppress_0to2_101==0 & suppress_98to100_101==0 & 
       suppress_0to5_41==0 & suppress_95to100_41==0 & 
-      suppress_0to10_21==0 & suppress_90to100_21==0 & 
-      suppress_0to20_10==0 & suppress_80to100_10==0 ~ specialed_percent)) %>%
+      suppress_0to10_21==0 & suppress_90to100_21==0 ~ specialed_percent)) %>%
   
   mutate(specialed_number=as.character(paste(specialed_number))) %>%
   mutate(specialed_number_suppressed=case_when(
     suppress_denominator==1 | suppress_0to1_300==1 | suppress_99to100_300==1 | 
     suppress_0to2_101==1 |  suppress_98to100_101==1 |  suppress_0to5_41==1 | 
-    suppress_95to100_41==1 | suppress_0to10_21==1 | suppress_90to100_21==1 | 
-    suppress_0to20_10==1 |   suppress_80to100_10==1 ~ 'NA',
+    suppress_95to100_41==1 | suppress_0to10_21==1 | suppress_90to100_21==1 ~ 'NA',
     suppress_denominator==0 & suppress_0to1_300==0 & suppress_99to100_300==0 & 
       suppress_0to2_101==0 & suppress_98to100_101==0 & 
       suppress_0to5_41==0 & suppress_95to100_41==0 & 
-      suppress_0to10_21==0 & suppress_90to100_21==0 & 
-      suppress_0to20_10==0 & suppress_80to100_10==0 ~ specialed_number)) %>%
+      suppress_0to10_21==0 & suppress_90to100_21==0 ~ specialed_number)) %>%
   
   select(c(location,locationtype,locationid,state,timeframe,varname,category,specialed_number_suppressed,specialed_percent_suppressed)) %>%
   
