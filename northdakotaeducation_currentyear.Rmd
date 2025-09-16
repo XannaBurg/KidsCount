@@ -461,23 +461,6 @@ specialed_state <- specialed_county %>%
   #add in locationtype
   mutate(locationtype='State')
 
-############
-#REGION DATA
-#start with cleaned county data
-specialed_region <- specialed_county %>%
-  
-  #add in regions
-  mutate(location=as.character(paste(location))) %>%
-  left_join(regionids,by=c('location'='county')) %>%
-  group_by(region) %>%
-  summarise(specialed_number=sum(specialed_number)) %>%
-  ungroup %>%
-
-  
-  #add in locationtype
-  rename(location=region) %>%
-  mutate(location=as.character(paste(location))) %>%
-  mutate(locationtype='Planning Region')
 
 
 #################
@@ -515,7 +498,6 @@ specialed_tribal <- specialed_data %>%
 #combine all geographies
 specialed_all <- specialed_county %>%
   bind_rows(specialed_state) %>%
-  bind_rows(specialed_region) %>%
   bind_rows(specialed_tribal) %>%
   
   mutate(state='North Dakota') %>%
@@ -574,22 +556,6 @@ enroll_state <- enroll_county %>%
   #add in locationtype
   mutate(locationtype='State')
 
-############
-#REGION DATA
-#start with cleaned county data
-enroll_region <- enroll_county %>%
-  
-  #add in regions
-  mutate(location=as.character(paste(location))) %>%
-  left_join(regionids,by=c('location'='county')) %>%
-  group_by(region) %>%
-  summarise(totalenroll=sum(totalenroll)) %>%
-  ungroup %>%
-
-  #add in locationtype
-  rename(location=region) %>%
-  mutate(location=as.character(paste(location))) %>%
-  mutate(locationtype='Planning Region')
 
 
 #################
@@ -623,7 +589,6 @@ enroll_tribal <- enroll_data %>%
 #combine all geographies
 enroll_all <- enroll_county %>%
   bind_rows(enroll_state) %>%
-  bind_rows(enroll_region) %>%
   bind_rows(enroll_tribal) %>%
   
   mutate(state='North Dakota') %>%
@@ -703,6 +668,15 @@ specialed_enroll <- specialed_all %>%
       suppress_0to5_41==0 & suppress_95to100_41==0 & 
       suppress_0to10_21==0 & suppress_90to100_21==0  ~ specialed_number)) %>%
   
+  #suppress Rolette and Turtle Mountain
+  mutate(specialed_number_suppressed=replace(specialed_number_suppressed,location=='Rolette','NA')) %>%
+  mutate(specialed_percent_suppressed=replace(specialed_percent_suppressed,location=='Rolette','NA')) %>%
+  
+  mutate(specialed_number_suppressed=replace(specialed_number_suppressed,location=='Turtle Mountain Reservation and Off-Reservation Trust Land (North Dakota portion)','NA')) %>%
+  mutate(specialed_percent_suppressed=replace(specialed_percent_suppressed,location=='Turtle Mountain Reservation and Off-Reservation Trust Land (North Dakota portion)','NA')) %>%
+  
+  
+  
   select(c(location,locationtype,locationid,state,timeframe,varname,specialed_number_suppressed,specialed_percent_suppressed)) %>%
   
   #change from wide to long
@@ -756,60 +730,10 @@ View(temp_check)
 
 
 
-#before suppressing the next lowest county, check whether there is also an issue within a region that could be a better fit.
-#check all counties that match the region
-temp_testsuppression2 <- specialed_enroll %>%
-  subset(locationtype=='County') %>%
-  subset(dataformat=='Percent') %>%
-  left_join(regionids,by=c('location'='county')) %>%
-  mutate(suppressed_indicator=case_when(
-    data=='NA' ~1,
-    TRUE ~0)) %>%
-  group_by(region) %>%
-  summarise(sumNA=sum(suppressed_indicator)) %>%
-  subset(sumNA==1)
-
-temp_rows2 <- as.numeric(nrow(temp_testsuppression2))
-if (temp_rows2==0) {
-  'no additional data suppression needed'
-} else if (temp_rows2>=1) {
-  View(temp_testsuppression2)
-}
-
-temp_checkregions <- specialed_enroll %>%
-  subset(locationtype=='County') %>%
-  left_join(regionids,by=c('location'='county')) %>%
-  
-  #******ADD IN THE REGION HERE
-  subset(region=='Planning Region 8') %>%
-  arrange(data)
-View(temp_checkregions)
-
 #CHANGE TO THE CORRECT COUNTY NAME HERE
-#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#**Choose the county with the next lowest count; if there is a tie, suppress both
 #specialed_enroll$specialed_enroll[specialed_enroll$location=='Billings' & specialed_enroll$dataformat=='Number'] <- 'NA'
 #specialed_enroll$data[specialed_enroll$location=='Billings' & specialed_enroll$dataformat=='Percent'] <- 'NA'
-
-
-#Then check again
-#4. Check that regions will not make counties identifable
-temp_testsuppression3 <- specialed_enroll %>%
-  subset(locationtype=='County') %>%
-  subset(dataformat=='Percent') %>%
-  left_join(regionids,by=c('location'='county')) %>%
-  mutate(suppressed_indicator=case_when(
-    data=='NA' ~1,
-    TRUE ~0)) %>%
-  group_by(region) %>%
-  summarise(sumNA=sum(suppressed_indicator)) %>%
-  subset(sumNA==1)
-
-temp_rows3 <- as.numeric(nrow(temp_testsuppression3))
-if (temp_rows3==0) {
-  'no additional data suppression needed'
-} else if (temp_rows3>=1) {
-  View(temp_testsuppression3)
-}
 
 
 # 5. Visually inspect output data
@@ -829,7 +753,7 @@ STEP 5: OUTPUT DATASET FOR UPLOADING TO KC DATA CENTER
 #########################
 ##OUTPUT DATA CENTER FILE
 
-datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",fullyear,"' AND varname='totalspecialeducation';")
+datacenter_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM northdakota WHERE timeframe='",fullyear,"' AND varname='totalspecialeducation' AND locationtype<>'Planning Region';")
 
 upload_data <- dbGetQuery(con,datacenter_sql) %>%
   rename(LocationId=locationid,
@@ -854,7 +778,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_total
 STEP 1: IMPORT AND CLEAN SPECIAL EDUCATION DATA
 ```{r}
 #import data
-specialed_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/2-SpecialEdSnapshot.xlsx")) 
+specialed_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/2-SpecialEdSnapshot.xlsx"))
 
 
 ############
@@ -1045,7 +969,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_total
 STEP 1: IMPORT AND CLEAN SPECIAL EDUCATION DATA
 ```{r}
 #import data
-specialed_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/2-SpecialEdSnapshot.xlsx"))
+specialed_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/2-SpecialEdSnapshot.xlsx"))
 
 
 ############
