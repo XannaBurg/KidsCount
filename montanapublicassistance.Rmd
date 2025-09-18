@@ -43,11 +43,8 @@ library(stringr)
 ```{r}
 
 ####UPDATE to reflect the current year data working with
-year <- '2024'
+year <- '2025'
 statename <- 'Montana'
-#input the number that matches Missoula CITY for Medicaid children
-missoulavalue <- '5618'
-
 
 #run this code to create an object needed for the database (DO NOT EDIT)
 database_state <- 'montana'
@@ -70,48 +67,42 @@ regionids$county <- as.character(regionids$county)
 #####STEP 1: READ IN DATA FROM DPHHS IN SEPTEMBER WHEN RECEIVE#####
 ```{r}
 #read in the data that was shared by DPHHS
-medicaid <- read_excel(path=paste0("./Input/economics/montana_",year,"_tanfsnapmedicaid.xlsx"),sheet=paste0("Medicaid & CHIP ",year),skip=4) %>%
-  rename(medicaidchildren='Medicaid\r\nChildren',
-         chip='HMK Only',
-         medicaidandchip='HMK &\r\nMedicaid') %>%
-  
-  #assign numeric to counts
-  mutate(medicaidchildren=as.numeric(medicaidchildren)) %>%
-  mutate(chip=as.numeric(chip)) %>%
-  mutate(medicaidandchip=as.numeric(medicaidandchip))
-
+medicaid <- read_excel(path=paste0("./Input/economics/montana_",year,"_tanfsnapmedicaid.xlsx"),sheet=paste0("Medicaid June ",year)) %>%
+  rename(medicaidchildren='Medicaid Children',
+         chip='HMK Children',
+         medicaidandchip='Medicaid & CHIP Children')
 
 #create state data frame subsetting for Grand Total row
 medicaid_state <- medicaid %>%
-  subset(COUNTY=='Grand Total')
+  subset(County=='State Total')
 
 #create the county data frame subsetting to remove NA counties and cities
 medicaid_county <- medicaid %>%
-  subset(!is.na(COUNTY)) %>%
-  mutate(COUNTY=replace(COUNTY, 
-                          statename=='Montana' & COUNTY=='Lewis And Clark', 
+  #remove county number from string
+  mutate(location=substr(County, 1, nchar(County) - 5)) %>% 
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Lewis And Clark', 
                           'Lewis & Clark')) %>%
-  mutate(COUNTY=replace(COUNTY, 
-                          statename=='Montana' & COUNTY=='Mccone', 
+  mutate(location=replace(location, 
+                          statename=='Montana' & location=='Mccone', 
                           'McCone')) %>%
-  left_join(locationids,by=c('COUNTY'='Location')) %>%
+  left_join(locationids,by=c('location'='Location')) %>%
   rename(locationid=LocationId) %>%
   #remove non-counties
-  subset(!is.na(locationid)) %>%
-  #remove Missoula city
-  filter(COUNTY!='Missoula' | medicaidchildren!=missoulavalue)
+  subset(!is.na(locationid)) 
   
 
 #####################
 #CLEAN UP COUNTY DATA
 medicaid_county_number <- medicaid_county %>%
-  mutate(medicaid_group=medicaidchildren+medicaidandchip) %>%
-  mutate(totalchildren=medicaid_group+chip) %>%
+  group_by(location) %>%
+  summarise(medicaid_group=sum(c(medicaidchildren,medicaidandchip),na.rm=TRUE),
+            chip=sum(chip,na.rm=TRUE),
+            totalchildren=sum(c(medicaid_group,chip),na.rm=TRUE)) %>%
   
-  select(c(COUNTY,medicaid_group,chip,totalchildren)) %>%
+  select(c(location,medicaid_group,chip,totalchildren)) %>%
   
   #add in KC variables
-  rename(location=COUNTY) %>%
   mutate(locationtype='County') %>%
   mutate(state=statename) %>%
   mutate(timeframe=year) %>%
@@ -131,13 +122,16 @@ medicaid_county_number <- medicaid_county %>%
 ####################
 #CLEAN UP STATE DATA
 medicaid_state_number <- medicaid_state %>%
-  mutate(medicaid_group=medicaidchildren+medicaidandchip) %>%
-  mutate(totalchildren=medicaid_group+chip) %>%
+  mutate(location=statename) %>%
+  group_by(location) %>%
+  summarise(medicaid_group=sum(c(medicaidchildren,medicaidandchip),na.rm=TRUE),
+            chip=sum(chip,na.rm=TRUE),
+            totalchildren=sum(c(medicaid_group,chip),na.rm=TRUE)) %>%
   
-  select(c(medicaid_group,chip,totalchildren)) %>%
+  select(c(location,medicaid_group,chip,totalchildren)) %>%
   
   #add in KC variables
-  mutate(location=statename) %>%
+ 
   mutate(locationtype='State') %>%
   mutate(state=statename) %>%
   mutate(timeframe=year) %>%
@@ -197,6 +191,7 @@ dbWriteTable(con,database_state,upload_medicaid_number,append=TRUE,row.names=FAL
 #write query from database to get needed format for KC data center
 
 uploadnumber_sql <- paste0("SELECT locationid, location, timeframe, category, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='medicaidages0to18' AND dataformat='Number';")
+
 
 
 upload_datacenter_medicaid_number <- dbGetQuery(con,uploadnumber_sql) %>%
