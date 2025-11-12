@@ -5,24 +5,18 @@ date: "2/20/2020"
 output: html_document
 ---
 
-## Indicator 1: TANF recipients ages 0 to 19
-## Indicator 2: SNAP recipients ages 0 to 18
-## Indicator 3: Child care assistance recipients ages 0 to 13
-## Indicator 4: Medicaid recipients ages 0 to 20
-## Indicator 5: Children ages 0 to 18 enrolled in Healthy Steps
+## Indicator 1: TANF recipients ages 0 through 19
+## Indicator 2: SNAP recipients ages 0 through 18
+## Indicator 3: Child care assistance recipients ages 0 through 13
+## Indicator 4: Medicaid recipients ages 0 through 20
+## Indicator 5: Children ages 0 through 18 enrolled in Healthy Steps
 
 **Created by:** Xanna Burg
-**Date:** February, 2020
 **Updated by:**
 
 **Data Source:** North Dakota Department of Human Services 
 **Purpose:** Clean the public assistance provided by the Department of Human Services and update KIDS COUNT data for North Dakota.
 **Description:** this program calculates five indicators 
-**TANF recipients ages 0 to 19**
-**SNAP recipients age 0 to 18**
-**Child care assitance recipients ages 0 to 13**
-**Medicaid recipients ages 0 to 20**
-**Chidren ages 0 to 18 enrolled in Healthy Steps**
 
 * Geographies: state total, county, state planning regions (where applicable, which are groups of counties)
 * Number - count of individuals participating in program
@@ -40,8 +34,8 @@ library(readxl)
 
 ```{r}
 #UPDATE to reflect the current year data working with
-year <- '2024'
-fiscalyear <- 'FY24'
+year <- '2025'
+fiscalyear <- 'FY25'
 state <- 'northdakota'
 
 
@@ -52,11 +46,11 @@ year_minus1 <- as.character(as.numeric(year)-1)
 ```{r}
 #read in the data in Excel format with multiple sheets
 
-df_tanf <- read_excel(paste0("./Input/economics/northdakota_",fiscalyear,"_economicassistance_tanf.xlsx"))
-df_snap <- read_excel(paste0("./Input/economics/northdakota_",fiscalyear,"_economicassistance_snap.xlsx"))
-df_ccap <- read_excel(paste0("./Input/economics/northdakota_",fiscalyear,"_economicassistance_ccap.xlsx"))
-df_medicaid <- read_excel(paste0("./Input/economics/northdakota_",fiscalyear,"_economicassistance_medicaid.xlsx"))
-df_healthysteps <- read_excel(paste0("./Input/economics/northdakota_",fiscalyear,"_economicassistance_chip.xlsx"))
+df_snap <- read_excel(paste0("./Input/economics/northdakota_",fiscalyear,"_economicassistance.xlsx"),sheet="SNAP_1",skip=6)
+df_tanf <- read_excel(paste0("./Input/economics/northdakota_",fiscalyear,"_economicassistance.xlsx"),sheet="TANF_2",skip=6)
+df_ccap <- read_excel(paste0("./Input/economics/northdakota_",fiscalyear,"_economicassistance_ccap.xlsx")) #this one comes from separate report
+df_medicaid <- read_excel(paste0("./Input/economics/northdakota_",fiscalyear,"_economicassistance.xlsx"),sheet="MEDICAID_4",skip=6)
+df_healthysteps <- read_excel(paste0("./Input/economics/northdakota_",fiscalyear,"_economicassistance.xlsx"),sheet="Health Steps_CHIP_5",skip=7)
 
 #input location ID file for ND
 locationids <- read.csv("./Input/ND KC Location IDs.csv")
@@ -533,7 +527,7 @@ write.csv(upload_data_ccap,file=paste0("./Output/economics/",state,"_",year,"_cc
 #clean the county data
 df_medicaid2 <- df_medicaid %>%
   rename(location=County,
-         data=`MED_EX_CHIP`) %>%
+         data=`Unduplicated Medicaid recipients age 0-20`) %>%
   #remove extra rows or counties not a ND county
   subset(!is.na(location)) %>%
   subset(location != 'County Not Available / Out of State County') %>%
