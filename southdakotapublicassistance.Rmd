@@ -42,8 +42,8 @@ library(stringr)
 ```{r}
 
 ####UPDATE to reflect the current year data working with
-year <- '2024'
-year_short <- '24'
+year <- '2025'
+year_short <- '25'
 statename <- 'South Dakota'
 
 
@@ -162,7 +162,7 @@ write.csv(upload_datacenter,file=paste0("./Output/economics/",database_state,"_"
 
 ```{r}
 #import and clean the data
-snapparticipants <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_publicassistance.xlsx"),sheet="SNAP_By Age Group",skip=1) %>%
+snapparticipants <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_publicassistance.xlsx"),sheet=paste0("SNAP_By Age Group FY",year_short),skip=1) %>%
   
   rename(location=all_of(paste0("FY",year_short))) %>%
   mutate(location=replace(location,location=='State','South Dakota')) %>%
@@ -413,7 +413,7 @@ write.csv(upload_datacenter,file=paste0("./Output/economics/",database_state,"_"
 #import and clean the data
 tanfhouseholds <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_publicassistance.xlsx"),sheet=paste0("TANF_FY",year_short),skip=4) %>%
   
-  rename(location=`...1`,
+  rename(location=paste0("FY",year_short),
          data=Families) %>%
   mutate(location=replace(location,location=='State Totals','South Dakota')) %>%
   
@@ -512,7 +512,7 @@ write.csv(upload_datacenter,file=paste0("./Output/economics/",database_state,"_"
 #import and clean the data
 tanfparticipants <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_publicassistance.xlsx"),sheet=paste0("TANF_FY",year_short),skip=4) %>%
   
-  rename(location=`...1`,
+  rename(location=paste0("FY",year_short),
          data=Children) %>%
   mutate(location=replace(location,location=='State Totals','South Dakota')) %>%
   
@@ -651,8 +651,8 @@ medicaidparticipants <- read_excel(path=paste0("./Input/economics/southdakota_",
   
   select(-c(`...6`,`Title XXI Children`)) %>%
   
-  rename(location=`...1`) %>%
-  mutate(location=replace(location,location=='State Totals','South Dakota')) %>%
+  rename(location=`State Totals`) %>%
+  mutate(location=replace(location,is.na(location),'South Dakota')) %>%
   
   subset(location!='County Not Available') %>%
 
@@ -897,9 +897,9 @@ write.csv(upload_datacenter,file=paste0("./Output/economics/",database_state,"_"
 
 ```{r}
 #import and clean the data
-tanfna <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_publicassistance.xlsx"),sheet="TANF_Nat Amer ",skip=1) %>%
+tanfna <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_publicassistance.xlsx"),sheet=paste0("TANF_Nat Amer FY",year_short),skip=1) %>%
   
-  rename(location=`...1`) %>%
+  rename(location=paste0("FY",year_short)) %>%
   mutate(location=replace(location,location=='State Totals','South Dakota')) %>%
   
   #lower case county names
@@ -991,10 +991,10 @@ dbWriteTable(con,database_state,tanfna,append=TRUE,row.names=FALSE)
 
 ```{r}
 #import and clean the data
-snapna <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_publicassistance.xlsx"),sheet="SNAP_Nat Amer  ",skip=1) %>%
+snapna <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_publicassistance.xlsx"),sheet=paste0("SNAP_Nat Amer FY",year_short),skip=1) %>%
   
-  rename(location=`...1`) %>%
-  mutate(location=replace(location,location=='State Totals','South Dakota')) %>%
+  rename(location=paste0("FY",year_short)) %>%
+  mutate(location=replace(location,location=='State','South Dakota')) %>%
   subset(!is.na(Households)) %>%
   
   #lower case county names
@@ -1086,9 +1086,9 @@ dbWriteTable(con,database_state,snapna,append=TRUE,row.names=FALSE)
 
 ```{r}
 #import and clean the data
-medicaidna <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_publicassistance.xlsx"),sheet="Medicaid_NatAmer ",skip=2) %>%
+medicaidna <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_publicassistance.xlsx"),sheet=paste0("Medicaid_NatAmer FY",year_short),skip=2) %>%
   
-  rename(location=`...1`) %>%
+  rename(location=paste0("FY",year_short)) %>%
   mutate(location=replace(location,location=='State Totals','South Dakota')) %>%
   
   subset(location != 'County Not Available') %>%
