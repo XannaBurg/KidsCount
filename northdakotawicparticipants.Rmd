@@ -30,7 +30,7 @@ library(sas7bdat)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2024'
+year <- '2025'
 
 statefile <- 'northdakota'
 statename <- 'North Dakota'
@@ -51,38 +51,33 @@ countylist$Location <- as.character(countylist$Location)
 
 ## STEP 1: IMPORT AND CLEAN THE DATA
 ```{r}
-wicdata <- read.csv(paste0("./Input/Health/northdakota_",year,"_wicparticipants.csv")) %>%
-  select(c(Location,Total)) %>%
-  mutate(Location=as.character(paste(Location))) %>%
-  
-  mutate(Location=replace(Location,Location=='Mclean','McLean')) %>%
-  mutate(Location=replace(Location,Location=='Lamoure','LaMoure')) %>%
-  mutate(Location=replace(Location,Location=='Mchenry','McHenry')) %>%
-  mutate(Location=replace(Location,Location=='Mcintosh','McIntosh')) %>%
-  mutate(Location=replace(Location,Location=='Mckenzie','McKenzie')) 
-  
-
-#county data
-wicdata_county <- wicdata %>%
-  subset(Location != 'Statewide') %>%
-  mutate(locationtype='County') %>%
-  mutate(Total=as.numeric(paste(Total)))
-
-#state data
-wicdata_state <- wicdata %>%
-  subset(Location=='Statewide') %>%
-  mutate(Location='North Dakota') %>%
+wicdata_state <- read_xlsx(paste0("./Input/Health/northdakota_",year,"_wicparticipants.xlsx"),range="A4:Z5") %>%
+  select(c(`Grand Total`)) %>% 
+  mutate(location='North Dakota') %>%
   mutate(locationtype='State') %>%
-  mutate(Total=as.numeric(paste(Total)))
+  rename(data=`Grand Total`) 
+
+wicdata_county <- read_xlsx(paste0("./Input/Health/northdakota_",year,"_wicparticipants.xlsx"),range="A8:Z61") %>%
+  select(c(`County`, `Grand Total`)) %>% 
+  rename(location=`County`,
+         data=`Grand Total`) %>%
+  mutate(locationtype='County') %>%
+  
+  mutate(location=replace(location,location=='Mclean','McLean')) %>%
+  mutate(location=replace(location,location=='Lamoure','LaMoure')) %>%
+  mutate(location=replace(location,location=='Mchenry','McHenry')) %>%
+  mutate(location=replace(location,location=='Mcintosh','McIntosh')) %>%
+  mutate(location=replace(location,location=='Mckenzie','McKenzie')) 
+  
 
 #region data
 wicdata_region <- wicdata_county %>%
-  left_join(regionids,by=c('Location'='county')) %>%
+  left_join(regionids,by=c('location'='county')) %>%
   group_by(region) %>%
-  summarise(Total=sum(Total,na.rm=TRUE)) %>%
+  summarise(data=sum(data,na.rm=TRUE)) %>%
   ungroup %>%
-  rename(Location=region) %>%
-  mutate(Location=as.character(paste(Location))) %>%
+  rename(location=region) %>%
+  mutate(location=as.character(paste(location))) %>%
   mutate(locationtype='Planning Region')
 
 
@@ -90,9 +85,6 @@ wicdata_region <- wicdata_county %>%
 wicdata_all <- wicdata_county %>%
   bind_rows(wicdata_state) %>%
   bind_rows(wicdata_region) %>%
-  
-  rename(location=Location,
-         data=Total) %>%
   mutate(state='North Dakota') %>%
   mutate(timeframe=year) %>%
   mutate(dataformat='Number') %>%
