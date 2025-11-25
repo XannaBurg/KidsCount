@@ -1,0 +1,730 @@
+---
+title: "Montana Child Care Data"
+author: "Xanna Burg"
+date: "September 2020"
+output: html_document
+---
+
+## Indicator 1: Children receiving Best Beginnings Child Care Scholarship (child care assistance)
+## Indicator 2: Licensed child care facilities by STAR level
+## Indicator 3: Licensed child care capacity by STAR level
+## Indicator 4: Licensed child care capacity meeting STAR level 3 or higher
+## Indicator 5: Median wage for child care workers
+
+**Created by:** Xanna Burg
+**Data Source:** Montana Department of Public Health and Human Services, Early Childhood and Family Services Bureau
+**Purpose:** Clean and process the public assistance data requested from DPHHS into correct format for Kids Count Data Center.
+
+**Data format:** Final output csv to upload is in long format with the following variables: Location (character: name of location), TimeFrame (text: years), Data (numeric: number, percentage), DataFormat, LocationId (numeric: assigned for KIDS COUNT system)
+
+
+**To use this code for a new year:**
+* Update the year in the second code chunk for variable 'year'
+* Check each dataset visually and through the report logs prior to commiting to the database.
+
+**This code was amended to process the RAW data files vs. the formatted files received prior to 2025**
+
+
+
+```{r,message=FALSE}
+#load required packages
+library(tidyverse)
+library(RPostgreSQL)
+library(readxl)
+library(naniar)
+library(stringr)
+library(tidycensus)
+library(writexl)
+library(openxlsx)
+library(dplyr)
+library(lubridate) 
+```
+
+
+```{r}
+
+####UPDATE to reflect the current year data working with
+year <- '2025'
+year_short <- substr(year,3,4)
+statename <- 'Montana'
+
+
+#run this code to create an object needed for the database (DO NOT EDIT)
+database_state <- 'montana'
+
+#input location ID file for MT
+locationids <- read.csv("./Input/MT KC Location IDs.csv")
+locationids$Location <- as.character(locationids$Location)
+
+#county list to have full list of counties available for merging
+countylist <- read.csv("./Input/MT County List.csv")
+
+#county and state names that match fips codes (from tidycensus package)
+fips <- fips_codes %>%
+  subset(state_name=='Montana') %>%
+  mutate(county_code=as.numeric(paste(county_code)))
+```
+
+## ######################################################### ##
+## CHILDREN RECEIVING BEST BEGINNINGS CHILD CARE SCHOLARSHIP ##
+## ######################################################### ##
+```{r}
+#read in the raw data that was shared by DPHHS
+bestbeginnings_raw_children <- read_excel(paste0("./Input/education/Montana Child Care Raw Analysis/SFY ",year,"/SFY ",year," Data Kids Count - Part 2/SFY ",year," 1-UD children receiving subsidies by county.xlsx"),sheet='Select chca_counties',skip=8)
+
+bestbeginnings_raw_families <- read_excel(paste0("./Input/education/Montana Child Care Raw Analysis/SFY ",year,"/SFY ",year," Data Kids Count - Part 2/SFY ",year," 2-UD families receiving subsidies by county.xlsx"),sheet='Select chca_counties',skip=8)
+
+bestbeginnings_raw_expenditures <- read_excel(paste0("./Input/education/Montana Child Care Raw Analysis/SFY ",year,"/SFY ",year," Data Kids Count - Part 2/SFY ",year," 4-Child Expenditures by County Month.xlsx"), sheet='Select chca_counties',skip=7)
+
+bestbeginnings_raw_providers <- read_excel(paste0("./Input/education/Montana Child Care Raw Analysis/SFY ",year,"/SFY ",year," Data Kids Count - Part 2/SFY ",year," 3 -UD Providers by County Month.xlsx"), sheet='Select chca_counties',skip=9)
+
+
+###### CHILD COUNT ######
+#create a state total first
+bestbeginnings_children_state <- bestbeginnings_raw_children %>%
+   #remove cases that are not in Montana
+   subset(STATE_CODE=='MT') %>%
+   #only include state in this dataframe
+   subset(Comment=='State Total') %>%
+   mutate(location='Montana') %>%
+   rename(`Child Count`=CHLD_CNT) %>%
+   select(c(location,`Child Count`))
+  
+#create county & final child count file
+bestbeginnings_children <- bestbeginnings_raw_children %>%
+  #remove cases that are not in Montana
+  subset(STATE_CODE=='MT') %>%
+  #just county data
+  subset(!is.na(CNTY_NM)) %>%
+  rename(`Child Count`=CHLD_CNT) %>%
+ 
+  #clean up some of the location names
+  rename(location=CNTY_NM) %>%
+  mutate(location=replace(location,location=='Lewis and Clark','Lewis & Clark')) %>%
+  
+  #merge in county list to capture any with zero
+  full_join(countylist, by=c('location'='Location')) %>%
+  mutate(`Child Count`=replace(`Child Count`,is.na(`Child Count`),0)) %>% 
+  select(c(location,`Child Count`)) %>%
+  
+  #add in state total, unduplicated at the state level
+  bind_rows(bestbeginnings_children_state)
+
+  
+
+###### FAMILY COUNT ######
+#create a state total first
+bestbeginnings_families_state <- bestbeginnings_raw_families %>%
+  #remove cases that are not in Montana
+  subset(STATE_CODE=='MT') %>%
+   #only include state in this dataframe
+   subset(Comment=='State Total') %>%
+   mutate(location='Montana') %>%
+   rename(`Family Count`=FMLY_CNT) %>%
+   select(c(location,`Family Count`))
+
+  
+#create county & final family count file
+bestbeginnings_families <- bestbeginnings_raw_families %>%
+  #remove cases that are not in Montana
+ subset(STATE_CODE=='MT') %>%
+ #just county data
+  subset(!is.na(CNTY_NM)) %>%
+  rename(`Family Count`=FMLY_CNT) %>%
+ 
+  #clean up some of the location names
+  rename(location=CNTY_NM) %>%
+  mutate(location=replace(location,location=='Lewis and Clark','Lewis & Clark')) %>%
+  
+  #merge in county list to capture any with zero
+  full_join(countylist, by=c('location'='Location')) %>%
+  mutate(`Family Count`=replace(`Family Count`,is.na(`Family Count`),0)) %>% 
+  select(c(location,`Family Count`)) %>%
+  
+  #add in state total, unduplicated at the state level
+  bind_rows(bestbeginnings_families_state)
+
+
+###### SUBSIDY EXPENDITURES ######
+#create a state total first
+bestbeginnings_expenditures_state <- bestbeginnings_raw_expenditures %>%
+  #remove cases that are not in Montana
+  subset(`STATE CODE`=='MT') %>%
+  #only include state in this dataframe
+   subset(Comment=='State Total') %>%
+   mutate(location='Montana') %>%
+   rename(`Subsidy Expenditures`=paste0("SFY ",year)) %>%
+   select(c(location,`Subsidy Expenditures`))
+
+
+#create county & final subsidy file
+bestbeginnings_expenditures <- bestbeginnings_raw_expenditures %>%
+  #remove cases that are not in Montana
+ subset(`STATE CODE`=='MT') %>%
+ #just county data
+  subset(!is.na(`COUNTY NAME`)) %>%
+  rename(`Subsidy Expenditures`=paste0("SFY ",year)) %>%
+ 
+  #clean up some of the location names
+  rename(location=`COUNTY NAME`) %>%
+  mutate(location=replace(location,location=='Lewis and Clark','Lewis & Clark')) %>%
+  
+  #merge in county list to capture any with zero
+  full_join(countylist, by=c('location'='Location')) %>%
+  mutate(`Subsidy Expenditures`=replace(`Subsidy Expenditures`,is.na(`Subsidy Expenditures`),0)) %>% 
+  select(c(location,`Subsidy Expenditures`)) %>%
+  
+  #add in state total, unduplicated at the state level
+  bind_rows(bestbeginnings_expenditures_state)
+
+
+###### PROVIDER COUNT ######
+#create a state total first
+bestbeginnings_providers_state <- bestbeginnings_raw_providers %>%
+   #remove cases that are not in Montana
+  subset(`STATE CODE`=='MT') %>%
+  #only include state in this dataframe
+   subset(Comment=='State Total') %>%
+   mutate(location='Montana') %>%
+   rename(`Provider Count`=paste0("SFY ",year)) %>%
+   select(c(location,`Provider Count`))
+  
+  
+#create county & final provider count file
+bestbeginnings_providers <- bestbeginnings_raw_providers %>%
+  #remove cases that are not in Montana
+  subset(`STATE CODE`=='MT') %>%
+  #just county data
+  subset(!is.na(`COUNTY NAME`)) %>%
+  rename(`Provider Count`=paste0("SFY ",year)) %>%
+ 
+  #clean up some of the location names
+  rename(location=`COUNTY NAME`) %>%
+  mutate(location=replace(location,location=='Lewis and Clark','Lewis & Clark')) %>%
+  
+  #merge in county list to capture any with zero
+  full_join(countylist, by=c('location'='Location')) %>%
+  mutate(`Provider Count`=replace(`Provider Count`,is.na(`Provider Count`),0)) %>% 
+  select(c(location,`Provider Count`)) %>%
+  
+  #add in state total, unduplicated at the state level
+  bind_rows(bestbeginnings_providers_state)
+  
+
+
+##### COMBINE ALL MEASURES FOR BEST BEGINNING BY COUNTY #####
+bestbeginnings_county <- bestbeginnings_children %>%
+  left_join(bestbeginnings_families) %>%
+  left_join(bestbeginnings_expenditures) %>%
+  left_join(bestbeginnings_providers)
+
+#export full data file for records
+write_xlsx(bestbeginnings_county, paste0("./Input/education/Montana Child Care Raw Analysis/montana_childcaredata_",year,"_bestbeginnings_county.xlsx"))
+
+#for database, we only need the count of children on Best Beginnings
+#add database variables
+bestbeginnings_kidscount <- bestbeginnings_county %>%
+  select(c(location,`Child Count`)) %>%
+  rename(data=`Child Count`) %>%
+  
+  mutate(locationtype=case_when(
+    location=='Montana' ~ 'State',
+    TRUE ~ 'County')) %>%
+  
+  mutate(state='Montana',
+         timeframe=year,
+         dataformat='Number',
+         varname='childcareassistancerecipients') %>%
+  
+  left_join(locationids,by=c('location'='Location')) %>%
+  rename(locationid=LocationId) %>%
+  
+  #suppress if <5 including zeros
+  mutate(data=replace(data,data<5,NA))
+
+
+
+####################
+####################
+#DATA QUALITY CHECKS
+### Before moving forward, check the output log for errors in addition to checking specifically for these quality checks
+
+# 1. Print name of location that has a mismatched location ID
+if (sum(is.na(bestbeginnings_kidscount$locationid))>=1) {
+  print(bestbeginnings_kidscount$location[is.na(bestbeginnings_kidscount$locationid)])
+} else if (sum(is.na(bestbeginnings_kidscount$locationid))==0) {
+  'all locations match'
+}
+
+#2. Check that no values are less than 5
+temp_suppresscheck <- bestbeginnings_kidscount %>% subset(data<5)
+temp_rows <- as.numeric(nrow(temp_suppresscheck))
+if (temp_rows==0) {
+  'data suppression followed at individual location level'
+} else if (temp_rows>=1) {
+  View(temp_suppresscheck)
+}
+
+#3. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- bestbeginnings_kidscount %>%
+  subset(locationtype=='County') %>%
+  group_by(location) %>%
+  summarise_all(~sum(is.na(.))) %>%
+  transmute(location,sumNA=rowSums(.[-1])) %>%
+  subset(sumNA==1)
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- bestbeginnings_kidscount %>%
+#  subset(locationtype=='County') %>%
+#  arrange(data)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count of births; if there is a tie, suppress both
+#bestbeginnings_kidscount$data[bestbeginnings_kidscount$location=='Billings'] <- NA
+
+
+# 4. Visually inspect output data
+View(bestbeginnings_kidscount)
+```
+
+```{r}
+#CHECK DATASET NAMED data_bestbeginnings TO VERIFY DATA ISN'T MISSING AND APPEARS CORRECT
+#this code adds kids count data to MBPC postgres database
+#run postgres code (separate file) first
+dbWriteTable(con,database_state,bestbeginnings_kidscount,append=TRUE,row.names=FALSE)
+```
+
+```{r}
+#write query from database to get needed format for KC data center
+
+uploadnumber_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM ", database_state," WHERE timeframe='",year,"' AND varname='childcareassistancerecipients';")
+
+
+upload_datacenter <- dbGetQuery(con,uploadnumber_sql) %>%
+  rename(LocationId=locationid,
+         Location=location,
+         TimeFrame=timeframe,
+         DataFormat=dataformat,
+         Data=data)
+
+
+#SAVE OUTPUT DATASET TO UPLOAD TO DATA CENTER
+write.csv(upload_datacenter,file=paste0("./Output/education/",database_state,"_",year,"_childcareassistancerecipients.csv"),row.names=FALSE)
+```
+
+
+## ############################## ##
+## STATEWIDE BEST BEGINNINGS DATA ##
+## ############################## ##
+#Number of Families & Children Per FPL Level Range 
+#By priority area 
+#Average Monthly Copay
+#Part Time versus Full Time 
+#Number of Families & Children Per Care Reason 
+
+## Note that statewide data is not uploaded to the Kids Count Data Center, but is reported separately to partner organizations.
+
+```{r}
+#read in the raw data
+bestbeginnings_raw_state_income <- read_excel(paste0("./Input/education/Montana Child Care Raw Analysis/SFY ",year,"/SFY ",year," Data Kids Count - Part 3/SFY ",year," Part 3 Qry1 NumChildrenReceivingScholarshipsByIncomeLevel.xlsx"),sheet='Select chca_elig_case_member_in')
+
+bestbeginnings_raw_state_hours <- read_excel(paste0("./Input/education/Montana Child Care Raw Analysis/SFY ",year,"/SFY ",year," Data Kids Count - Part 3/SFY ",year," Part 3 Qry2 HoursOfChildrenReceivingScholarships.xlsx"),sheet='Select select')
+
+bestbeginnings_raw_state_providers <- read_excel(paste0("./Input/education/Montana Child Care Raw Analysis/SFY ",year,"/SFY",year," Data Files/SFY",year," Subsidy Payments C A.xlsx"))
+
+bestbeginnings_raw_payments <- read_excel(paste0("./Input/education/Montana Child Care Raw Analysis/SFY ",year,"/SFY",year," Data Files/SFY",year," Subsidy Payments E.xlsx"))
+
+bestbeginnings_raw_priority <- read_excel(paste0("./Input/education/Montana Child Care Raw Analysis/SFY ",year,"/SFY ",year," Data Kids Count - Part 3/SFY ",year," Part 3 Quest9 PriorityCategories.xlsx"), sheet='Select select')
+
+
+
+#####  Number of Families & Children Per FPL Level Range ##### 
+by_income <- bestbeginnings_raw_state_income %>% 
+  #create summary variable of the income indicators
+  mutate(income_grouped=case_when(
+    `< 100% FPL`==1 ~ '<100% FPL',
+    `100% - <130% FPL`==1 ~ '100% - <130% FPL',
+    `130% - <150% FPL`==1 ~ '130% - <150% FPL',
+    `150% - <185% FPL`==1 ~ '150% - <185% FPL',
+    `185% - <200% FPL`==1 ~ '185% - <200% FPL',
+    `>= 200% FPL`==1 ~ '>= 200% FPL')) %>%
+  #specify order
+  mutate(income_grouped = factor(income_grouped,
+                                 levels = c("<100% FPL", "100% - <130% FPL", "130% - <150% FPL","150% - <185% FPL","185% - <200% FPL",">= 200% FPL"))) %>%
+  
+  #create summary table
+  group_by(income_grouped) %>%
+  summarise(`Family (cases)` = n(),
+            `Children` = sum(UD_RCVD_CHLD_CARE_ASST,na.rm=TRUE)) %>%
+  ungroup() %>%
+  bind_rows(
+    summarise(.,
+              income_grouped = "Total",
+              `Family (cases)` = sum(`Family (cases)`),
+              `Children` = sum(`Children`)))
+
+
+
+##### Average Monthly Copay ##### 
+children <- bestbeginnings_county$`Child Count`[bestbeginnings_county$location == "Montana"]
+families <- bestbeginnings_county$`Family Count`[bestbeginnings_county$location == "Montana"]
+
+
+average_copay <- bestbeginnings_raw_payments %>%
+  mutate(
+    monthly_avg_adjusted = rowSums(
+      select(., matches("^(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)")),
+      na.rm = TRUE
+    ) / 12
+  ) %>%
+  summarise(
+    total_monthly_avg = sum(monthly_avg_adjusted, na.rm = TRUE),
+    total_children = sum(children, na.rm = TRUE),
+    total_families = sum(families, na.rm = TRUE),
+    per_child_avg = total_monthly_avg / total_children,
+    per_family_avg = total_monthly_avg / total_families
+  )
+
+
+
+##### Part Time versus Full Time ##### 
+by_timeauthorized <- bestbeginnings_raw_state_hours %>%
+    mutate(part_time = if_else(AVG_HOURS_PER_MONTH <= 108, 1, 0)) %>%
+  
+  # Count totals
+  summarise(
+    `Part Time` = sum(part_time == 1),
+    `Full Time` = sum(part_time == 0),
+    Total = n(),
+    .groups = "drop"
+  ) %>%
+  
+  # Reshape
+  pivot_longer(
+    cols = everything(),
+    names_to = "group",
+    values_to = "count_children"
+  )
+
+
+
+##### Number of Families & Children Per Care Reason #####
+by_reason <- bestbeginnings_raw_state_income %>% 
+  #create summary variable of the income indicators
+  
+  #create summary table
+  group_by(CARE_RSN_NM) %>%
+  summarise(`Family (cases)` = n(),
+            `Children` = sum(UD_RCVD_CHLD_CARE_ASST,na.rm=TRUE)) %>%
+  ungroup() %>%
+  bind_rows(
+    summarise(.,
+              CARE_RSN_NM = "Total",
+              `Family (cases)` = sum(`Family (cases)`),
+              `Children` = sum(`Children`)))
+
+
+##### Number of Families & Children Per Priority Area #####
+by_priority <- bestbeginnings_raw_priority %>% 
+  #create summary variable of the income indicators
+  
+  #create summary table
+
+  pivot_longer(
+    cols = c(FOSTER_CARE, TANF, SPECIAL_NEED_DISABLED, TEEN_PRNT, 
+             FAM_HOMELESS, `NON-TANF_AND_NO_OTHER`),
+    names_to = "Priority Area",
+    values_to = "Children") %>%
+  mutate(`Priority Area`=case_when(
+    `Priority Area` == 'FOSTER_CARE' ~ 'Foster Care',
+    `Priority Area` == 'TANF' ~ 'TANF',
+    `Priority Area` == 'SPECIAL_NEED_DISABLED' ~ 'Child has special needs or disability',
+    `Priority Area` == 'TEEN_PRNT' ~ 'Teen parent household',
+    `Priority Area` == 'FAM_HOMELESS' ~ 'Household experiencing homelessness',
+    `Priority Area` == 'NON-TANF_AND_NO_OTHER' ~ 'Non-TANF and no other priority designation')) %>%
+  select(c(`Priority Area`,Children))
+
+
+
+##### Create an external excel file to store the analysis above #####
+# create a workbook
+wb <- createWorkbook()
+
+# list the summary objects to write to Excel
+object_list <- list(
+  by_income = by_income,
+  average_copay = average_copay,
+  by_timeauthorized = by_timeauthorized,
+  by_reason = by_reason,
+  by_priority = by_priority
+)
+
+# add each object as its own sheet
+for (nm in names(object_list)) {
+  addWorksheet(wb, nm)
+  writeData(wb, nm, object_list[[nm]])
+}
+
+# save the workbook
+saveWorkbook(wb, paste0("./Input/education/Montana Child Care Raw Analysis/montana_childcaredata_",year,"_bestbeginnings_state.xlsx"), overwrite = TRUE)
+
+
+
+##### Paper versus online applications #####
+
+##### Average time to complete online application #####
+
+##### Applications denied #####
+
+```
+
+
+## ########################## ##
+## LICENSING AND QUALITY DATA ##
+## ########################## ##
+```{r}
+licensing_raw <- read_excel(paste0("./Input/education/Montana Child Care Raw Analysis/SFY ",year,"/SFY",year," Data Files/SFY",year," Program Capacity STAR.xlsx"))
+
+county_indicator <- countylist %>% mutate(montana_county=1) 
+
+#Programs by county and STAR level
+#Capacity by county and STAR level
+#Capacity for infants by county and STAR level
+#Capacity meeting STAR 3+
+#Programs, Capacity, Infant Capacity by Program Type
+
+##### Clean Licensing Data #####
+licensing_cleaned <- licensing_raw %>%
+  
+  #remove any non-Montana programs
+  subset(State=='MT') %>%
+  
+  # Convert date columns to proper date format
+  mutate(
+    `Legal Operation Begin Date` = mdy(`Legal Operation Begin Date`),
+    `Legal Operation End Date`   = mdy(`Legal Operation End Date`),
+    `Termination/Close Date`     = mdy(`Termination/Close Date`)
+  ) %>%
+  
+  # Deduplicate using Termination and/or Legal operation end date
+  group_by(`Provider ID`) %>%
+  arrange(
+    desc(`Termination/Close Date`),     # newest Termination/Close first
+    desc(`Legal Operation End Date`)    # tie-breaker if Termination/Close is NA
+  ) %>%
+  slice(1) %>%                           # keep the top row per Provider ID
+  ungroup() %>%
+  
+  # Remove programs not in Montana
+  mutate(
+    County = recode(County,
+                    'Lewis and Clark' = 'Lewis & Clark',
+                    'Mccone' = 'McCone')
+  ) %>%
+  left_join(county_indicator, by = c('County' = 'Location')) %>%
+  filter(montana_county == 1, County != 'Golden Valley') %>%
+  
+  # Fix STAR NA values
+  mutate(`STAR Quality Level` = if_else(
+    is.na(`STAR Quality Level`),
+    "Non STAR",
+    `STAR Quality Level`
+  ))
+
+##### Licensing Summary by STAR #####
+licensing_summary_star <- licensing_cleaned %>%
+  
+  # ---- County + STAR totals ----
+  group_by(County, `STAR Quality Level`) %>%
+  summarise(
+    total_providers = n(),
+    total_capacity = sum(Capacity, na.rm = TRUE),
+    total_under2 = sum(`Number of Children Under Age 2`, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  
+  # ---- Add County Totals ----
+  bind_rows(
+    licensing_cleaned %>%
+      group_by(County) %>%
+      summarise(
+        total_providers = n(),
+        total_capacity = sum(Capacity, na.rm = TRUE),
+        total_under2 = sum(`Number of Children Under Age 2`, na.rm = TRUE),
+        .groups = "drop"
+      ) %>%
+      mutate(`STAR Quality Level` = "County Total")
+  ) %>%
+  
+  # ---- Add Statewide STAR totals ----
+  bind_rows(
+    licensing_cleaned %>%
+      group_by(`STAR Quality Level`) %>%
+      summarise(
+        total_providers = n(),
+        total_capacity = sum(Capacity, na.rm = TRUE),
+        total_under2 = sum(`Number of Children Under Age 2`, na.rm = TRUE),
+        .groups = "drop"
+      ) %>%
+      mutate(County = "Montana")   # Replace STATE TOTAL with Montana
+  ) %>%
+  
+  # ---- Add Statewide Grand Total ----
+  bind_rows(
+    licensing_cleaned %>%
+      summarise(
+        total_providers = n(),
+        total_capacity = sum(Capacity, na.rm = TRUE),
+        total_under2 = sum(`Number of Children Under Age 2`, na.rm = TRUE)
+      ) %>%
+      mutate(
+        County = "Montana",         # Replace STATE TOTAL with Montana
+        `STAR Quality Level` = "State Total"
+      )
+  ) %>%
+  
+  # ---- Rename County column to location ----
+  rename(location = County) %>%
+  mutate(timeframe=year)
+
+##### Licensing Summary by Program Type #####
+licensing_summary_type <- licensing_cleaned %>%
+  
+  # ---- County + Program Type ----
+  group_by(County, `Facility (Program) Type`) %>%
+  summarise(
+    total_providers = n(),
+    total_capacity = sum(Capacity, na.rm = TRUE),
+    total_under2 = sum(`Number of Children Under Age 2`, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  
+  # ---- Add County Totals ----
+  bind_rows(
+    licensing_cleaned %>%
+      group_by(County) %>%
+      summarise(
+        total_providers = n(),
+        total_capacity = sum(Capacity, na.rm = TRUE),
+        total_under2 = sum(`Number of Children Under Age 2`, na.rm = TRUE),
+        .groups = "drop"
+      ) %>%
+      mutate(`Facility (Program) Type` = "County Total")
+  ) %>%
+  
+  # ---- Add Statewide Facility totals ----
+  bind_rows(
+    licensing_cleaned %>%
+      group_by(`Facility (Program) Type`) %>%
+      summarise(
+        total_providers = n(),
+        total_capacity = sum(Capacity, na.rm = TRUE),
+        total_under2 = sum(`Number of Children Under Age 2`, na.rm = TRUE),
+        .groups = "drop"
+      ) %>%
+      mutate(County = "Montana")     # Replace STATE TOTAL with Montana
+  ) %>%
+  
+  # ---- Add Statewide Grand Total ----
+  bind_rows(
+    licensing_cleaned %>%
+      summarise(
+        total_providers = n(),
+        total_capacity = sum(Capacity, na.rm = TRUE),
+        total_under2 = sum(`Number of Children Under Age 2`, na.rm = TRUE)
+      ) %>%
+      mutate(
+        County = "Montana",          # Replace STATE TOTAL with Montana
+        `Facility (Program) Type` = "State Total"
+      )
+  ) %>%
+  
+  # ---- Rename County column to location ----
+  rename(location = County) %>%
+  mutate(timeframe=year)
+
+write_xlsx(licensing_summary_star, paste0("./Input/education/Montana Child Care Raw Analysis/montana_childcaredata_",year,"_licensing_star.xlsx"))
+write_xlsx(licensing_summary_type, paste0("./Input/education/Montana Child Care Raw Analysis/montana_childcaredata_",year,"_licensing_type.xlsx"))
+
+
+```
+
+```{r}
+##### Opened / Closed Providers #####
+opened_raw <- read_excel(paste0("./Input/education/Montana Child Care Raw Analysis/SFY ",year,"/SFY",year," Open Providers.xlsx")) %>%
+  mutate(opened_indicator=1) %>%
+  select(c(CARE_ID_SEQ,CARE_PROV_TYP_CD,ZIP_CD,CITY,COUNTY_NM,opened_indicator))
+closed_raw <- read_excel(paste0("./Input/education/Montana Child Care Raw Analysis/SFY ",year,"/SFY",year," Closed Providers.xlsx")) %>%
+  mutate(closed_indicator=1) %>%
+  select(c(CARE_ID_SEQ,CARE_PROV_TYP_CD,ZIP_CD,CITY,COUNTY_NM,closed_indicator,LGL_OPERATION_BGN_DT))
+
+
+combined_openclose <- opened_raw %>%
+  full_join(closed_raw) %>%
+  mutate(same_facility_openandclosed=case_when(
+    opened_indicator==1 & closed_indicator==1 ~ 1,
+    TRUE ~ 0))
+
+county_combined <- combined_openclose %>%
+  group_by(COUNTY_NM) %>%
+  summarise(opened=sum(opened_indicator, na.rm=TRUE),
+            closed=sum(closed_indicator,na.rm=TRUE),
+            openedandclosed=sum(same_facility_openandclosed,na.rm=TRUE))
+
+
+state_bytype <- combined_openclose %>%
+  # Summarise by provider type
+  group_by(CARE_PROV_TYP_CD) %>%
+  summarise(
+    opened = sum(opened_indicator, na.rm = TRUE),
+    closed = sum(closed_indicator, na.rm = TRUE),
+    openedandclosed = sum(same_facility_openandclosed, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  # Add total row
+  bind_rows(
+    summarise(
+      .,  # refer to the summarized data
+      CARE_PROV_TYP_CD = "Total",
+      opened = sum(opened),
+      closed = sum(closed),
+      openedandclosed = sum(openedandclosed)
+    )
+  )
+
+state_bydate <- closed_raw %>%
+  mutate(year_opened=str_sub(LGL_OPERATION_BGN_DT,-4)) %>%
+  group_by(year_opened) %>%
+  summarise(closed=sum(closed_indicator,na.rm=TRUE))
+
+# Create a workbook
+wb <- createWorkbook()
+
+# List of objects to write as separate sheets
+object_list <- list(
+  "By Type" = state_bytype,
+  "By Date" = state_bydate
+)
+
+# Add each object as its own sheet
+for (nm in names(object_list)) {
+  addWorksheet(wb, nm)
+  writeData(wb, nm, object_list[[nm]])
+}
+
+# Save workbook
+saveWorkbook(wb, paste0("./Input/education/Montana Child Care Raw Analysis/montana_childcaredata_",year,"_opened_closed.xlsx"), overwrite = TRUE)
+```
+
+
