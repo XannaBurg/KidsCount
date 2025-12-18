@@ -45,10 +45,10 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '24_25'
-fullyear <- '2024/25' 
-year_prior <- '2023/24' #for dropout data
-year_dropout <- '23_24'
+year <- '25_26'
+fullyear <- '2025/26' 
+year_prior <- '2024/25' #for dropout data
+year_dropout <- '24_25'
 calyearformat <- '2025'
 statefile <- 'southdakota'
 statename <- 'South Dakota'
@@ -71,9 +71,9 @@ df_enrollment <- read_excel(path=xl_data_enroll_public, sheet=paste0('Pubdisgr-'
 
 #UPDATE THESE TWO VARIABLES PRIOR TO RUNNING THE CODE
 #RUN THE CODE IN THESE CHUNKS THROUGH FOR EACH OF THE INDICATORS
-columnname <- 'TOTAL KG-12'
+columnname <- 'PK'
 input_dataformat <- 'Number'
-variablename <- 'publicschoolk12enrollment'
+variablename <- 'prekenrollment'
 
 
 enrollment_district <- df_enrollment %>%
@@ -258,7 +258,7 @@ dbWriteTable(con,'southdakota',enrollment,append=TRUE,row.names=FALSE)
 
 **NON-PUBLIC SCHOOL ENROLLMENT GRADES PRE-K THROUGH 12**
 ```{r}
-state_data <- 16228
+state_data <- 16072
 #######
 
 #CALCULATE THE STATEWIDE DATA
