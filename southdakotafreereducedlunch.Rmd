@@ -28,8 +28,8 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2024'
-fullyear <- '2024/25' 
+year <- '2025'
+fullyear <- '2025/26' 
 statefile <- 'southdakota'
 statename <- 'South Dakota'
 
@@ -49,10 +49,10 @@ countylist$county <- as.character(countylist$county)
 
 ## STEP 1: IMPORT AND CLEAN DATA
 ```{r}
-frl_data <- read_excel(paste0("./Input/education/southdakota_",year,"_frl.xlsx"),sheet='Sort by County - PUBLIC ONLY') %>%
+frl_data <- read_excel(paste0("./Input/education/southdakota_",year,"_frl.xlsx"),sheet='Sort by County PUBLIC') %>%
   
   #fix data so only the totals are included for each county
-  replace_with_na(replace=list(County='County Subtotal')) %>%
+  replace_with_na(replace=list(County='County subtotal')) %>%
   fill(County) %>%
   rename(school='School/Agency Name',
          studentenrollment='Student Enrollment') %>%
@@ -168,7 +168,7 @@ tribalschools <- read.csv("./Documentation/Indicator Documentation/South Dakota 
 tribalschools$school <- as.character(tribalschools$school)
 
 
-frl_data_tribal <- read_excel(paste0("./Input/education/southdakota_",year,"_frl.xlsx"),sheet='Sorty by School District') %>%
+frl_data_tribal <- read_excel(paste0("./Input/education/southdakota_",year,"_frl.xlsx"),sheet='Sort by School PUBLIC') %>%
   rename(school='School/Agency Name',
          data='Free & Reduced-Price Eligibility Percentage',
          studentenrollment='Student Enrollment') %>%
