@@ -717,17 +717,19 @@ write.csv(upload_data_lunch,file=paste0("./Output/education/",statefile,"_",year
 ##Need to input state estimate in code##
 ```{r}
 #read in the data
-dropout <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata3.xlsx"),sheet='DropoutCounty') 
+dropout <- read_excel(path=paste0("./Input/education/montana_",year,"_education_december.xlsx"),sheet='Dropout Data',skip=11) 
 
 ###################
 #CREATE COUNTY DATA
 county_dropout <- dropout %>%
   rename(location=CountyName) %>% 
-  mutate(`DroppedOut`=as.numeric(paste(`DroppedOut`)),
-         `Enrolled`=as.numeric(paste(`Enrolled`))) %>%
+  subset(!is.na(location)) %>%
+  subset(location != 'State Totals') %>%
+  mutate(`Dropout Count`=as.numeric(paste(`Dropout Count`)),
+         `Enrollment Count`=as.numeric(paste(`Enrollment Count`))) %>%
   #suppress when dropouts are 5 or fewer
-  mutate(`DroppedOut`=replace(`DroppedOut`,`DroppedOut`<=5,NA)) %>%
-  mutate(data=`DroppedOut`/`Enrolled`) %>%
+  mutate(`Dropout Count`=replace(`Dropout Count`,`Dropout Count`<=5,NA)) %>%
+  mutate(data=`Dropout Count`/`Enrollment Count`) %>%
   select(c(location,data)) %>%
   #add in database variables
   mutate(timeframe=fullyear) %>%
@@ -739,7 +741,7 @@ county_dropout <- dropout %>%
 
 ###################
 #CREATE STATE DATA
-state_data <- c(0.038608757)
+state_data <- c(.0338642721776013)
 state_dropout <- data.frame(state_data) %>%
   mutate(state='Montana') %>%
   rename(data=state_data) %>%
@@ -817,25 +819,25 @@ write.csv(upload_data_dropout,file=paste0("./Output/education/",statefile,"_",ye
 **HIGH SCHOOL EVENT DROP-OUT RATE BY RACE AND ETHNICITY**
 ```{r}
 #read in the data
-dropout_race <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata3.xlsx"),sheet='DropoutRace') 
+dropout_race <- read_excel(path=paste0("./Input/education/montana_",year,"_education_december.xlsx"),sheet='Dropout Data',range = "A1:D8") 
 
 state_dropout_race <- dropout_race  %>%
-  mutate(`DroppedOut`=as.numeric(paste(`DroppedOut`)),
-         `Enrolled`=as.numeric(paste(`Enrolled`))) %>%
-  subset(!is.na(`Enrolled`)) %>%
-  mutate(data=`DroppedOut`/`Enrolled`) %>%
-  select(c(RaceName,data)) %>%
+  mutate(`Dropout Count`=as.numeric(paste(`Dropout Count`)),
+         `Enrollment Count`=as.numeric(paste(`Enrollment Count`))) %>%
+  subset(!is.na(`Enrollment Count`)) %>%
+  mutate(data=`Dropout Count`/`Enrollment Count`) %>%
+  select(c(`Race Ethnicity Category`,data)) %>%
   mutate(timeframe=fullyear) %>%
   mutate(race=case_when(
-    RaceName=='American Indian or Alaskan Native' ~ 'American Indian/Alaskan Native',
-    RaceName=='Asian' ~ 'Asian',
-    RaceName=='Black or African American' ~ 'Black/African American',
-    RaceName=='Hispanic' ~ 'Hispanic',
-    RaceName=='Multi-Racial' ~ 'Multiracial',
-    RaceName=='Native Hawaiian or Other Pacific Islander' ~ 
+    `Race Ethnicity Category`=='American Indian' ~ 'American Indian/Alaskan Native',
+    `Race Ethnicity Category`=='Asian-American' ~ 'Asian',
+    `Race Ethnicity Category`=='African-American' ~ 'Black/African American',
+    `Race Ethnicity Category`=='Hispanic' ~ 'Hispanic',
+    `Race Ethnicity Category`=='Multi-racial' ~ 'Multiracial',
+    `Race Ethnicity Category`=='Native Hawaiian' ~ 
       'Native Hawaiian or Other Pacific Islander',
-    RaceName=='White' ~ 'White')) %>%
-  select(-c(RaceName)) %>%
+    `Race Ethnicity Category`=='White, non-Hispanic' ~ 'White')) %>%
+  select(-c(`Race Ethnicity Category`)) %>%
   mutate(data=as.numeric(paste(data))) %>%
   mutate(location='Montana') %>%
   mutate(state=statename) %>%
@@ -876,17 +878,17 @@ write.csv(upload_data_dropout_race,file=paste0("./Output/education/",statefile,"
 **FOUR-YEAR HIGH SCHOOL COHORT GRADUATION RATE**
 ##Need to input state estimate in code##
 ```{r}
-grad <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata3v2.xlsx"),sheet='GradCounty') 
+grad <- read_excel(path=paste0("./Input/education/montana_",year,"_education_december.xlsx"),sheet='Graduation Data', skip=16) 
 
 ###################
 #CREATE COUNTY DATA
 county_grad <- grad %>%
-  rename(location=exitcountyname) %>%
-  mutate(`TotalInCohort`=as.numeric(paste(`Cohort Count`)),
-         `CohortGraduates`=as.numeric(paste(`Cohort Grad`))) %>%
+  rename(location=ExitCountyName) %>%
+  mutate(`Cohort Count`=as.numeric(paste(`Cohort Count`)),
+         `Graduate Count`=as.numeric(paste(`Graduate Count`))) %>%
   #suppress if 5 or fewer
-  mutate(`CohortGraduates`=replace(`CohortGraduates`,`CohortGraduates`<=5,NA)) %>%
-  mutate(data=`CohortGraduates`/`TotalInCohort`) %>%
+  mutate(`Graduate Count`=replace(`Graduate Count`,`Graduate Count`<=5,NA)) %>%
+  mutate(data=`Graduate Count`/`Cohort Count`) %>%
   select(c(location,data)) %>%
   #add in database variables
   mutate(timeframe=fullyear) %>%
@@ -899,7 +901,7 @@ county_grad <- grad %>%
 
 ###################
 #CREATE STATE DATA
-state_data <- c(0.845583)
+state_data <- c(.852)
 state_grad <- data.frame(state_data) %>%
   mutate(state='Montana') %>%
   rename(data=state_data) %>%
@@ -978,38 +980,33 @@ write.csv(upload_data_graduates,file=paste0("./Output/education/",statefile,"_",
 
 **FOUR-YEAR HIGH SCHOOL COHORT GRADUATION RATE BY RACE AND ETHNICITY**
 ```{r}
-grad_race <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata3v2.xlsx"),sheet='Grad State - RaceEthnicity') 
+grad_race <- read_excel(path=paste0("./Input/education/montana_",year,"_education_december.xlsx"),sheet='Graduation Data',range="A6:D13") 
 
 state_graduates_race <- grad_race %>%
-  mutate(`TotalInCohort`=as.numeric(paste(`Cohort Count`)),
-         `Cohort Graduates`=as.numeric(paste(`Cohort Grad`))) %>%
-  subset(!is.na(`Cohort Graduates`)) %>%
+  mutate(`Cohort Count`=as.numeric(paste(`Cohort Count`)),
+         `Graduate Count`=as.numeric(paste(`Graduate Count`))) %>%
+
   #suppress if 5 or fewer
-  mutate(`Cohort Graduates`=replace(`Cohort Graduates`,`Cohort Graduates`<=5,NA)) %>%
-  mutate(data=`Cohort Graduates`/`TotalInCohort`) %>%
-  select(c(`Student Category`,data)) %>%
-  subset(`Student Category` != 'All Students') %>%
+  mutate(`Graduate Count`=replace(`Graduate Count`,`Graduate Count`<=5,NA)) %>%
+  mutate(data=`Graduate Count`/`Cohort Count`) %>%
+  select(c(`Race Ethnicity Category`,data)) %>%
   mutate(timeframe=fullyear) %>%
   mutate(race=case_when(
-    `Student Category`=='American Indian/Alaska Native' ~ 'American Indian/Alaskan Native',
-    `Student Category`=='Asian or Asian-American' ~ 'Asian',
-    `Student Category`=='African-American' ~ 'Black/African American',
-    `Student Category`=='Hispanic' ~ 'Hispanic',
-    `Student Category`=='Multiracial' ~ 'Multiracial',
-    `Student Category`=='Native Hawaiian / Pacific Islander' ~ 
+    `Race Ethnicity Category`=='American Indian' ~ 'American Indian/Alaskan Native',
+    `Race Ethnicity Category`=='Asian-American' ~ 'Asian',
+    `Race Ethnicity Category`=='African-American' ~ 'Black/African American',
+    `Race Ethnicity Category`=='Hispanic' ~ 'Hispanic',
+    `Race Ethnicity Category`=='Multi-racial' ~ 'Multiracial',
+    `Race Ethnicity Category`=='Native Hawaiian or Pacific Islander' ~ 
       'Native Hawaiian or Other Pacific Islander',
-    `Student Category`=='White, non-Hispanic' ~ 'White')) %>%
-  select(-c(`Student Category`)) %>%
+    `Race Ethnicity Category`=='White, non-Hispanic' ~ 'White')) %>%
+  select(-c(`Race Ethnicity Category`)) %>%
   mutate(data=as.numeric(paste(data))) %>%
   mutate(location='Montana') %>%
   mutate(state=statename) %>%
   mutate(dataformat='Percent') %>%
   mutate(locationtype='State') %>%
   mutate(varname='graduationrate4cohortrace') %>%
-  mutate(location=replace(location, 
-                          state=='Montana' & location=='Lewis and Clark', 
-                          'Lewis & Clark')) %>%
-  mutate(location=replace(location,state=='Montana' & location=='Sweetgrass','Sweet Grass')) %>%
   left_join(locationids,by=c('location'='Location')) %>%
   rename(locationid=LocationId)
 
@@ -1128,14 +1125,15 @@ write.csv(upload_data_pupilspending,file=paste0("./Output/education/",statefile,
 ##Need to input state estimate in code##
 ```{r}
 #read in the data
-testing1 <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata3v2.xlsx"),sheet='SBAC County') 
+testing1 <- read_excel(path=paste0("./Input/education/montana_",year,"_education_december.xlsx"),sheet='2025 3rd Grade Totals',range="A1:D57") 
 
 ###################
 #CREATE COUNTY DATA
 county_testing1 <- testing1 %>%
-  mutate(ProfELA2023=as.numeric(paste(`Proficient+`))) %>%
-  mutate(data=ProfELA2023/TotalTested) %>%
-  rename(location=CountyName) %>% 
+  mutate(`Proficient Count`=as.numeric(paste(`Proficient Count`))) %>%
+  mutate(`Tested Count`=replace(`Tested Count`,`Tested Count`<=5,NA)) %>%
+  mutate(data=`Proficient Count`/`Tested Count`) %>%
+  rename(location=co) %>% 
   select(c(location,data)) %>%
   #add in database variables
   mutate(timeframe=fullyear) %>%
@@ -1147,7 +1145,7 @@ county_testing1 <- testing1 %>%
 
 ###################
 #CREATE STATE DATA
-state_data <- c(0.391117)
+state_data <- 4128/11458
 state_testing1 <- data.frame(state_data) %>%
   mutate(state='Montana') %>%
   rename(data=state_data) %>%
@@ -1226,14 +1224,15 @@ write.csv(upload_data_testing1,file=paste0("./Output/education/",statefile,"_",y
 ##Need to input state estimate in code##
 ```{r}
 #read in the data
-testing3 <- read_excel(path=paste0("./Input/education/montana_",year,"_educationdata3v2.xlsx"),sheet='3 year County') 
+testing3 <- read_excel(path=paste0("./Input/education/montana_",year,"_education_december.xlsx"),sheet='3 yr 3rd Grade Totals',range="A1:E57") 
 
 ###################
 #CREATE COUNTY DATA
 county_testing3 <- testing3 %>%
-  mutate(ProfELA2023=as.numeric(paste(`Proficient+`))) %>%
-  mutate(data=ProfELA2023/TotalTested) %>%
-  rename(location=CountyName) %>% 
+  mutate(`Proficient Count`=as.numeric(paste(`Proficient Count`))) %>%
+  mutate(`Tested Count`=replace(`Tested Count`,`Tested Count`<=5,NA)) %>%
+  mutate(data=`Proficient Count`/`Tested Count`) %>%
+  rename(location=co) %>% 
   select(c(location,data)) %>%
   #add in database variables
   mutate(timeframe=threeyear) %>%
@@ -1245,7 +1244,7 @@ county_testing3 <- testing3 %>%
 
 ###################
 #CREATE STATE DATA
-state_data <- c(0.452108)
+state_data <- c(.395236941396379)
 state_testing3 <- data.frame(state_data) %>%
   mutate(state='Montana') %>%
   rename(data=state_data) %>%
