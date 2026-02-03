@@ -12,14 +12,15 @@ library(censusapi)
 library(stringr)
 library(gt)
 library(sas7bdat)
+library(janitor)
 
 ```
 
 
 ```{r}
-year <- "2021"
-year_short <- "21"
-pop_year <- 'POP2021'
+year <- "2023"
+year_short <- "23"
+pop_year <- 'POP2023'
 statename <- 'North Dakota'
 database_state <- 'northdakota'
 
@@ -34,6 +35,434 @@ regionids <-  read.csv("../Input/ND KC Region List.csv")
 countylist <- read.csv("../Input/ND County List.csv")
 countylist$Location <- as.character(countylist$Location)
 ```
+
+
+##Children in Foster Care by Race - using the publicly available AFCARS file
+```{r}
+#the data comes in SAS, SPSS, Stata, or .tab and need to import into R
+afcars_fulldata <- read.delim("/Users/xannaburg/Documents/Analysis/ICWA/AFCARS data/DS303 FC2023ABv1/Data/Text Files/FC2023ABv1.tab")
+```
+
+```{r}
+#filter and clean the afcars data
+
+#subset for North Dakota
+afcars_nd <- afcars_fulldata %>% 
+  subset(St=='ND') %>%
+  #add labels to coded variables
+  mutate(Race_desc=case_when(
+    Race==1 ~ 'White',
+    Race==2 ~ 'Black or African American',
+    Race==3 ~ 'American Indian or Native Alaskan',
+    Race==4 ~ 'Asian',
+    Race==5 ~ 'Native Hawaiian or Other Pacific Islander',
+    Race==6 ~ 'More than One Race',
+    Race==99 ~ 'Missing or Unknown')) %>%
+  mutate(AIAN_desc=case_when(
+    AMIAKN==1 ~ 'American Indian or Native Alaskan alone or in combination',
+    AMIAKN==0 ~ 'Not American Indian or Native Alaskan')) 
+```
+
+
+```{r}
+#calculate sums by single race, but remove missing
+nd_byrace <- afcars_nd %>%
+  subset(Race_desc!='Missing or Unknown') %>%
+  group_by(Race_desc) %>%
+  summarise(count_fostercare=n()) %>%
+  ungroup %>%
+  #calculate total and percents
+  mutate(total_fostercare=sum(count_fostercare)) %>%
+  mutate(percent_fostercare=count_fostercare/total_fostercare)
+
+#calculate sums by AIAN alone or in combination
+nd_byAIAN <- afcars_nd %>%
+  group_by(AIAN_desc) %>%
+  summarise(count_fostercare=n()) %>%
+  ungroup %>%
+  #calculate total and percents
+  mutate(total_fostercare=sum(count(afcars_nd))) %>%
+  mutate(percent_fostercare=count_fostercare/total_fostercare) %>%
+  rename(Race_desc=AIAN_desc) %>%
+  subset(Race_desc=='American Indian or Native Alaskan alone or in combination')
+
+```
+
+```{r}
+#next pull in population data for comparison, using the special request files received for the Population Estimates Program
+population_full <- read_csv('../Input/demographics/DATADELIVERY_ Vintage 2023 Population Estimates20240701081844/v2023_co_res_char11_nd.csv') %>%
+  subset(AGE<21)
+
+#population age 0-20 by single race in matching FY
+population_byrace <- population_full %>%
+  #subset for date
+  subset(DATE==6) %>%
+  #subset for all sexes
+  subset(SEX==0) %>%
+  #subset for all Ethnicity
+  subset(HISP==0) %>%
+  #race variables
+  subset(RACE11==1 | RACE11==2 | RACE11==3 | RACE11==4 | RACE11==5 | RACE11==6) %>%
+  mutate(Race_desc=case_when(
+    RACE11==1 ~ 'White',
+    RACE11==2 ~ 'Black or African American',
+    RACE11==3 ~ 'American Indian or Native Alaskan',
+    RACE11==4 ~ 'Asian',
+    RACE11==5 ~ 'Native Hawaiian or Other Pacific Islander',
+    RACE11==6 ~ 'More than One Race')) %>%
+  #create sums
+  group_by(Race_desc) %>%
+  summarise(population=sum(POP)) %>%
+  ungroup %>%
+  #calculate total and percents
+  mutate(total_population=sum(population)) %>%
+  mutate(percent_population=population/total_population)
+
+
+#population age 0-20 by AIAN alone or in combination in matching FY
+#first we need to grab the total population age 0-19 from the dataset above to calculate a percent
+overall_population <- population_byrace$total_population[population_byrace$Race_desc=='White']
+
+population_byAIAN <- population_full %>%
+  #subset for date
+  subset(DATE==6) %>%
+  #subset for all sexes
+  subset(SEX==0) %>%
+  #subset for all Ethnicity
+  subset(HISP==0) %>%
+  #race variables
+  subset(RACE11==9) %>%
+  mutate(AIAN_desc=case_when(
+    RACE11==9 ~ 'American Indian or Native Alaskan alone or in combination')) %>%
+  #create sums
+  group_by(AIAN_desc) %>%
+  summarise(population=sum(POP)) %>%
+  #add in total population from the single race file
+  mutate(total_population=overall_population) %>%
+  mutate(percent_population=population/total_population) %>%
+  rename(Race_desc=AIAN_desc) 
+
+```
+
+```{r}
+#combine all data
+nd_afcars_combined <- nd_byrace %>%
+  bind_rows(nd_byAIAN)
+
+nd_pop_combined <- population_byrace %>%
+  bind_rows(population_byAIAN)
+
+nd_combined <- nd_afcars_combined %>%
+  left_join(nd_pop_combined,by=c('Race_desc'='Race_desc')) %>%
+  
+  mutate(timeframe=year)
+
+write.csv(nd_combined,file=paste0('../Output/myanalysis/nd_icwa_analysis_',year_short,'.csv'),row.names=FALSE)
+```
+
+
+
+##Percent of AIAN children who have AIAN Foster Caretaker - using the publicly available AFCARS file
+````{r}
+#start with cleaned ND data - afcars_nd
+
+#this table is the count by setting and whether a child is AIAN alone or in combination
+placement_setting_count <- afcars_nd %>%
+  mutate(placement_desc=case_when(
+    CURPLSET==1 ~ 'Pre-adoptive home',
+    CURPLSET==2 ~ 'Foster family home, relative',
+    CURPLSET==3 ~ 'Foster family home, non-relative',
+    CURPLSET==4 ~ 'Group home',
+    CURPLSET==5 ~ 'Institution',
+    CURPLSET==6 ~ 'Supervised independent living',
+    CURPLSET==7 ~ 'Runaway',
+    CURPLSET==8 ~ 'Trial home visit',
+    CURPLSET==99 ~ 'Data missing')) %>%
+  subset(CURPLSET!=99) %>%
+  tabyl(AIAN_desc,placement_desc) 
+
+#overall chi square test
+chisq.test(placement_setting_count)
+
+
+#this table is the percent by setting and AIAN, without the missing data
+placement_setting_percent <- afcars_nd %>%
+  mutate(placement_desc=case_when(
+    CURPLSET==1 ~ 'Pre-adoptive home',
+    CURPLSET==2 ~ 'Foster family home, relative',
+    CURPLSET==3 ~ 'Foster family home, non-relative',
+    CURPLSET==4 ~ 'Group home',
+    CURPLSET==5 ~ 'Institution',
+    CURPLSET==6 ~ 'Supervised independent living',
+    CURPLSET==7 ~ 'Runaway',
+    CURPLSET==8 ~ 'Trial home visit',
+    CURPLSET==99 ~ 'Data missing')) %>%
+  subset(CURPLSET!=99) %>%
+  tabyl(AIAN_desc,placement_desc) %>%
+  adorn_percentages("row")
+
+#this table is the percent just for foster care and AIAN, without the missing data
+placement_setting_percent2 <- afcars_nd %>%
+  mutate(placement_desc=case_when(
+    CURPLSET==1 ~ 'Pre-adoptive home',
+    CURPLSET==2 ~ 'Foster family home, relative',
+    CURPLSET==3 ~ 'Foster family home, non-relative',
+    CURPLSET==4 ~ 'Group home',
+    CURPLSET==5 ~ 'Institution',
+    CURPLSET==6 ~ 'Supervised independent living',
+    CURPLSET==7 ~ 'Runaway',
+    CURPLSET==8 ~ 'Trial home visit',
+    CURPLSET==99 ~ 'Data missing')) %>%
+  subset(CURPLSET==2 | CURPLSET==3) %>%
+  tabyl(AIAN_desc,placement_desc) %>%
+  adorn_percentages("row")
+
+
+#this table is the percent by setting and single race, without the missing data
+placement_setting_percent_race <- afcars_nd %>%
+  mutate(placement_desc=case_when(
+    CURPLSET==1 ~ 'Pre-adoptive home',
+    CURPLSET==2 ~ 'Foster family home, relative',
+    CURPLSET==3 ~ 'Foster family home, non-relative',
+    CURPLSET==4 ~ 'Group home',
+    CURPLSET==5 ~ 'Institution',
+    CURPLSET==6 ~ 'Supervised independent living',
+    CURPLSET==7 ~ 'Runaway',
+    CURPLSET==8 ~ 'Trial home visit',
+    CURPLSET==99 ~ 'Data missing')) %>%
+  subset(CURPLSET!=99) %>%
+  subset(Race_desc!='Missing or Unknown') %>%
+  tabyl(Race_desc,placement_desc) %>%
+  adorn_percentages("row")
+
+
+#if we want to look at caretaker race, we need to look across the household at caretaker 1 and caretaker 2.
+#n=1522 or about 70% of the sample
+caretaker <- afcars_nd %>%
+  mutate(caretaker1_2_aian_desc=case_when(
+    is.na(RF1AMAKN) ~ NA,
+    RF1AMAKN==1 | RF2AMAKN==1 ~ 'Caretaker - American Indian or Native Alaskan alone or in combination',
+    RF1AMAKN==0 & (RF2AMAKN==0 | is.na(RF2AMAKN)) ~ 'Caretaker - Not American Indian or Native Alaskan')) %>%
+  subset(!is.na(caretaker1_2_aian_desc)) %>%
+  tabyl(AIAN_desc,caretaker1_2_aian_desc) %>%
+  adorn_percentages("row")
+
+
+
+
+
+
+tabyl(AIAN_desc,placement_desc) 
+
+```
+
+
+```{r}
+#data to follow AIAN through different outcomes
+
+AIAN_only <- afcars_nd %>% subset(AIAN_desc=='American Indian or Native Alaskan alone or in combination')
+
+#table of placement outcomes for the n=992
+AIAN_only_placement_table <- AIAN_only %>%
+  mutate(placement_desc=case_when(
+    CURPLSET==1 ~ 'Pre-adoptive home',
+    CURPLSET==2 ~ 'Foster family home, relative',
+    CURPLSET==3 ~ 'Foster family home, non-relative',
+    CURPLSET==4 ~ 'Group home',
+    CURPLSET==5 ~ 'Institution',
+    CURPLSET==6 ~ 'Supervised independent living',
+    CURPLSET==7 ~ 'Runaway',
+    CURPLSET==8 ~ 'Trial home visit',
+    CURPLSET==99 ~ 'Data missing')) %>%
+  tabyl(AIAN_desc,placement_desc)
+
+
+#for each placement setting further divide out race of caretaker, if applicable
+
+AIAN_only_caretaker_preadoptivehome <- AIAN_only %>%
+  mutate(placement_desc=case_when(
+    CURPLSET==1 ~ 'Pre-adoptive home',
+    CURPLSET==2 ~ 'Foster family home, relative',
+    CURPLSET==3 ~ 'Foster family home, non-relative',
+    CURPLSET==4 ~ 'Group home',
+    CURPLSET==5 ~ 'Institution',
+    CURPLSET==6 ~ 'Supervised independent living',
+    CURPLSET==7 ~ 'Runaway',
+    CURPLSET==8 ~ 'Trial home visit',
+    CURPLSET==99 ~ 'Data missing')) %>%
+  subset(placement_desc=='Pre-adoptive home') %>%
+  mutate(caretaker1_2_aian_desc=case_when(
+    is.na(RF1AMAKN) ~ NA,
+    RF1AMAKN==1 | RF2AMAKN==1 ~ 'Caretaker - American Indian or Native Alaskan alone or in combination',
+    RF1AMAKN==0 & (RF2AMAKN==0 | is.na(RF2AMAKN)) ~ 'Caretaker - Not American Indian or Native Alaskan')) %>%
+  tabyl(AIAN_desc,caretaker1_2_aian_desc)
+
+
+AIAN_only_caretaker_relative <- AIAN_only %>%
+  mutate(placement_desc=case_when(
+    CURPLSET==1 ~ 'Pre-adoptive home',
+    CURPLSET==2 ~ 'Foster family home, relative',
+    CURPLSET==3 ~ 'Foster family home, non-relative',
+    CURPLSET==4 ~ 'Group home',
+    CURPLSET==5 ~ 'Institution',
+    CURPLSET==6 ~ 'Supervised independent living',
+    CURPLSET==7 ~ 'Runaway',
+    CURPLSET==8 ~ 'Trial home visit',
+    CURPLSET==99 ~ 'Data missing')) %>%
+  subset(placement_desc=='Foster family home, relative') %>%
+  mutate(caretaker1_2_aian_desc=case_when(
+    is.na(RF1AMAKN) ~ NA,
+    RF1AMAKN==1 | RF2AMAKN==1 ~ 'Caretaker - American Indian or Native Alaskan alone or in combination',
+    RF1AMAKN==0 & (RF2AMAKN==0 | is.na(RF2AMAKN)) ~ 'Caretaker - Not American Indian or Native Alaskan')) %>%
+  tabyl(AIAN_desc,caretaker1_2_aian_desc)
+
+
+AIAN_only_caretaker_nonrelative <- AIAN_only %>%
+  mutate(placement_desc=case_when(
+    CURPLSET==1 ~ 'Pre-adoptive home',
+    CURPLSET==2 ~ 'Foster family home, relative',
+    CURPLSET==3 ~ 'Foster family home, non-relative',
+    CURPLSET==4 ~ 'Group home',
+    CURPLSET==5 ~ 'Institution',
+    CURPLSET==6 ~ 'Supervised independent living',
+    CURPLSET==7 ~ 'Runaway',
+    CURPLSET==8 ~ 'Trial home visit',
+    CURPLSET==99 ~ 'Data missing')) %>%
+  subset(placement_desc=='Foster family home, non-relative') %>%
+  mutate(caretaker1_2_aian_desc=case_when(
+    is.na(RF1AMAKN) ~ NA,
+    RF1AMAKN==1 | RF2AMAKN==1 ~ 'Caretaker - American Indian or Native Alaskan alone or in combination',
+    RF1AMAKN==0 & (RF2AMAKN==0 | is.na(RF2AMAKN)) ~ 'Caretaker - Not American Indian or Native Alaskan')) %>%
+  tabyl(AIAN_desc,caretaker1_2_aian_desc)
+
+
+AIAN_only_caretaker_grouphome <- AIAN_only %>%
+  mutate(placement_desc=case_when(
+    CURPLSET==1 ~ 'Pre-adoptive home',
+    CURPLSET==2 ~ 'Foster family home, relative',
+    CURPLSET==3 ~ 'Foster family home, non-relative',
+    CURPLSET==4 ~ 'Group home',
+    CURPLSET==5 ~ 'Institution',
+    CURPLSET==6 ~ 'Supervised independent living',
+    CURPLSET==7 ~ 'Runaway',
+    CURPLSET==8 ~ 'Trial home visit',
+    CURPLSET==99 ~ 'Data missing')) %>%
+  subset(placement_desc=='Group home') %>%
+  mutate(caretaker1_2_aian_desc=case_when(
+    is.na(RF1AMAKN) ~ NA,
+    RF1AMAKN==1 | RF2AMAKN==1 ~ 'Caretaker - American Indian or Native Alaskan alone or in combination',
+    RF1AMAKN==0 & (RF2AMAKN==0 | is.na(RF2AMAKN)) ~ 'Caretaker - Not American Indian or Native Alaskan')) %>%
+  tabyl(AIAN_desc,caretaker1_2_aian_desc)
+
+
+
+AIAN_only_caretaker_institution <- AIAN_only %>%
+  mutate(placement_desc=case_when(
+    CURPLSET==1 ~ 'Pre-adoptive home',
+    CURPLSET==2 ~ 'Foster family home, relative',
+    CURPLSET==3 ~ 'Foster family home, non-relative',
+    CURPLSET==4 ~ 'Group home',
+    CURPLSET==5 ~ 'Institution',
+    CURPLSET==6 ~ 'Supervised independent living',
+    CURPLSET==7 ~ 'Runaway',
+    CURPLSET==8 ~ 'Trial home visit',
+    CURPLSET==99 ~ 'Data missing')) %>%
+  subset(placement_desc=='Institution') %>%
+  mutate(caretaker1_2_aian_desc=case_when(
+    is.na(RF1AMAKN) ~ NA,
+    RF1AMAKN==1 | RF2AMAKN==1 ~ 'Caretaker - American Indian or Native Alaskan alone or in combination',
+    RF1AMAKN==0 & (RF2AMAKN==0 | is.na(RF2AMAKN)) ~ 'Caretaker - Not American Indian or Native Alaskan')) %>%
+  tabyl(AIAN_desc,caretaker1_2_aian_desc)
+
+
+AIAN_only_caretaker_supervised <- AIAN_only %>%
+  mutate(placement_desc=case_when(
+    CURPLSET==1 ~ 'Pre-adoptive home',
+    CURPLSET==2 ~ 'Foster family home, relative',
+    CURPLSET==3 ~ 'Foster family home, non-relative',
+    CURPLSET==4 ~ 'Group home',
+    CURPLSET==5 ~ 'Institution',
+    CURPLSET==6 ~ 'Supervised independent living',
+    CURPLSET==7 ~ 'Runaway',
+    CURPLSET==8 ~ 'Trial home visit',
+    CURPLSET==99 ~ 'Data missing')) %>%
+  subset(placement_desc=='Supervised independent living') %>%
+  mutate(caretaker1_2_aian_desc=case_when(
+    is.na(RF1AMAKN) ~ NA,
+    RF1AMAKN==1 | RF2AMAKN==1 ~ 'Caretaker - American Indian or Native Alaskan alone or in combination',
+    RF1AMAKN==0 & (RF2AMAKN==0 | is.na(RF2AMAKN)) ~ 'Caretaker - Not American Indian or Native Alaskan')) %>%
+  tabyl(AIAN_desc,caretaker1_2_aian_desc)
+
+
+AIAN_only_caretaker_runaway <- AIAN_only %>%
+  mutate(placement_desc=case_when(
+    CURPLSET==1 ~ 'Pre-adoptive home',
+    CURPLSET==2 ~ 'Foster family home, relative',
+    CURPLSET==3 ~ 'Foster family home, non-relative',
+    CURPLSET==4 ~ 'Group home',
+    CURPLSET==5 ~ 'Institution',
+    CURPLSET==6 ~ 'Supervised independent living',
+    CURPLSET==7 ~ 'Runaway',
+    CURPLSET==8 ~ 'Trial home visit',
+    CURPLSET==99 ~ 'Data missing')) %>%
+  subset(placement_desc=='Runaway') %>%
+  mutate(caretaker1_2_aian_desc=case_when(
+    is.na(RF1AMAKN) ~ NA,
+    RF1AMAKN==1 | RF2AMAKN==1 ~ 'Caretaker - American Indian or Native Alaskan alone or in combination',
+    RF1AMAKN==0 & (RF2AMAKN==0 | is.na(RF2AMAKN)) ~ 'Caretaker - Not American Indian or Native Alaskan')) %>%
+  tabyl(AIAN_desc,caretaker1_2_aian_desc)
+
+
+AIAN_only_caretaker_trial <- AIAN_only %>%
+  mutate(placement_desc=case_when(
+    CURPLSET==1 ~ 'Pre-adoptive home',
+    CURPLSET==2 ~ 'Foster family home, relative',
+    CURPLSET==3 ~ 'Foster family home, non-relative',
+    CURPLSET==4 ~ 'Group home',
+    CURPLSET==5 ~ 'Institution',
+    CURPLSET==6 ~ 'Supervised independent living',
+    CURPLSET==7 ~ 'Runaway',
+    CURPLSET==8 ~ 'Trial home visit',
+    CURPLSET==99 ~ 'Data missing')) %>%
+  subset(placement_desc=='Trial home visit') %>%
+  mutate(caretaker1_2_aian_desc=case_when(
+    is.na(RF1AMAKN) ~ NA,
+    RF1AMAKN==1 | RF2AMAKN==1 ~ 'Caretaker - American Indian or Native Alaskan alone or in combination',
+    RF1AMAKN==0 & (RF2AMAKN==0 | is.na(RF2AMAKN)) ~ 'Caretaker - Not American Indian or Native Alaskan')) %>%
+  tabyl(AIAN_desc,caretaker1_2_aian_desc)
+
+
+AIAN_only_caretaker_missing <- AIAN_only %>%
+  mutate(placement_desc=case_when(
+    CURPLSET==1 ~ 'Pre-adoptive home',
+    CURPLSET==2 ~ 'Foster family home, relative',
+    CURPLSET==3 ~ 'Foster family home, non-relative',
+    CURPLSET==4 ~ 'Group home',
+    CURPLSET==5 ~ 'Institution',
+    CURPLSET==6 ~ 'Supervised independent living',
+    CURPLSET==7 ~ 'Runaway',
+    CURPLSET==8 ~ 'Trial home visit',
+    CURPLSET==99 ~ 'Data missing')) %>%
+  subset(placement_desc=='Data missing') %>%
+  mutate(caretaker1_2_aian_desc=case_when(
+    is.na(RF1AMAKN) ~ NA,
+    RF1AMAKN==1 | RF2AMAKN==1 ~ 'Caretaker - American Indian or Native Alaskan alone or in combination',
+    RF1AMAKN==0 & (RF2AMAKN==0 | is.na(RF2AMAKN)) ~ 'Caretaker - Not American Indian or Native Alaskan')) %>%
+  tabyl(AIAN_desc,caretaker1_2_aian_desc)
+
+
+```
+
+
+
+
+
+
+
+
+
+#The below code works for data that the state shared prior to FY 22.
+
 
 ## ####################### ##
 ## CHILDREN IN FOSTER CARE ##

@@ -40,7 +40,7 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 
 ```{r}
 countydata <- getCensus(name="acs/acs5",
-          vintage=2022,
+          vintage=2023,
           key=Sys.getenv("CENSUS_API_KEY"),
           vars=c("B17024_002E","B17024_003E","B17024_004E","B17024_005E","B17024_006E",
                  "B17024_007E","B17024_008E","B17024_009E","B17024_010E",
@@ -63,7 +63,7 @@ countydata <- getCensus(name="acs/acs5",
 
 
 statedata <- getCensus(name="acs/acs5",
-          vintage=2022,
+          vintage=2023,
           key=Sys.getenv("CENSUS_API_KEY"),
           vars=c("B17024_002E","B17024_003E","B17024_004E","B17024_005E","B17024_006E",
                  "B17024_007E","B17024_008E","B17024_009E","B17024_010E",
@@ -84,7 +84,7 @@ statedata <- getCensus(name="acs/acs5",
 
 
 #pull population data
-childpop_sql <- paste0("SELECT location, timeframe, age_group, data FROM southdakota WHERE (timeframe='2022' AND vintageyear='2022') AND varname='childpopulationbysingleyearofage';")
+childpop_sql <- paste0("SELECT location, timeframe, age_group, data FROM southdakota WHERE (timeframe='2023' AND vintageyear='2023') AND varname='childpopulationbysingleyearofage';")
 
 
 childpop1 <- dbGetQuery(con,childpop_sql) %>%
@@ -108,19 +108,19 @@ childpop2 <- dbGetQuery(con,childpop_sql) %>%
   ungroup
 
 #pull aditional child care data
-childcare_sql <- paste0("SELECT location, category, data, varname FROM southdakota WHERE timeframe='2023' AND (varname='childcareassistancerecipients' OR varname='licensedorregisteredchildcarecapacity');")
+childcare_sql <- paste0("SELECT location, category, data, varname FROM southdakota WHERE timeframe='2024' AND (varname='childcareassistancerecipients' OR varname='licensedorregisteredchildcarecapacity');")
 
 childcaredata <- dbGetQuery(con,childcare_sql) %>%
   subset(category=='Total') %>%
   pivot_wider(names_from='varname',values_from='data') %>%
   select(-c(category))
 
-childcare_sql2 <- paste0("SELECT location, data FROM southdakota WHERE timeframe='2023' AND (varname='licensedbeforeandafterschoolcapacity');")
+childcare_sql2 <- paste0("SELECT location, data FROM southdakota WHERE timeframe='2024' AND (varname='licensedbeforeandafterschoolcapacity');")
 
 childcaredata2 <- dbGetQuery(con,childcare_sql2) %>%
   rename(licensedbeforeandafterschoolcapacity=data)
 
-parentsworking_sql <- paste0("SELECT location, age_group, data FROM southdakota WHERE timeframe='2018-2022' AND (varname='childrenwithparentsinlaborforce') AND dataformat='Percent' AND (locationtype='County' OR locationtype='State');")
+parentsworking_sql <- paste0("SELECT location, age_group, data FROM southdakota WHERE timeframe='2019-2023' AND (varname='childrenwithparentsinlaborforce') AND dataformat='Percent' AND (locationtype='County' OR locationtype='State');")
 
 parentsworkingdata <- dbGetQuery(con,parentsworking_sql) %>%
   pivot_wider(names_from='age_group',values_from='data') %>%
@@ -181,7 +181,7 @@ state_fips <- fips %>%
 
 
 statesdata <- getCensus(name="acs/acs5",
-          vintage=2022,
+          vintage=2023,
           key=Sys.getenv("CENSUS_API_KEY"),
           vars=c("B17024_002E","B17024_003E","B17024_004E","B17024_005E","B17024_006E",
                  "B17024_007E","B17024_008E","B17024_009E","B17024_010E","B17024_011E",
@@ -193,7 +193,7 @@ statesdata <- getCensus(name="acs/acs5",
   left_join(state_fips,by=c('state'='state_code')) %>% 
   
   subset(state_name=='Montana' | state_name=='Wyoming' | state_name=='Nebraska' | state_name=='Iowa' | 
-           state_name=='Minnesota' | state_name=='North Dakota' | state_name=='South Dakota') %>%
+           state_name=='Minnesota' | state_name=='North Dakota' | state_name=='South Dakota' | state_name=='Idaho') %>%
 
   
   #calculate percent
