@@ -62,8 +62,8 @@ fips_tribal <- read.csv("../Input/AIANNHCE Codes.csv")
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 statename <- "North Dakota"
-year <- "2023"
-acsyear <- "2019-2023"
+year <- "2024"
+acsyear <- "2020-2024"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
