@@ -21,7 +21,7 @@ library(stringr)
 ## MONTANA ##
 ```{r}
 #UPDATE THE YEAR TO MATCH THE CURRENT YEAR
-year_current <- '2024'
+year_current <- '2025'
 
 #------- DO NOT EDIT -------#
 year_minus1 <- as.character(as.numeric(year_current)-1)
@@ -35,6 +35,7 @@ schoolyear_current <- as.character(paste0(as.numeric(year_current)-1,"/",str_sub
 schoolyear_minus1 <- as.character(paste0(as.numeric(year_current)-2,"/",as.numeric(str_sub(year_current,-2))-1))
 schoolyear_minus2 <- as.character(paste0(as.numeric(year_current)-3,"/",as.numeric(str_sub(year_current,-2))-2))
 schoolyear_minus3 <- as.character(paste0(as.numeric(year_current)-4,"/",as.numeric(str_sub(year_current,-2))-3))
+threeyear_current <- as.character(paste0(year_minus2,"-",year_current))
 threeyear_minus1 <- as.character(paste0(year_minus3,"-",year_minus1))
 threeyear_minus2 <- as.character(paste0(year_minus4,"-",year_minus2))
 threeyear_minus3 <- as.character(paste0(year_minus5,"-",year_minus3))
@@ -104,10 +105,10 @@ countydata3 <- dbGetQuery(con,countydata3_sql) %>%
 #####-----MANUALLY INPUT THIS DATA BY RACE-----#####
 #####CHILDREN WITHOUT HEALTH INSURANCE BY RACE
 race <- c("Overall","American Indian/Alaska Native","White","2+ Races or Other")
-data <- c(.065,.211,.049,.057)
+data <- c(.068,.207,.052,.069)
 countydata3_byrace <- data.frame(race,data) %>%
   mutate(location='Montana',
-         timeframe='2018-2022',
+         timeframe='2019-2023',
          varname='Children Without Health Insurance by Race',
          age_group='Ages 0 to 18',
          date_description='Combined Five Calendar Years',
@@ -189,10 +190,10 @@ countydata5 <- pnc_currentyear %>%
 #####-----MANUALLY INPUT THIS DATA BY RACE-----#####
 #####WOMEN WHO RECEIVE EARLY PRENATAL CARE
 race <- c("Overall","American Indian/Alaska Native","Asian","Black","White","2+ Races or Other")
-data <- c(.794,.500,.795,.745,.829,.759)
+data <- c(.795,.501,.797,.734,.829,.756)
 countydata5_byrace <- data.frame(race,data) %>%
   mutate(location='Montana',
-         timeframe='2019-2023',
+         timeframe='2020-2024',
          varname='Women Who Receive Early Prenatal Care by Race',
          age_group='Age 0',
          date_description='Combined Five Calendar Years',
@@ -276,7 +277,7 @@ countydata9 <- dbGetQuery(con,countydata9_sql) %>%
 
 
 #####FOUR-YEAR COHORT GRADUATION RATE
-countydata10_sql <- paste0("SELECT location, timeframe, data FROM montana WHERE (locationtype='County' OR locationtype='State') AND varname='graduationrate4cohort' AND dataformat='Percent' AND (timeframe='",schoolyear_minus1,"' OR timeframe='",schoolyear_minus2,"');")
+countydata10_sql <- paste0("SELECT location, timeframe, data FROM montana WHERE (locationtype='County' OR locationtype='State') AND varname='graduationrate4cohort' AND dataformat='Percent' AND (timeframe='",schoolyear_current,"' OR timeframe='",schoolyear_minus1,"');")
 
 countydata10 <- dbGetQuery(con,countydata10_sql) %>%
   mutate(varname='Four-Year Cohort Graduation Rate') %>%
@@ -285,18 +286,18 @@ countydata10 <- dbGetQuery(con,countydata10_sql) %>%
   mutate(data_source='Montana Office of Public Instruction') %>%
   mutate(data_notes='Data is not reported if the number of students enrolled in the cohort is less than 6.') %>%
   mutate(date_mostrecent=case_when(
-    timeframe==all_of(schoolyear_minus1) ~ 1,
-    timeframe==all_of(schoolyear_minus2) ~0)) %>%
+    timeframe==all_of(schoolyear_current) ~ 1,
+    timeframe==all_of(schoolyear_minus1) ~0)) %>%
   mutate(dataformat='Percent') 
 
 
 #####-----MANUALLY INPUT THIS DATA BY RACE-----#####
 #####GRADUATION RATE BY RACE
 race <- c("Overall","American Indian/Alaska Native","Asian","Black","Latinx","2+ Races","Native Hawaiian or Other Pacific Islander","White")
-data <- c(.856,.66,.961,.785,.794,.79,.818,.893)
+data <- c(.852,.687,.907,.812,.783,.824,.826,.881)
 countydata10_byrace <- data.frame(race,data) %>%
   mutate(location='Montana',
-         timeframe='2022/23',
+         timeframe='2024/25',
          varname='Four-Year Cohort Graduation Rate by Race',
          age_group='9-12 grades',
          date_description='School Year',
@@ -310,55 +311,40 @@ countydata10_byrace <- data.frame(race,data) %>%
 
 
 #####3RD GRADE STUDENTS WHO SCORED PROFICIENT IN READING
-countydata11_sql <- paste0("SELECT location, timeframe, data FROM montana WHERE (locationtype='County' OR locationtype='State') AND (varname='thirdgradestateelaproficiency1year' OR varname='thirdgradestateelaproficiency3year') AND dataformat='Percent' AND (timeframe='",schoolyear_minus1,"' OR timeframe='",schoolyear_minus2,"');")
+countydata11_sql <- paste0("SELECT location, timeframe, data FROM montana WHERE (locationtype='County' OR locationtype='State') AND (varname='thirdgradestateelaproficiency1year' OR varname='thirdgradestateelaproficiency3year') AND dataformat='Percent' AND (timeframe='",schoolyear_current,"' OR timeframe='",schoolyear_minus1,"' OR timeframe='",threeyear_current,"' OR timeframe='",threeyear_minus1,"');")
 
+#CODE THAT WILL PULL 3 YEAR DATA
 reading_currentyear <- dbGetQuery(con,countydata11_sql) %>%
-  subset(timeframe==schoolyear_minus1) %>%
+  subset(timeframe==schoolyear_current | timeframe==threeyear_current) %>%
   pivot_wider(id_cols=c('location'),names_from=timeframe,values_from=data) %>%
-  rename(data=all_of(schoolyear_minus1)) %>%
-  mutate(timeframe=schoolyear_minus1) %>%
+  
+  #create new variable using mixture of 1 and 3 year
+  rename(oneyear=all_of(schoolyear_current),
+         threeyear=all_of(threeyear_current)) %>%
+  mutate(data=case_when(
+    !is.na(oneyear) ~ oneyear,
+    is.na(oneyear) ~ threeyear)) %>%
+  mutate(timeframe=case_when(
+    !is.na(oneyear) ~ schoolyear_current,
+    is.na(oneyear) ~ threeyear_current)) %>%
+  select(c(location,timeframe,data)) %>%
   mutate(date_mostrecent=1)
 
 reading_prioryear <- dbGetQuery(con,countydata11_sql) %>%
-  subset(timeframe==schoolyear_minus2) %>%
+  subset(timeframe==schoolyear_minus1 | timeframe==threeyear_minus1) %>%
   pivot_wider(id_cols=c('location'),names_from=timeframe,values_from=data) %>%
-  rename(data=all_of(schoolyear_minus2)) %>%
-  mutate(timeframe=schoolyear_minus2) %>%
+  
+  #create new variable using mixture of 1 and 3 year
+  rename(oneyear=all_of(schoolyear_minus1),
+         threeyear=all_of(threeyear_minus1)) %>%
+  mutate(data=case_when(
+    !is.na(oneyear) ~ oneyear,
+    is.na(oneyear) ~ threeyear)) %>%
+  mutate(timeframe=case_when(
+    !is.na(oneyear) ~ schoolyear_minus1,
+    is.na(oneyear) ~ threeyear_minus1)) %>%
+  select(c(location,timeframe,data)) %>%
   mutate(date_mostrecent=0)
-
-
-#CODE THAT WILL PULL 3 YEAR DATA TOO - can start using again in 2023
-#reading_currentyear <- dbGetQuery(con,countydata11_sql) %>%
- # subset(timeframe==schoolyear_current | timeframe==threeyear_minus3) %>%
-  #pivot_wider(id_cols=c('location'),names_from=timeframe,values_from=data) %>%
-  
-  #create new variable using mixture of 1 and 3 year
-  #rename(oneyear=all_of(schoolyear_minus1),
-   #      threeyear=all_of(threeyear_minus3)) %>%
-  #mutate(data=case_when(
-   # !is.na(oneyear) ~ oneyear,
-    #is.na(oneyear) ~ threeyear)) %>%
-  #mutate(timeframe=case_when(
-   # !is.na(oneyear) ~ schoolyear_minus1,
-    #is.na(oneyear) ~ threeyear_minus3)) %>%
-  #select(c(location,timeframe,data)) %>%
-  #mutate(date_mostrecent=1)
-
-#reading_prioryear <- dbGetQuery(con,countydata11_sql) %>%
-  #subset(timeframe==schoolyear_minus3 | timeframe==threeyear_minus4) %>%
-  #pivot_wider(id_cols=c('location'),names_from=timeframe,values_from=data) %>%
-  
-  #create new variable using mixture of 1 and 3 year
-  #rename(oneyear=all_of(schoolyear_minus3),
-   #      threeyear=all_of(threeyear_minus4)) %>%
-  #mutate(data=case_when(
-  #  !is.na(oneyear) ~ oneyear,
-  #  is.na(oneyear) ~ threeyear)) %>%
-  #mutate(timeframe=case_when(
-  #  !is.na(oneyear) ~ schoolyear_minus3,
-  #  is.na(oneyear) ~ threeyear_minus4)) %>%
-  #select(c(location,timeframe,data)) %>%
-  #mutate(date_mostrecent=0)
 
 countydata11 <- reading_currentyear %>%
   bind_rows(reading_prioryear) %>%
@@ -404,10 +390,10 @@ countydata13 <- dbGetQuery(con,countydata13_sql) %>%
 #####-----MANUALLY INPUT THIS DATA BY RACE-----#####
 #####CHILDREN LIVING IN POVERTY
 race <- c("Overall","American Indian/Alaska Native","White","2+ Races or Other")
-data <- c(.138,.395,.107,.165)
+data <- c(.127,.387,.095,.153)
 countydata13_byrace <- data.frame(race,data) %>%
   mutate(location='Montana',
-         timeframe='2019-2023',
+         timeframe='2020-2024',
          varname='Children Living in Poverty by Race',
          age_group='Ages 0 to 17',
          date_description='Combined Five Calendar Years',
@@ -484,7 +470,7 @@ write.csv(countydata_all2,file=paste0("./Output/datarequests/montana_countyprofi
 ## NORTH DAKOTA ##
 ```{r}
 #UPDATE THE YEAR TO MATCH THE CURRENT YEAR
-year_current <- '2024'
+year_current <- '2025'
 
 #------- DO NOT EDIT -------#
 year_minus1 <- as.character(as.numeric(year_current)-1)
@@ -568,10 +554,10 @@ countydata3 <- dbGetQuery(con,countydata3_sql) %>%
 #####-----MANUALLY INPUT THIS DATA BY RACE-----#####
 #####CHILDREN WITHOUT HEALTH INSURANCE BY RACE
 race <- c("Overall","American Indian/Alaska Native","White","2+ Races or Other")
-data <- c(.067,.193,.054,.076)
+data <- c(.063,.156,.053,.073)
 countydata3_byrace <- data.frame(race,data) %>%
   mutate(location='North Dakota',
-         timeframe='2018-2022',
+         timeframe='2019-2023',
          varname='Children Without Health Insurance by Race',
          age_group='Ages 0 to 18',
          date_description='Combined Five Calendar Years',
@@ -584,7 +570,7 @@ countydata3_byrace <- data.frame(race,data) %>%
 
 
 #####CHILDREN ENROLLED IN MEDICAID OR CHIP
-countydata4_sql <- paste0("SELECT location, timeframe, data FROM northdakota WHERE (locationtype='County' OR locationtype='State') AND (varname='medicaidages0to20' OR varname='healthystepsages0to18') AND dataformat='Number' AND (timeframe='",year_minus1,"' OR timeframe='",year_minus2,"');")
+countydata4_sql <- paste0("SELECT location, timeframe, data FROM northdakota WHERE (locationtype='County' OR locationtype='State') AND (varname='medicaidages0to20' OR varname='healthystepsages0to18') AND dataformat='Number' AND (timeframe='",year_current,"' OR timeframe='",year_minus1,"');")
 
 countydata4 <- dbGetQuery(con,countydata4_sql) %>%
   mutate(data=as.numeric(paste(data))) %>%
@@ -598,8 +584,8 @@ countydata4 <- dbGetQuery(con,countydata4_sql) %>%
   mutate(data_source='North Dakota Department of Human Services, Decision Support Services') %>%
   mutate(data_notes='') %>%
   mutate(date_mostrecent=case_when(
-    timeframe==all_of(year_minus1) ~ 1,
-    timeframe==all_of(year_minus2) ~0)) %>%
+    timeframe==all_of(year_current) ~ 1,
+    timeframe==all_of(year_minus1) ~0)) %>%
   mutate(dataformat='Number')
 
 
@@ -621,10 +607,10 @@ countydata5 <- dbGetQuery(con,countydata5_sql) %>%
 #####-----MANUALLY INPUT THIS DATA BY RACE-----#####
 #####WOMEN WHO RECEIVE EARLY PRENATAL CARE
 race <- c("Overall","American Indian/Alaska Native","Asian","Black","White","2+ Races or Other")
-data <- c(.785,.420,.718,.626,.841,.678)
+data <- c(.79,.44,.737,.368,.842,.681)
 countydata5_byrace <- data.frame(race,data) %>%
   mutate(location='North Dakota',
-         timeframe='2019-2023',
+         timeframe='2020-2024',
          varname='Women Who Receive Early Prenatal Care by Race',
          age_group='Age 0',
          date_description='Combined Five Calendar Years',
@@ -670,7 +656,7 @@ countydata7 <- dbGetQuery(con,countydata7_sql) %>%
   mutate(data=as.character(paste(data))) %>%
   mutate(varname='Licensed Child Care Capacity') %>%
   mutate(age_group='Ages 0 to 13') %>%
-  mutate(date_description='2023 data is a snapshot from May. 2024 data is a snapshot from February.') %>%
+  mutate(date_description='Data is a snapshot from February.') %>%
     mutate(data_source='North Dakota Department of Human Services') %>%
   mutate(data_notes='Capacity data only licensed facilities or licensed school age programs.') %>%
   mutate(date_mostrecent=case_when(
@@ -690,7 +676,7 @@ countydata8 <- dbGetQuery(con,countydata8_sql) %>%
   mutate(data=as.character(paste(data))) %>%
   mutate(varname='Licensed Child Care Providers') %>%
   mutate(age_group='Ages 0 to 13') %>%
-  mutate(date_description='2023 data is a snapshot from May. 2024 data is a snapshot from February.') %>%
+  mutate(date_description='Data is a snapshot from February.') %>%
     mutate(data_source='North Dakota Department of Human Services') %>%
   mutate(data_notes='Providers include licensed facilities, licensed school age programs, and self-declaration providers.') %>%
   mutate(date_mostrecent=case_when(
@@ -721,7 +707,7 @@ countydata9 <- dbGetQuery(con,countydata9_sql) %>%
   mutate(data_truncated=data_truncated*100) %>%
   mutate(data_truncated2=data_truncated) %>%
   mutate(less10_indicator=ifelse(data_truncated<10,1,0)) %>%
-  mutate(data_truncated=as.character(sprintf("%.1f",round(data_truncated,1)))) %>%
+  mutate(data_truncated=as.character(sprintf("%.0f",round(data_truncated,1)))) %>%
   mutate(data_truncated=as.character(paste(data_truncated))) %>%
   mutate(data_truncated2=as.character(paste(data_truncated2))) %>%
   mutate(data_truncated=substr(data_truncated,start=1,stop=4)) %>%
@@ -753,7 +739,7 @@ countydata10 <- dbGetQuery(con,countydata10_sql) %>%
   mutate(data_truncated=data_truncated*100) %>%
   mutate(data_truncated2=data_truncated) %>%
   mutate(less10_indicator=ifelse(data_truncated<10,1,0)) %>%
-  mutate(data_truncated=as.character(sprintf("%.1f",round(data_truncated,1)))) %>%
+  mutate(data_truncated=as.character(sprintf("%.0f",round(data_truncated,1)))) %>%
   mutate(data_truncated=as.character(paste(data_truncated))) %>%
   mutate(data_truncated2=as.character(paste(data_truncated2))) %>%
   mutate(data_truncated=substr(data_truncated,start=1,stop=4)) %>%
@@ -769,10 +755,10 @@ countydata10 <- dbGetQuery(con,countydata10_sql) %>%
 #####-----MANUALLY INPUT THIS DATA BY RACE-----#####
 #####GRADUATION RATE BY RACE
 race <- c("Overall","American Indian/Alaska Native","Black","Latinx","White","Asian","Native Hawaiian or Pacific Islander")
-data <- c(.827,.650,.690,.682,.878,.809,.737)
+data <- c(.824,.634,.708,.690,.875,.800,.674)
 countydata10_byrace <- data.frame(race,data) %>%
   mutate(location='North Dakota',
-         timeframe='2022/23',
+         timeframe='2023/24',
          varname='Four-Year Cohort Graduation Rate by Race',
          age_group='9-12 grades',
          date_description='School Year',
@@ -785,22 +771,58 @@ countydata10_byrace <- data.frame(race,data) %>%
 
 
 #####3RD GRADE STUDENTS WHO SCORED PROFICIENT IN READING
-countydata11_sql <- paste0("SELECT location, timeframe, data FROM northdakota WHERE (locationtype='County' OR locationtype='State') AND (varname='thirdgradestatereadingproficiency1year' OR varname='thirdgradestatereadingproficiency3year') AND dataformat='Percent' AND (timeframe='",schoolyear_minus1,"' OR timeframe='",schoolyear_minus2,"');")
+countydata11_sql <- paste0("SELECT location, timeframe, data FROM northdakota WHERE (locationtype='County' OR locationtype='State') AND (varname='thirdgradestatereadingproficiency1year' OR varname='thirdgradestatereadingproficiency3year') AND dataformat='Percent' AND (timeframe='",schoolyear_minus1,"' OR timeframe='",schoolyear_minus2,"' OR timeframe='",threeyear_minus1,"' OR timeframe='",threeyear_minus2,"');")
 
 
-countydata11 <- dbGetQuery(con,countydata11_sql) %>%
+#CODE THAT WILL PULL 3 YEAR DATA
+reading_currentyear <- dbGetQuery(con,countydata11_sql) %>%
+  subset(timeframe==schoolyear_minus1 | timeframe==threeyear_minus1) %>%
+  pivot_wider(id_cols=c('location'),names_from=timeframe,values_from=data) %>%
+  
+  #create new variable using mixture of 1 and 3 year
+  rename(oneyear=all_of(schoolyear_minus1),
+         threeyear=all_of(threeyear_minus1)) %>%
+  mutate(data=case_when(
+    oneyear!='NA' ~ oneyear,
+    oneyear=='NA' ~ threeyear)) %>%
+  mutate(timeframe=case_when(
+    oneyear!='NA' ~ schoolyear_minus1,
+    oneyear=='NA' ~ threeyear_minus1)) %>%
+  select(c(location,timeframe,data)) %>%
+  mutate(date_mostrecent=1)
+
+reading_prioryear <- dbGetQuery(con,countydata11_sql) %>%
+  subset(timeframe==schoolyear_minus2 | timeframe==threeyear_minus2) %>%
+  pivot_wider(id_cols=c('location'),names_from=timeframe,values_from=data) %>%
+  
+  #create new variable using mixture of 1 and 3 year
+  rename(oneyear=all_of(schoolyear_minus2),
+         threeyear=all_of(threeyear_minus2)) %>%
+  mutate(data=case_when(
+    oneyear!='NA' ~ oneyear,
+    oneyear=='NA' ~ threeyear)) %>%
+  mutate(timeframe=case_when(
+    oneyear!='NA' ~ schoolyear_minus2,
+    oneyear=='NA' ~ threeyear_minus2)) %>%
+  select(c(location,timeframe,data)) %>%
+  mutate(date_mostrecent=0)
+
+countydata11 <- reading_currentyear %>%
+  bind_rows(reading_prioryear) %>%
   mutate(varname='3rd Grade Students Who Scored Proficient in Reading') %>%
   mutate(age_group='3rd graders') %>%
-  mutate(date_description='School Year') %>%
+  mutate(date_description='School Year or Combined Three School Years') %>%
   mutate(data_source='North Dakota Department of Public Instruction') %>%
   mutate(data_notes='Data is not reported if the number of students taking the assessment is less than 10 or if the percentage apprached zero or 100.') %>%
   mutate(dataformat='Percent_range') %>%
+  
+  
   #for range values, create the character variable that includes the percentage
   mutate(data_truncated=as.numeric(paste(data))) %>%
   mutate(data_truncated=data_truncated*100) %>%
   mutate(data_truncated2=data_truncated) %>%
   mutate(less10_indicator=ifelse(data_truncated<10,1,0)) %>%
-  mutate(data_truncated=as.character(sprintf("%.1f",round(data_truncated,1)))) %>%
+  mutate(data_truncated=as.character(sprintf("%.0f",round(data_truncated,1)))) %>%
   mutate(data_truncated=as.character(paste(data_truncated))) %>%
   mutate(data_truncated2=as.character(paste(data_truncated2))) %>%
   mutate(data_truncated=substr(data_truncated,start=1,stop=4)) %>%
@@ -810,19 +832,17 @@ countydata11 <- dbGetQuery(con,countydata11_sql) %>%
   mutate(data_truncated_final=ifelse(less10_indicator==1,
                                      data_truncated2,data_truncated)) %>%
   mutate(data=ifelse(is.na(data_truncated_final),data,data_truncated_final)) %>%
-  select(-c(data_truncated,data_truncated2,data_truncated_final,less10_indicator)) %>%
-  mutate(date_mostrecent=case_when(
-    timeframe==all_of(schoolyear_minus1) ~ 1,
-    timeframe==all_of(schoolyear_minus2) ~0))
+  select(-c(data_truncated,data_truncated2,data_truncated_final,less10_indicator)) 
+  
 
 
 #####-----MANUALLY INPUT THIS DATA BY RACE-----#####
 #####THIRD GRAD READING BY RACE
 race <- c("Overall","American Indian/Alaska Native","Black","Latinx","White","Asian","Native Hawaiian or Pacific Islander")
-data <- c(.40,.25,.23,.23,.44,.44,.27)
+data <- c(.39,.24,.26,.24,.43,.49,.18)
 countydata11_byrace <- data.frame(race,data) %>%
   mutate(location='North Dakota',
-         timeframe='2022/23',
+         timeframe='2023/24',
          varname='3rd Grade Students Who Scored Proficient in Reading by Race',
          age_group='3rd graders',
          date_description='School Year',
@@ -867,10 +887,10 @@ countydata13 <- dbGetQuery(con,countydata13_sql) %>%
 #####-----MANUALLY INPUT THIS DATA BY RACE-----#####
 #####CHILDREN LIVING IN POVERTY
 race <- c("Overall","American Indian/Alaska Native","White","2+ Races or Other","Black","Asian")
-data <- c(.106,.357,.064,.171,.273,.211)
+data <- c(.111,.365,.065,.164,.342,.249)
 countydata13_byrace <- data.frame(race,data) %>%
   mutate(location='North Dakota',
-         timeframe='2019-2023',
+         timeframe='2020-2024',
          varname='Children Living in Poverty by Race',
          age_group='Ages 0 to 17',
          date_description='Combined Five Calendar Years',
@@ -947,7 +967,7 @@ write.csv(countydata_all2,file=paste0("./Output/datarequests/northdakota_countyp
 ## SOUTH DAKOTA ##
 ```{r}
 #UPDATE THE YEAR TO MATCH THE CURRENT YEAR
-year_current <- '2024'
+year_current <- '2025'
 
 
 #------- DO NOT EDIT -------#
@@ -1028,10 +1048,10 @@ countydata3 <- dbGetQuery(con,countydata3_sql) %>%
 #####-----MANUALLY INPUT THIS DATA BY RACE-----#####
 #####CHILDREN WITHOUT HEALTH INSURANCE BY RACE
 race <- c("Overall","American Indian/Alaska Native","Black","White","2+ Races or Other")
-data <- c(.068,.154,.100,.051,.081)
+data <- c(.072,.165,.098,.054,.081)
 countydata3_byrace <- data.frame(race,data) %>%
   mutate(location='South Dakota',
-         timeframe='2018-2022',
+         timeframe='2019-2023',
          varname='Children Without Health Insurance by Race',
          age_group='Ages 0 to 18',
          date_description='Combined Five Calendar Years',
@@ -1090,10 +1110,10 @@ countydata5 <- dbGetQuery(con,countydata5_sql) %>%
 #####-----MANUALLY INPUT THIS DATA BY RACE-----#####
 #####WOMEN WHO RECEIVE EARLY PRENATAL CARE
 race <- c("Overall","American Indian/Alaska Native","White","2+ Races","Other")
-data <- c(.738,.458,.806,.646,.632)
+data <- c(.734,.433,.804,.648,.628)
 countydata5_byrace <- data.frame(race,data) %>%
   mutate(location='South Dakota',
-         timeframe='2019-2023',
+         timeframe='2020-2024',
          varname='Women Who Receive Early Prenatal Care by Race',
          age_group='Age 0',
          date_description='Combined Five Calendar Years',
@@ -1139,10 +1159,10 @@ countydata7 <- dbGetQuery(con,countydata7_sql) %>%
 #####-----MANUALLY INPUT THIS DATA BY RACE-----#####
 #####LOW BIRTHWEIGHT BABIES
 race <- c("Overall","American Indian/Alaska Native","White","2+ Races","Other")
-data <- c(.071,.082,.066,.087,.104)
+data <- c(.071,.085,.066,.088,.104)
 countydata7_byrace <- data.frame(race,data) %>%
   mutate(location='South Dakota',
-         timeframe='2019-2023',
+         timeframe='2020-2024',
          varname='Low Birthweight Babies by Race',
          age_group='Age 0',
          date_description='Combined Five Calendar Years',
@@ -1226,7 +1246,7 @@ countydata11_first <- dbGetQuery(con,countydata11_sql) %>%
   mutate(data_truncated=data_truncated*100) %>%
   mutate(data_truncated2=data_truncated) %>%
   mutate(less10_indicator=ifelse(data_truncated<10,1,0)) %>%
-  mutate(data_truncated=as.character(sprintf("%.1f",round(data_truncated,1)))) %>%
+  mutate(data_truncated=as.character(sprintf("%.0f",round(data_truncated,1)))) %>%
   mutate(data_truncated=as.character(paste(data_truncated))) %>%
   mutate(data_truncated2=as.character(paste(data_truncated2))) %>%
   mutate(data_truncated=substr(data_truncated,start=1,stop=4)) %>%
@@ -1279,10 +1299,10 @@ countydata13 <- dbGetQuery(con,countydata13_sql) %>%
 #####-----MANUALLY INPUT THIS DATA BY RACE-----#####
 #####CHILDREN LIVING IN POVERTY
 race <- c("Overall","American Indian/Alaska Native","Black","White","2+ Races or Other")
-data <- c(.150,.497,.281,.077,.212)
+data <- c(.143,.498,.266,.073,.188)
 countydata13_byrace <- data.frame(race,data) %>%
   mutate(location='South Dakota',
-         timeframe='2019-2023',
+         timeframe='2020-2024',
          varname='Children Living in Poverty by Race',
          age_group='Ages 0 to 17',
          date_description='Combined Five Calendar Years',
