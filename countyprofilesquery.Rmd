@@ -702,22 +702,15 @@ countydata9 <- dbGetQuery(con,countydata9_sql) %>%
   mutate(dataformat='Percent_range') %>%
   
 
-  #for range values, create the character variable that includes the percentage
-  mutate(data_truncated=as.numeric(paste(data))) %>%
-  mutate(data_truncated=data_truncated*100) %>%
-  mutate(data_truncated2=data_truncated) %>%
-  mutate(less10_indicator=ifelse(data_truncated<10,1,0)) %>%
-  mutate(data_truncated=as.character(sprintf("%.0f",round(data_truncated,1)))) %>%
-  mutate(data_truncated=as.character(paste(data_truncated))) %>%
-  mutate(data_truncated2=as.character(paste(data_truncated2))) %>%
-  mutate(data_truncated=substr(data_truncated,start=1,stop=4)) %>%
-  mutate(data_truncated2=substr(data_truncated2,start=1,stop=3)) %>%
-  mutate(data_truncated=paste0(data_truncated,"%")) %>%
-  mutate(data_truncated2=paste0(data_truncated2,"%")) %>%
-  mutate(data_truncated_final=ifelse(less10_indicator==1,
-                                     data_truncated2,data_truncated)) %>%
-  mutate(data=ifelse(is.na(data_truncated_final),data,data_truncated_final)) %>%
-  select(-c(data_truncated,data_truncated2,data_truncated_final,less10_indicator)) 
+  #fix the range values so we have a rounded number with % sign, if applicable, a range value, if applicable, or NA
+  mutate(
+  data = if_else(
+    grepl("^\\s*-?\\d*\\.?\\d+\\s*$", data),
+    paste0(
+      round(as.numeric(data), 2) * 100,
+      "%"
+    ),
+    data))
 
 
 #####FOUR-YEAR COHORT GRADUATION RATE
@@ -734,22 +727,17 @@ countydata10 <- dbGetQuery(con,countydata10_sql) %>%
     timeframe==all_of(schoolyear_minus2) ~0)) %>%
   mutate(dataformat='Percent_range') %>%
   
-  #for range values, create the character variable that includes the percentage
-  mutate(data_truncated=as.numeric(paste(data))) %>%
-  mutate(data_truncated=data_truncated*100) %>%
-  mutate(data_truncated2=data_truncated) %>%
-  mutate(less10_indicator=ifelse(data_truncated<10,1,0)) %>%
-  mutate(data_truncated=as.character(sprintf("%.0f",round(data_truncated,1)))) %>%
-  mutate(data_truncated=as.character(paste(data_truncated))) %>%
-  mutate(data_truncated2=as.character(paste(data_truncated2))) %>%
-  mutate(data_truncated=substr(data_truncated,start=1,stop=4)) %>%
-  mutate(data_truncated2=substr(data_truncated2,start=1,stop=3)) %>%
-  mutate(data_truncated=paste0(data_truncated,"%")) %>%
-  mutate(data_truncated2=paste0(data_truncated2,"%")) %>%
-  mutate(data_truncated_final=ifelse(less10_indicator==1,
-                                     data_truncated2,data_truncated)) %>%
-  mutate(data=ifelse(is.na(data_truncated_final),data,data_truncated_final)) %>%
-  select(-c(data_truncated,data_truncated2,data_truncated_final,less10_indicator))
+  #fix the range values so we have a rounded number with % sign, if applicable, a range value, if applicable, or NA
+  mutate(
+  data = if_else(
+    grepl("^\\s*-?\\d*\\.?\\d+\\s*$", data),
+    paste0(
+      round(as.numeric(data), 2) * 100,
+      "%"
+    ),
+    data))
+  
+
 
 
 #####-----MANUALLY INPUT THIS DATA BY RACE-----#####
@@ -816,23 +804,18 @@ countydata11 <- reading_currentyear %>%
   mutate(data_notes='Data is not reported if the number of students taking the assessment is less than 10 or if the percentage apprached zero or 100.') %>%
   mutate(dataformat='Percent_range') %>%
   
+  #fix the range values so we have a rounded number with % sign, if applicable, a range value, if applicable, or NA
+  mutate(
+  data = if_else(
+    grepl("^\\s*-?\\d*\\.?\\d+\\s*$", data),
+    paste0(
+      round(as.numeric(data), 2) * 100,
+      "%"
+    ),
+    data))
   
-  #for range values, create the character variable that includes the percentage
-  mutate(data_truncated=as.numeric(paste(data))) %>%
-  mutate(data_truncated=data_truncated*100) %>%
-  mutate(data_truncated2=data_truncated) %>%
-  mutate(less10_indicator=ifelse(data_truncated<10,1,0)) %>%
-  mutate(data_truncated=as.character(sprintf("%.0f",round(data_truncated,1)))) %>%
-  mutate(data_truncated=as.character(paste(data_truncated))) %>%
-  mutate(data_truncated2=as.character(paste(data_truncated2))) %>%
-  mutate(data_truncated=substr(data_truncated,start=1,stop=4)) %>%
-  mutate(data_truncated2=substr(data_truncated2,start=1,stop=3)) %>%
-  mutate(data_truncated=paste0(data_truncated,"%")) %>%
-  mutate(data_truncated2=paste0(data_truncated2,"%")) %>%
-  mutate(data_truncated_final=ifelse(less10_indicator==1,
-                                     data_truncated2,data_truncated)) %>%
-  mutate(data=ifelse(is.na(data_truncated_final),data,data_truncated_final)) %>%
-  select(-c(data_truncated,data_truncated2,data_truncated_final,less10_indicator)) 
+  
+
   
 
 
