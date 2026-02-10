@@ -1142,7 +1142,7 @@ countydata7 <- dbGetQuery(con,countydata7_sql) %>%
 #####-----MANUALLY INPUT THIS DATA BY RACE-----#####
 #####LOW BIRTHWEIGHT BABIES
 race <- c("Overall","American Indian/Alaska Native","White","2+ Races","Other")
-data <- c(.071,.085,.066,.088,.104)
+data <- c(.071,.085,.066,.088,.106)
 countydata7_byrace <- data.frame(race,data) %>%
   mutate(location='South Dakota',
          timeframe='2020-2024',
