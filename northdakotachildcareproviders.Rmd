@@ -28,7 +28,7 @@ library(stringr)
 
 ```{r}
 #UPDATE to reflect the current year data working with
-year <- '2025'
+year <- '2026'
 state <- 'northdakota'
 
 year_shortened <- substr(year,3,4)
@@ -86,13 +86,20 @@ child_data_2 <- child_data %>%
   
   #create new variable matching to KC categories
   mutate(category=case_when(
-    `License Type`=='Center License' | `License Type`=='Family License' | 
-      `License Type`=='Group License-Facility' | `License Type`=='Group License-Home' | 
-      `License Type`=='Multiple License' | 
-      `License Type`=='Preschool License' ~ 'Licensed',
-    `License Type`=='School Age License' ~ 'Licensed School Age',
-    `License Type`=='Self Declared Certificate' ~ 'Self-declaration Providers')) %>%
+    `Program Type Name`=='Child Care Center' | `Program Type Name`=='Family Child Care' | 
+      `Program Type Name`=='Group Child Care Facility' | `Program Type Name`=='Group Child Care Home' | 
+      `Program Type Name`=='Multiple Licensed Facility' | 
+      `Program Type Name`=='Preschool Education Facility' ~ 'Licensed',
+    `Program Type Name`=='School Age Care' ~ 'Licensed School Age',
+    `Program Type Name`=='Self-Declaration' ~ 'Self-declaration Providers')) %>%
   
+  subset(City != 'Test') %>%
+  subset(City !='	test city') %>%
+  subset(`Program Name` != 'ted') %>%
+  subset(License != '0008153C') %>%
+  subset(License != '001157E') %>%
+  subset(License != '0001162C') %>%
+  subset(License !='09857775F') %>%
   
   mutate(capacity=as.numeric(paste(`Capacity`))) 
 
@@ -258,7 +265,7 @@ countysums_quality <- quality_data %>%
 
   rename(category=`Quality Rating`,
          location=County,
-         capacity=`Capacity`) %>%
+         capacity=`Licensed Capacity`) %>%
   mutate(capacity=as.numeric(paste(capacity))) %>%
   group_by(location,category) %>%
   summarise(providers = n(),
