@@ -30,7 +30,7 @@ library(naniar)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2024'
+year <- '2025'
 
 
 statefile <- 'montana'
@@ -48,7 +48,7 @@ regionids$county <- as.character(regionids$county)
 
 ## IMPORT THE DATA FILES THAT WILL BE USED
 ```{r}
-homevisitingdata <- read_excel(path=paste0("./Input/health/montana_",year,"_HMF Families Served by County.xlsx"),skip=1) 
+homevisitingdata <- read_excel(path=paste0("./Input/health/montana_",year,"_HMF Families Served by County.xlsx"),sheet='Sheet1',skip=2) 
 ```
 
 
@@ -56,27 +56,12 @@ homevisitingdata <- read_excel(path=paste0("./Input/health/montana_",year,"_HMF 
 ```{r}
 homevisitingdata2 <- homevisitingdata %>% 
   
-  rename(location=...1,
-         families_2017=`2016-2017 Program Year`,
-         children_2017=`...3`,
-         families_2018=`2017-2018 Program Year`,
-         children_2018=`...5`,
-         families_2019=`2018-2019 Program Year`,
-         children_2019=`...7`,
-         families_2020=`2019-2020 Program Year`,
-         children_2020=`...9`,
-         families_2021=`2020-2021 Program Year`,
-         children_2021=`...11`,
-         families_2022=`2021-2022 Program Year`,
-         children_2022=`...13`,
-         families_2023=`2022-2023 Program Year`,
-         children_2023=`...15`,
-         families_2024=`2023-2024 Program Year`,
-         children_2024=`...17`) %>%
+  rename(location=COUNTY,
+        families_2025=`FAMILIES SERVED...6`,
+         children_2025=`CHILDREN SERVED...7`) %>%
   
   #remove footnotes
   subset(location!='Notes:') %>%
-  subset(location!='COUNTY') %>%
 
   #select only most recent year
   select(c(location,paste0("families_",year),paste0("children_",year))) %>%
