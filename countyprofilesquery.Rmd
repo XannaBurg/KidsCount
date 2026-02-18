@@ -262,7 +262,7 @@ countydata8 <- dbGetQuery(con,countydata8_sql) %>%
 
 
 #####FREE OR REDUCED-PRICE LUNCH PARTICIPATION
-countydata9_sql <- paste0("SELECT location, timeframe, data FROM montana WHERE (locationtype='County' OR locationtype='State') AND varname='freereducedlunch' AND dataformat='Percent' AND (timeframe='",schoolyear_current,"' OR timeframe='",schoolyear_minus1,"');")
+countydata9_sql <- paste0("SELECT location, timeframe, data FROM montana WHERE (locationtype='County' OR locationtype='State') AND varname='freereducedlunch' AND dataformat='Percent' AND (timeframe='",schoolyear_minus1,"' OR timeframe='",schoolyear_minus2,"');")
 
 countydata9 <- dbGetQuery(con,countydata9_sql) %>%
   mutate(varname='Free or Reduced-Price Lunch Participation') %>%
@@ -271,8 +271,8 @@ countydata9 <- dbGetQuery(con,countydata9_sql) %>%
   mutate(data_source='Montana Office of Public Instruction') %>%
   mutate(data_notes='') %>%
   mutate(date_mostrecent=case_when(
-    timeframe==all_of(schoolyear_current) ~ 1,
-    timeframe==all_of(schoolyear_minus1) ~0)) %>%
+    timeframe==all_of(schoolyear_minus1) ~ 1,
+    timeframe==all_of(schoolyear_minus2) ~0)) %>%
   mutate(dataformat='Percent') 
 
 
