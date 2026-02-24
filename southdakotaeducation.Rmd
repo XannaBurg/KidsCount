@@ -45,10 +45,10 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '25_26'
-fullyear <- '2025/26' 
-year_prior <- '2024/25' #for dropout data
-year_dropout <- '24_25'
+year <- '24_25'
+fullyear <- '2024/25' 
+year_prior <- '2023/24' #for dropout data
+year_dropout <- '23_24'
 calyearformat <- '2025'
 statefile <- 'southdakota'
 statename <- 'South Dakota'
@@ -400,14 +400,14 @@ df_digest <- read_excel(path=paste0("./Input/education/southdakota_",year,"_educ
 
 ####### UPDATE THESE VARIABLES PRIOR TO RUNNING THE CODE
 #verify column names prior to assigning, should be: 'Dropout Rate\r\n (%)' and 'Expenditure per ADM' and 'ACT Composite Score' and 'Fall Count of Open Enrolled Students' and 'Free & Reduced Lunch Eligibility Percentage'
-#in 20/21 home school varname is 'Fall ADM Count of Home School Students'
-#variable.names(df_digest)
 
-columnname <- 'ACT Composite Score'
-input_dataformat <- 'Number'
-variablename <- 'averageactcompositescore'
+variable.names(df_digest)
+
+columnname <- 'Free & Reduced Lunch Eligibility Percentage'
+input_dataformat <- 'Percent'
+variablename <- 'freereducedlunch'
 #pull state data from the school profile on the statistical digest
-state_data <- 21.1
+state_data <- .38
 #######
 
 
@@ -432,6 +432,13 @@ digestdata_district <- df_digest %>%
   mutate(timeframe=fullyear) %>%
   mutate(dataformat=input_dataformat) %>%
   mutate(varname=variablename) %>%
+  
+  #add in "School District" so merging works
+  mutate(location = str_replace(
+    location,
+    "(\\d+-\\d+)",
+    "School District \\1")) %>%
+  
   mutate(location=ifelse(location=='Wolsey-Wessington Sch District 02-6',
                          'Wolsey-Wessington School District 02-6',location)) %>%
     mutate(location=ifelse(location=='Deubrook Area School District 05-6',
@@ -442,7 +449,7 @@ digestdata_district <- df_digest %>%
                          'Webster School District 18-5',location)) %>%
     mutate(location=ifelse(location=='Ipswich Public School District 22-6',
                          'Ipswich School District 22-6',location)) %>%
-    mutate(location=ifelse(location=='Faulkton Area Schools District 24-4',
+    mutate(location=ifelse(location=='Faulkton Area Schools School District 24-4',
                          'Faulkton School District 24-4',location)) %>%
     mutate(location=ifelse(location=='Miller School District 29-4',
                          'Miller Area School District 29-4',location)) %>%
@@ -460,10 +467,17 @@ digestdata_district <- df_digest %>%
                          'Selby School District 62-5',location)) %>%
   mutate(location=ifelse(location=='Shannon County School District 65-1',
                          'Oglala Lakota County School District 65-1',location)) %>%
+  mutate(location=ifelse(location=='Colome School District 59-3',
+                         'Colome Consolidated School District 59-3',location)) %>%
+  mutate(location=ifelse(location=='Smee School District 15-3',
+                         'Wakpala School District 15-3',location)) %>%
+  
+  
   left_join(locationids,by=c('location'='Location')) %>%
   rename(locationid=LocationId) %>%
-  mutate(data=as.numeric(paste(data))) #%>%
-  #mutate(data=(as.numeric(str_remove(data,"%")))/100) #for frl
+  #mutate(data=(as.numeric(str_remove(data,"%")))/100) %>% #for frl
+  mutate(data=as.numeric(paste(data))) 
+  
 
 #COMBINE STATE AND DISTRICT DATA
 digestdata <- digestdata_state %>%
@@ -495,6 +509,8 @@ dbWriteTable(con,'southdakota',digestdata,append=TRUE,row.names=FALSE)
 #digest_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM southdakota WHERE timeframe='",fullyear,"' AND  varname='",variablename,"' AND (locationtype='School District' OR locationtype='State');")
 
 digest_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM southdakota WHERE timeframe='",fullyear,"' AND  varname='",variablename,"' AND locationtype <> 'Tribal Area';")
+
+digest_sql <- paste0("SELECT locationid, location, timeframe, dataformat, data FROM southdakota WHERE varname='",variablename,"' AND locationtype <> 'Tribal Area';")
 
 upload_data_digest <- dbGetQuery(con,digest_sql) %>%
   rename(LocationId=locationid,
