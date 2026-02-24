@@ -32,7 +32,7 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2024'
+year <- '2025'
 statename <- 'South Dakota'
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -150,12 +150,12 @@ if (sum(is.na(hs_tribal3$locationid))>=1) {
 View(hs_tribal3)
 ```
 
-##STEP1B: IMPORT AND CLEAN DATA FOR 2021 - ONE IS MISSING
+##STEP1B: IMPORT AND CLEAN DATA FOR 2025 - ONE IS MISSING
 ```{r}
 
 #for tribal data, must import one excel file per tribal area. Create a crosswalk that matches the full name with shortened file name
 sd_tribalareas_short <- c("CR","CC","LB","RB","SW",
-                          "SR","YS")
+                          "SR","PR")
 
 sd_tribalareas <- data.frame(sd_tribalareas_short)
 
