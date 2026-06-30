@@ -38,7 +38,7 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2024'
+year <- '2025'
 statename <- 'North Dakota'
 
 
@@ -64,7 +64,7 @@ ndcounties <- read.csv("./Input/ND County List.csv")
 
 ```{r}
 #import the data
-ncands <- read_excel(path=paste0("./Input/safety/northdakota_",year,"_ncandschildabuse.xlsx"), guess_max = 1048576,sheet='Page1_1',skip=7) %>%
+ncands <- read_excel(path=paste0("./Input/safety/northdakota_",year,"_ncandschildabuse.xlsx"), guess_max = 1048576,sheet='Page1',skip=7) %>%
   
   #rename columns
   rename(assessments='Number of Assessments',
@@ -195,13 +195,13 @@ temp_checkregions <- assessment %>%
   left_join(regionids,by=c('location'='county')) %>%
   
   #******ADD IN THE REGION HERE
-  subset(region=='Planning Region 5') %>%
+  subset(region=='Planning Region 6') %>%
   arrange(data)
 View(temp_checkregions)
 
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
-#assessment$data[assessment$location=='Sargent'] <- NA
+#assessment$data[assessment$location=='Foster'] <- NA
 
   
 ```
@@ -471,7 +471,7 @@ view(temp_checkregions)
 
 #******
 #CHANGE TO THE CORRECT COUNTY NAME HERE
-#allegedvictims_toupload$data[allegedvictims_toupload$location=='Logan'] <- NA
+#allegedvictims_toupload$data[allegedvictims_toupload$location=='Foster'] <- NA
   
 ```
 
