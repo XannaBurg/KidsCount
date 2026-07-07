@@ -34,8 +34,8 @@ library(naniar)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2024'
-year_short <- '24'
+year <- '2025'
+year_short <- '25'
 
 statefile <- 'montana'
 statename <- 'Montana'
@@ -47,12 +47,15 @@ locationids$Location <- as.character(locationids$Location)
 #input region ID file for MT
 regionids <- read.csv("./Input/MT KC Region List.csv")
 regionids$county <- as.character(regionids$county)
+
+#input list of counties for MT
+MTcounties <- read.csv("./Input/MT County List.csv")
 ```
 
 
 ## IMPORT THE DATA FILES THAT WILL BE USED
 ```{r}
-fostercaredata <- read_excel(path=paste0("./Input/safety/montana_",year_short,"_fostercaredata.xlsx"),sheet='2024 Unduplicated Kids in Care',skip=1) 
+fostercaredata <- read_excel(path=paste0("./Input/safety/montana_",year_short,"_fostercaredata.xlsx"),skip=15) 
 ```
 
 
@@ -62,22 +65,24 @@ fostercaredata <- read_excel(path=paste0("./Input/safety/montana_",year_short,"_
 ```{r}
 fostercaredata_0to17 <- fostercaredata %>% 
   
-  rename(location=`...1`) %>%
-  rename(data=`Unduplicated kids in care 0-17`) %>%
+  rename(location=`County`) %>%
+  rename(data=`Youths in Care (0-17 upon entry)`) %>%
   select(location,data) %>%
-  subset(!is.na(location)) %>%
+  subset(!is.na(data)) %>%
   
   
   
   #update locations
-  mutate(location=replace(location,location=='State (including tribal)','Montana')) %>%
-  filter(!location %in% c("Blackfeet Tribal SS","Crow Tribal SS","Flathead Tribal SS","Fort Belknap Tribal SS","Northern Cheyenne Tribal SS","Rocky Boy Tribal SS")) %>%
-  mutate(locationtype=ifelse(location=='Montana','State','County')) %>%
-  mutate(location=replace(location,location=='Choteau','Chouteau')) %>%
-  mutate(location=replace(location,location=='Lewis and Clark','Lewis & Clark')) %>%
-  mutate(location=replace(location,location=='Power River','Powder River')) %>%
+  mutate(location=replace(location,location=='Statewide','Montana')) %>%
+  filter(!location %in% c("Blackfeet Tribal Ss*","Crow Tribal Ss","Flathead Tribal Ss (Conf Sk)*","Fort Belknap Tribal Ss As&Gv*",
+                          "Northern Cheyenne Tribal Ss*","Rocky Boys Tribal Ss Chip&Cr*")) %>%
+  
+  #need to add back in missing counties
   mutate(location=replace(location,location=='Sweetgrass','Sweet Grass')) %>%
-
+  full_join(MTcounties,by=c("location"="Location")) %>%
+  
+  mutate(locationtype=ifelse(location=='Montana','State','County')) %>%
+  
   mutate(state='Montana',
          dataformat='Number',
          varname='childrenages0to17infostercare') %>%
@@ -245,31 +250,33 @@ write.csv(upload_data,file=paste0("./Output/safety/",statefile,"_",year,"_childr
 ```{r}
 fostercaredata_0to5 <- fostercaredata %>% 
   
-  rename(location=`...1`) %>%
-  rename(data=`Unduplicated kids in care 0-5`) %>%
+  rename(location=`County`) %>%
+  rename(data=`Youths in Care (0-5 upon entry)`) %>%
   select(location,data) %>%
-  subset(!is.na(location)) %>%
+  subset(!is.na(data)) %>%
   
   
   
   #update locations
-  mutate(location=replace(location,location=='State (including tribal)','Montana')) %>%
-  filter(!location %in% c("Blackfeet Tribal SS","Crow Tribal SS","Flathead Tribal SS","Fort Belknap Tribal SS","Northern Cheyenne Tribal SS","Rocky Boy Tribal SS")) %>%
-  mutate(locationtype=ifelse(location=='Montana','State','County')) %>%
-  mutate(location=replace(location,location=='Choteau','Chouteau')) %>%
-  mutate(location=replace(location,location=='Lewis and Clark','Lewis & Clark')) %>%
-  mutate(location=replace(location,location=='Power River','Powder River')) %>%
+  mutate(location=replace(location,location=='Statewide','Montana')) %>%
+  filter(!location %in% c("Blackfeet Tribal Ss*","Crow Tribal Ss","Flathead Tribal Ss (Conf Sk)*","Fort Belknap Tribal Ss As&Gv*",
+                          "Northern Cheyenne Tribal Ss*","Rocky Boys Tribal Ss Chip&Cr*")) %>%
+  
+  #need to add back in missing counties
   mutate(location=replace(location,location=='Sweetgrass','Sweet Grass')) %>%
-
+  full_join(MTcounties,by=c("location"="Location")) %>%
+  
+  mutate(locationtype=ifelse(location=='Montana','State','County')) %>%
+  
   mutate(state='Montana',
          dataformat='Number',
          varname='childrenages0to5infostercare') %>%
   
   left_join(locationids,by=c('location'='Location')) %>%
   rename(locationid=LocationId) %>%
-    
-  mutate(timeframe=year) %>%
-
+  mutate(timeframe=year) %>%  
+  
+  
   #suppress if less than 10
   mutate(data=replace(data,data<10,NA))
   
@@ -430,8 +437,8 @@ excel0to17_sql <- paste0("SELECT locationid, location, timeframe, dataformat, da
 
 excel0to17_county <- dbGetQuery(con,excel0to17_sql) %>%
   pivot_wider(names_from='timeframe',values_from='data') %>%
-  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022','2023','2024')) %>%
-  select(c(`location`,`2024_Number`,`2024_Rate`,`2023_Number`,`2023_Rate`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022','2023','2024','2025')) %>%
+  select(c(`location`,`2025_Number`,`2025_Rate`,`2024_Number`,`2024_Rate`,`2023_Number`,`2023_Rate`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
            `2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,
            `2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
   subset(location != 'Montana') %>%
@@ -439,8 +446,8 @@ excel0to17_county <- dbGetQuery(con,excel0to17_sql) %>%
 
 excel0to17_state <- dbGetQuery(con,excel0to17_sql) %>%
   pivot_wider(names_from='timeframe',values_from='data') %>%
-  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022','2023','2024')) %>%
-  select(c(`location`,`2024_Number`,`2024_Rate`,`2023_Number`,`2023_Rate`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022','2023','2024','2025')) %>%
+  select(c(`location`,`2025_Number`,`2025_Rate`,`2024_Number`,`2024_Rate`,`2023_Number`,`2023_Rate`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
            `2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,
            `2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
   subset(location == 'Montana') %>%
@@ -456,8 +463,8 @@ excel0to5_sql <- paste0("SELECT locationid, location, timeframe, dataformat, dat
 
 excel0to5_county <- dbGetQuery(con,excel0to5_sql) %>%
   pivot_wider(names_from='timeframe',values_from='data') %>%
-  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022','2023','2024')) %>%
-  select(c(`location`,`2024_Number`,`2024_Rate`,`2023_Number`,`2023_Rate`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022','2023','2024','2025')) %>%
+  select(c(`location`,`2025_Number`,`2025_Rate`,`2024_Number`,`2024_Rate`,`2023_Number`,`2023_Rate`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
            `2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,
            `2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
   subset(location != 'Montana') %>%
@@ -465,8 +472,8 @@ excel0to5_county <- dbGetQuery(con,excel0to5_sql) %>%
 
 excel0to5_state <- dbGetQuery(con,excel0to5_sql) %>%
   pivot_wider(names_from='timeframe',values_from='data') %>%
-  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022','2023','2024')) %>%
-  select(c(`location`,`2024_Number`,`2024_Rate`,`2023_Number`,`2023_Rate`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
+  pivot_wider(names_from='dataformat', values_from=c('2017','2018','2019','2020','2021','2022','2023','2024','2025')) %>%
+  select(c(`location`,`2025_Number`,`2025_Rate`,`2024_Number`,`2024_Rate`,`2023_Number`,`2023_Rate`,`2022_Number`,`2022_Rate`,`2021_Number`,`2021_Rate`,
            `2020_Number`,`2020_Rate`,`2019_Number`,`2019_Rate`,
            `2018_Number`,`2018_Rate`,`2017_Number`,`2017_Rate`)) %>%
   subset(location == 'Montana') %>%
@@ -487,7 +494,7 @@ write.csv(excel0to5,'./Output/safety/MT Foster Care Excel/mt_fostercare_tocopy_0
 ## STEP 1: create the data file manually
 ```{r}
 #edit the data only
-data <- 538.9
+data <- 614
 
 #----
 location <- 'Montana'
@@ -534,8 +541,8 @@ write.csv(upload_data,file=paste0("./Output/safety/",statefile,"_",year,"_averag
 ## STEP 1: create the data file manually
 ```{r}
 #edit the data only
-Number_sub <- 1556 #substantiated
-Number_unsub <- 4918 #unsubstantiated
+Number_sub <- 1581 #substantiated
+Number_unsub <- 4730 #unsubstantiated
 Percent <- Number_sub/(Number_sub+Number_unsub)
 
 #----
