@@ -36,7 +36,7 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2025'
+year <- '2026'
 statename <- 'South Dakota'
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -64,7 +64,7 @@ regionids$county <- as.character(regionids$county)
 ## STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #import the data
-ccapdata <- read_excel(path=paste0("./Input/education/southdakota_",year,"_childcareassistancerecipients.xlsx"),skip=2) 
+ccapdata <- read_excel(path=paste0("./Input/education/southdakota_",year,"_childcareassistancerecipients.xlsx"),skip=1) 
 
 #COUNTY DATA
 ccap_county <- ccapdata %>%
@@ -173,9 +173,8 @@ childcaredata <- read_excel(path=paste0("./Input/education/southdakota_",year,"_
 #COUNTY DATA
 childcare_county <- childcaredata %>%
   
-  #remove total (we can calculate)
-  subset(`County` != 'Total') %>%
-  subset(`County` != 'Out of State') %>%
+  #remove total and extra text (we can calculate)
+  subset(!is.na(ChildCareCategory)) %>%
   
   #assign Kids Count category names 
   mutate(`ChildCareCategory`=case_when(
