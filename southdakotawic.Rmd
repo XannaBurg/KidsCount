@@ -35,7 +35,7 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2024'
+year <- '2025'
 statename <- 'South Dakota'
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -62,17 +62,17 @@ regionids$county <- as.character(regionids$county)
 ## STEP 1: IMPORT AND CLEAN THE DATA
 ```{r}
 #import the data
-wicdata <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_wic.xlsx"),skip=1) 
+wicdata <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_wic.xlsx"),sheet='State') 
 
 ############
 #COUNTY DATA
 wic_all <- wicdata %>%
-  rename(location=`Household County`,
-         data=paste0(year," Average")) %>%
+  rename(location=`County`,
+         data=paste0(year," Average Enrollment")) %>%
   mutate(locationtype='County') %>%
   mutate(timeframe=year) %>%
   
-  mutate(location=replace(location,location=='State WIC Total Enrollment','South Dakota')) %>%
+  mutate(location=replace(location,location=='State','South Dakota')) %>%
   mutate(locationtype=replace(locationtype,location=='South Dakota','State')) %>%
   
   mutate(state=statename) %>%
@@ -131,7 +131,7 @@ write.csv(upload_datacenter,file=paste0("./Output/economics/",database_state,"_"
 
 ## STEP 1: IMPORT AND CLEAN THE DATA
 ```{r}
-wicracedata <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_wic.xlsx"),
+wicracedata <- read_excel(path=paste0("./Input/economics/southdakota_",year,"_wic.xlsx"),skip=1,
                           sheet="AI-AN",col_names=FALSE) %>%
   rename(race =`...1`,
     data = `...2`) %>%
