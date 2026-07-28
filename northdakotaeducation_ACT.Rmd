@@ -44,7 +44,7 @@ library(readxl)
 #CHANGE THE OBJECTS 'statename' and 'year' TO MATCH THE STATE AND YEAR
 #state should match exactly as is in FIPS code in order for code to correctly run
 statename <- "North Dakota"
-year <- "2024"
+year <- "2025"
 
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -67,13 +67,14 @@ countyids <- read.csv("./Documentation/Indicator Documentation/North Dakota Data
 ## AVERAGE ACT COMPOSITE SCORES ##
 ## ############################ ##
 ```{r}
-act_composite <- read_excel('/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/ACT_new_approach.xlsx')
+act_composite <- read_excel('/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2026 Request/7-ACT-ClassOf24-25.xlsx')
 
 ############
 #COUNTY DATA
 act_composite_county <- act_composite %>%
   #remove NA, which means that a composite score was not calculated
-  subset(!is.na(ACTScaleScores_Composite)) %>%
+  mutate(ACTScaleScores_Composite=as.numeric(paste(ACTScaleScores_Composite))) %>%
+  subset(!is.na(paste(ACTScaleScores_Composite))) %>%
   #clean up the county names and codes
   mutate(County=as.numeric(paste(County))) %>%
   full_join(countyids,by=c('County'='ndcounty_number')) %>%
@@ -98,7 +99,7 @@ act_composite_county <- act_composite %>%
 ###########
 #STATE DATA
 #pull the state composite score from the Class Profile pdf
-state_data <- 19.6
+state_data <- 19.4
 
 act_composite_state <- as.data.frame(state_data) %>%
   rename(data=state_data) %>%

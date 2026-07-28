@@ -38,10 +38,10 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '24-25'
-fullyear <- '2024/25' 
+year <- '25-26'
+fullyear <- '2025/26' 
 #fiscal year is the spring of reference school year
-fiscalyear <- '2025'
+fiscalyear <- '2026'
 
 
 statefile <- 'northdakota'
@@ -71,7 +71,7 @@ tribalschools$id_dash <- as.character(paste((tribalschools$id_dash)))
 STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #import data
-frl_data <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/1-InclusiveEnrollment.xlsx"),guess_max = 1048576)
+frl_data <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2026 Request/1-InclusiveEnrollment.xlsx"),guess_max = 1048576)
 
 
 
@@ -413,7 +413,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_freer
 STEP 1: IMPORT AND CLEAN SPECIAL EDUCATION DATA
 ```{r}
 #import data
-specialed_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/2-SpecialEdSnapshot.xlsx"))
+specialed_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2026 Request/2-SpecialEdSnapshot.xlsx"))
 
 
 ############
@@ -511,7 +511,7 @@ specialed_all <- specialed_county %>%
 STEP 2: CALCULATE DENOMINATOR FROM ENROLLMENT SNAPSHOT
 ```{r}
 #import data
-enroll_data <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/1-InclusiveEnrollment.xlsx"),guess_max = 1048576)
+enroll_data <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2026 Request/1-InclusiveEnrollment.xlsx"),guess_max = 1048576)
 
 
 ############
@@ -778,7 +778,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_total
 STEP 1: IMPORT AND CLEAN SPECIAL EDUCATION DATA
 ```{r}
 #import data
-specialed_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/2-SpecialEdSnapshot.xlsx"))
+specialed_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2026 Request/2-SpecialEdSnapshot.xlsx"))
 
 
 ############
@@ -969,7 +969,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_total
 STEP 1: IMPORT AND CLEAN SPECIAL EDUCATION DATA
 ```{r}
 #import data
-specialed_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/2-SpecialEdSnapshot.xlsx"))
+specialed_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2026 Request/2-SpecialEdSnapshot.xlsx"))
 
 
 ############

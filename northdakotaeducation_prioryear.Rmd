@@ -43,10 +43,10 @@ library(stringr)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '23-24'
-fullyear <- '2023/24' 
+year <- '24-25'
+fullyear <- '2024/25' 
 #fiscal year is the spring of reference school year
-fiscalyear <- '2024'
+fiscalyear <- '2025'
 
 
 statefile <- 'northdakota'
@@ -80,14 +80,15 @@ STEP 1: IMPORT AND CLEAN DATA
 year_periods <- paste0(substr(year,1,2),"-",substr(year,4,5))
 
 #import data
-homeless_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/3-Homelessness.xlsx")) %>%
+homeless_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2026 Request/3-Homelessness.xlsx")) %>%
   #rename columns removing year
   rename(denominator=all_of(paste0("20",year_periods," Denominator")),
          numerator=all_of(paste0("20",year_periods," Homeless"))) %>%
   mutate(denominator=as.numeric(paste(denominator))) %>%
   mutate(numerator=as.numeric(paste(numerator))) %>%
-  #remove first rows with information FYI only
-  mutate(CountyCode=as.numeric(paste(County))) %>%
+  #create county code
+  mutate(County = substr(StateIssuedID, 1, 2)) %>%
+  mutate(CountyCode=as.numeric(County)) %>%
   subset(!is.na(CountyCode)) %>%
   subset(!is.na(denominator))
 
@@ -338,7 +339,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_stude
 STEP 1: IMPORT THE FINANCIALS DATA
 ```{r}
 #import data
-financials <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/FinancialData_",year,".csv"))
+financials <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2026 Request/FinancialData_",year,".csv"))
 
 
 ############
@@ -508,7 +509,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_avgda
 STEP 1: IMPORT THE FINANCIALS DATA
 ```{r}
 #import data
-financials <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/FinancialData_",year,".csv"))
+financials <- read.csv(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2026 Request/FinancialData_",year,".csv"))
 
 ############
 #COUNTY DATA
@@ -758,7 +759,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_avgex
 STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #import data
-grad_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/4-Grad_Rates.xlsx")) %>%
+grad_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2026 Request/4-Grad_Rates.xlsx")) %>%
   rename(ontime_Count='On-Time Grads',
          Total_Students='Cohort') %>%
   subset(Race=='All') %>%
@@ -1049,7 +1050,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_gradu
 ## FOUR-YEAR HIGH SCHOOL COHORT GRADUATION RATE BY RACE ##
 STEP 1: Import and Clean Data
 ```{r}
-grad_data2 <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/4-Grad_Rates.xlsx")) %>%
+grad_data2 <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2026 Request/4-Grad_Rates.xlsx")) %>%
   rename(ontime_Count='On-Time Grads',
          Total_Students='Cohort') %>%
 
@@ -1269,7 +1270,7 @@ fiscalyear_minus1 <- as.character(as.numeric(fiscalyear)-1)
 academicyear <- paste0(fiscalyear_minus1,"-",fiscalyear)
 
 #import data
-dropout_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/5-DropOuts7-12.xlsx")) %>%
+dropout_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2026 Request/5-DropOuts7-12.xlsx")) %>%
   #change county to numeric
   mutate(County=as.numeric(paste(County)))
 
@@ -1670,7 +1671,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_grade
 STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #import data
-assessment_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/6-ThirdGradeAssess.xlsx")) %>%
+assessment_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2026 Request/6-ThirdGradeAssess.xlsx")) %>%
 
   
   #subset for all students
@@ -1896,7 +1897,7 @@ yearfile3 <- year
 
 
 #import data
-assessment_data1 <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/Assessment_Grade3_",yearfile1,".xlsx")) %>%
+assessment_data1 <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/6-ThirdGradeAssess.xlsx")) %>%
   
   #subset for all students
   subset(SubGroup_Desc=='All') %>%
@@ -1904,13 +1905,13 @@ assessment_data1 <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/
   mutate(County=as.character(paste(County))) %>%
   mutate(Entity_ID=as.character(paste(Entity_ID))) 
 
-assessment_data2 <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2024 Request/6-ThirdGradeAssess.xlsx")) %>%
+assessment_data2 <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/6-ThirdGradeAssess.xlsx")) %>%
   
   #subset for all students
   subset(SubGroup_Desc=='All') %>%
   subset(Subject=='Reading') 
 
-assessment_data3 <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/6-ThirdGradeAssess.xlsx")) %>%
+assessment_data3 <- read_excel(path=paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2026 Request/6-ThirdGradeAssess.xlsx")) %>%
   
   #subset for all students
   subset(SubGroup_Desc=='All') %>%
@@ -2102,7 +2103,7 @@ write.csv(upload_data,file=paste0("./Output/education/northdakota_",year,"_third
 STEP 1: IMPORT AND CLEAN DATA
 ```{r}
 #import data
-assessment_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2025 Request/6-ThirdGradeAssess.xlsx")) %>%
+assessment_data <- read_excel(paste0("/Users/xannaburg/Documents/DO NOT DELETE/ND Education/ND Kids Count 2026 Request/6-ThirdGradeAssess.xlsx")) %>%
 
   
   #subset for reading
