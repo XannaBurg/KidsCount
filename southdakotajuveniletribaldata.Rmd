@@ -197,8 +197,32 @@ if (sum(is.na(commitments_percent$locationid))>=1) {
   'all locations match'
 }
 
+# 2. Check that there is no suppression or >1 suppression
+########## MANUAL STEP #############
+#need to check that county data cannot be identified using totals
+temp_testsuppression <- commitments_percent %>%
+  subset(is.na(data))
 
-# 2. Visually inspect output data
+
+temp_rows <- as.numeric(nrow(temp_testsuppression))
+if (temp_rows==0 | temp_rows>1) {
+  'no additional data suppression needed at the overall county level'
+} else if (temp_rows==1) {
+  View(temp_testsuppression)
+}
+
+#if there is only one county, print the counties in ascending order
+#temp_check <- docdata_cleaned %>%
+ # arrange(data)
+#View(temp_check)
+
+#******
+#CHANGE TO THE CORRECT COUNTY NAME HERE
+#**Choose the county with the next lowest count; if there is a tie, suppress both
+#commitments_percent$data[commitments_percent$race=='Hispanic'] <- 'NA'
+
+
+# 3. Visually inspect output data
 View(commitments_percent)
 ```
 
