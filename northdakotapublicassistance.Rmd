@@ -34,8 +34,8 @@ library(readxl)
 
 ```{r}
 #UPDATE to reflect the current year data working with
-year <- '2025'
-fiscalyear <- 'FY25'
+year <- '2026'
+fiscalyear <- 'FY26'
 state <- 'northdakota'
 
 
@@ -443,7 +443,8 @@ dbWriteTable(con,'northdakota',ccapages0to13,append=TRUE,row.names=FALSE)
 ```
 
 ```{r}
-#calculate percent of population 0 to 13 on ccap
+#calculate percent of population 0 to 11 on ccap
+#NOTE, age range used to be 0-13, but was changed to 0-11 when the policy changed in April 2026. SFY 2027 data will need to be a new series.
 
 #create dataset that has population merged with geography for 0 to 13 year olds
 #population is for the beginning of the FY, which is minus 1 from the year that is reported
