@@ -43,7 +43,7 @@ library(stringr)
 ```{r}
 
 ####UPDATE to reflect the current year data working with
-year <- '2025'
+year <- '2026'
 statename <- 'Montana'
 
 #run this code to create an object needed for the database (DO NOT EDIT)
@@ -312,12 +312,14 @@ snap <- read_excel(path=paste0("./Input/economics/montana_",year,"_tanfsnapmedic
   
 #create state data frame subsetting for Grand Total row
 snap_state <- snap %>%
-  subset(County=='State Totals')
+  subset(County=='Total')
 
 #create the county data frame subsetting to remove NA counties and cities
 snap_county <- snap %>%
   
-  subset(County != 'State Totals') %>%
+  subset(County != 'Total') %>%
+  subset(County != 'No County') %>%
+  subset(County != '*Source: CHIMES AL-300') %>%
   
   #remove the - ## from each county
   mutate(location=gsub(" -.*","",County)) %>%
@@ -433,12 +435,14 @@ snap <- read_excel(path=paste0("./Input/economics/montana_",year,"_tanfsnapmedic
   
 #create state data frame subsetting for Grand Total row
 snap_state <- snap %>%
-  subset(County=='State Totals')
+  subset(County=='Total')
 
 #create the county data frame subsetting to remove NA counties and cities
 snap_county <- snap %>%
   
-  subset(County != 'State Totals') %>%
+  subset(County != 'Total') %>%
+  subset(County != 'No County') %>%
+  subset(County != '*Source: CHIMES AL-300') %>%
   
   #remove the - ## from each county
   mutate(location=gsub(" -.*","",County)) %>%
@@ -640,12 +644,14 @@ snap <- read_excel(path=paste0("./Input/economics/montana_",year,"_tanfsnapmedic
   
 #create state data frame subsetting for Grand Total row
 snap_state <- snap %>%
-  subset(County=='State Totals')
+  subset(County=='Total')
 
 #create the county data frame 
 snap_county <- snap %>%
   
-  subset(County != 'State Totals') %>%
+  subset(County != 'Total') %>%
+  subset(County != 'No County') %>%
+  subset(County != '*Source: CHIMES AL-300') %>%
   
   #remove the - ## from each county
   mutate(location=gsub(" -.*","",County)) %>%
@@ -758,12 +764,14 @@ snap <- read_excel(path=paste0("./Input/economics/montana_",year,"_tanfsnapmedic
   
 #create state data frame subsetting for Grand Total row
 snap_state <- snap %>%
-  subset(County=='State Totals')
+  subset(County=='Total')
 
 #create the county data frame 
 snap_county <- snap %>%
   
-  subset(County != 'State Totals') %>%
+  subset(County != 'Total') %>%
+  subset(County != 'No County') %>%
+  subset(County != '*Source: CHIMES AL-300') %>%
   
   #remove the - ## from each county
   mutate(location=gsub(" -.*","",County)) %>%
@@ -877,12 +885,14 @@ tanf <- read_excel(path=paste0("./Input/economics/montana_",year,"_tanfsnapmedic
   
 #create state data frame subsetting for Grand Total row
 tanf_state <- tanf %>%
-  subset(County=='State Totals')
+  subset(County=='Total')
 
 #create the county data frame subsetting to remove NA counties and cities
 tanf_county <- tanf %>%
   
-  subset(County != 'State Totals') %>%
+  subset(County != 'Total') %>%
+  subset(County != 'No County') %>%
+  subset(County != '*Source: CHIMES AL-300') %>%
   
   #remove the - ## from each county
   mutate(location=gsub(" -.*","",County)) %>%
@@ -1000,12 +1010,14 @@ tanf <- read_excel(path=paste0("./Input/economics/montana_",year,"_tanfsnapmedic
   
 #create state data frame subsetting for Grand Total row
 tanf_state <- tanf %>%
-  subset(County=='State Totals')
+  subset(County=='Total')
 
 #create the county data frame subsetting to remove NA counties and cities
 tanf_county <- tanf %>%
   
-  subset(County != 'State Totals') %>%
+  subset(County != 'Total') %>%
+  subset(County != 'No County') %>%
+  subset(County != '*Source: CHIMES AL-300') %>%
   
   #remove the - ## from each county
   mutate(location=gsub(" -.*","",County)) %>%
