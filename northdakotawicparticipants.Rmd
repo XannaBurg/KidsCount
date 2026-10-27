@@ -30,7 +30,7 @@ library(sas7bdat)
 
 ```{r}
 ####UPDATE to reflect the current year data working with
-year <- '2025'
+year <- '2026'
 
 statefile <- 'northdakota'
 statename <- 'North Dakota'
@@ -51,17 +51,13 @@ countylist$Location <- as.character(countylist$Location)
 
 ## STEP 1: IMPORT AND CLEAN THE DATA
 ```{r}
-wicdata_state <- read_xlsx(paste0("./Input/Health/northdakota_",year,"_wicparticipants.xlsx"),range="A4:Z5") %>%
-  select(c(`Grand Total`)) %>% 
-  mutate(location='North Dakota') %>%
-  mutate(locationtype='State') %>%
-  rename(data=`Grand Total`) 
-
-wicdata_county <- read_xlsx(paste0("./Input/Health/northdakota_",year,"_wicparticipants.xlsx"),range="A8:Z61") %>%
+wicdata <- read_xlsx(paste0("./Input/Health/northdakota_",year,"_wicparticipants.xlsx")) %>%
   select(c(`County`, `Grand Total`)) %>% 
   rename(location=`County`,
          data=`Grand Total`) %>%
-  mutate(locationtype='County') %>%
+  mutate(locationtype=case_when(
+    location=='North Dakota' ~ 'State',
+    TRUE ~ 'County')) %>%
   
   mutate(location=replace(location,location=='Mclean','McLean')) %>%
   mutate(location=replace(location,location=='Lamoure','LaMoure')) %>%
@@ -71,7 +67,8 @@ wicdata_county <- read_xlsx(paste0("./Input/Health/northdakota_",year,"_wicparti
   
 
 #region data
-wicdata_region <- wicdata_county %>%
+wicdata_region <- wicdata %>%
+  subset(location != 'North Dakota') %>%
   left_join(regionids,by=c('location'='county')) %>%
   group_by(region) %>%
   summarise(data=sum(data,na.rm=TRUE)) %>%
@@ -82,8 +79,7 @@ wicdata_region <- wicdata_county %>%
 
 
 #combine all geographies and add in KC variables
-wicdata_all <- wicdata_county %>%
-  bind_rows(wicdata_state) %>%
+wicdata_all <- wicdata %>%
   bind_rows(wicdata_region) %>%
   mutate(state='North Dakota') %>%
   mutate(timeframe=year) %>%
